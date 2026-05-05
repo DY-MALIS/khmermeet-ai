@@ -15,6 +15,12 @@ export function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError("");
+    const health = await fetch("/api/health", { cache: "no-store" });
+    if (!health.ok) {
+      setLoading(false);
+      setError("Database មិនទាន់ដំណើរការ។ សូមបើក PostgreSQL រួច run migration/seed មុនពេល login។");
+      return;
+    }
     const formData = new FormData(event.currentTarget);
     const result = await signIn("credentials", {
       email: formData.get("email"),
@@ -22,7 +28,7 @@ export function LoginForm() {
       redirect: false
     });
     setLoading(false);
-    if (result?.error) setError("អ៊ីមែល ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។");
+    if (result?.error) setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ឬប្រើ demo account បន្ទាប់ពី seed database។");
     else router.push("/dashboard");
   }
 

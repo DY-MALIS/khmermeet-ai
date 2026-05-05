@@ -44,14 +44,22 @@ NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
 ```
 
-4. Run Prisma migration and seed:
+4. Start PostgreSQL locally. The easiest path is Docker:
+
+```bash
+docker compose up -d
+```
+
+If you already have PostgreSQL installed, create a `khmermeet_ai` database that matches `DATABASE_URL`.
+
+5. Run Prisma migration and seed:
 
 ```bash
 npm run prisma:migrate
 npm run prisma:seed
 ```
 
-5. Start local dev:
+6. Start local dev:
 
 ```bash
 npm run dev
