@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { CalendarClock, Trash2, UserRound } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { deleteTask, updateTask } from "@/lib/actions";
@@ -31,8 +31,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-leaf">គ្រប់គ្រង action items</p>
-        <h1 className="text-3xl font-bold text-ink">កិច្ចការ</h1>
+        <p className="text-sm font-semibold text-leaf">Action Tracker</p>
+        <h1 className="text-3xl font-bold text-ink">កិច្ចការដែលត្រូវធ្វើ</h1>
+        <p className="mt-2 text-sm text-slate-500">តាមដានអ្នកទទួលខុសត្រូវ, deadline និងស្ថានភាពការងារ។</p>
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
@@ -42,9 +43,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       <form className="kh-card grid gap-3 p-4 md:grid-cols-4">
         <select className="kh-input" name="status" defaultValue={params.status ?? ""}>
           <option value="">គ្រប់ស្ថានភាព</option>
-          <option value="not_started">Not started</option>
-          <option value="in_progress">In progress</option>
-          <option value="completed">Completed</option>
+          <option value="not_started">មិនទាន់ចាប់ផ្តើម</option>
+          <option value="in_progress">កំពុងធ្វើ</option>
+          <option value="completed">រួច</option>
         </select>
         <select className="kh-input" name="priority" defaultValue={params.priority ?? ""}>
           <option value="">គ្រប់អាទិភាព</option>
@@ -64,13 +65,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Meeting</th>
-                  <th className="px-4 py-3">Assignee</th>
+                  <th className="px-4 py-3">កិច្ចការ</th>
+                  <th className="px-4 py-3">ប្រជុំ</th>
+                  <th className="px-4 py-3"><span className="inline-flex items-center gap-1"><UserRound className="h-3.5 w-3.5" />អ្នកទទួលខុសត្រូវ</span></th>
                   <th className="px-4 py-3">Deadline</th>
-                  <th className="px-4 py-3">Priority</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th className="px-4 py-3">អាទិភាព</th>
+                  <th className="px-4 py-3">ស្ថានភាព</th>
+                  <th className="px-4 py-3">រក្សាទុក</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -88,14 +89,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                       </form>
                     </td>
                     <td className="px-4 py-3">
-                      <input form={`update-${task.id}`} className="kh-input min-w-36" name="deadline" type="date" defaultValue={task.deadline?.toISOString().slice(0, 10) ?? ""} />
+                      <div className="flex items-center gap-2">
+                        <CalendarClock className="h-4 w-4 text-slate-400" />
+                        <input form={`update-${task.id}`} className="kh-input min-w-36" name="deadline" type="date" defaultValue={task.deadline?.toISOString().slice(0, 10) ?? ""} />
+                      </div>
                     </td>
                     <td className="px-4 py-3"><span className="kh-badge bg-sky/10 text-sky">{task.priority}</span></td>
                     <td className="px-4 py-3">
                       <select form={`update-${task.id}`} className="kh-input min-w-40" name="status" defaultValue={task.status}>
-                        <option value="not_started">Not started</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="completed">Completed</option>
+                        <option value="not_started">មិនទាន់ចាប់ផ្តើម</option>
+                        <option value="in_progress">កំពុងធ្វើ</option>
+                        <option value="completed">រួច</option>
                       </select>
                     </td>
                     <td className="px-4 py-3">

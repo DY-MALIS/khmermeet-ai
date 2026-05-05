@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CalendarPlus, CheckSquare, History, Settings, Video } from "lucide-react";
+import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/components/ui";
 import { labels } from "@/lib/labels";
@@ -10,7 +10,9 @@ const nav = [
   { href: "/meetings/new", label: labels.km.newMeeting, icon: CalendarPlus },
   { href: "/meetings/call", label: "វីដេអូខល", icon: Video },
   { href: "/meetings", label: labels.km.meetings, icon: History },
-  { href: "/tasks", label: labels.km.tasks, icon: CheckSquare },
+  { href: "/transcripts", label: "អត្ថបទប្រជុំ", icon: FileText },
+  { href: "/summaries", label: "សង្ខេបដោយ AI", icon: Bot },
+  { href: "/tasks", label: "Action Tracker", icon: CheckSquare },
   { href: "/settings", label: labels.km.settings, icon: Settings }
 ];
 
