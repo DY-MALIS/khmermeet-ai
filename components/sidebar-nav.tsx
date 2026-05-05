@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, CalendarPlus, CheckSquare, History, Settings } from "lucide-react";
+import { BarChart3, CalendarPlus, CheckSquare, History, Settings, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/components/ui";
 import { labels } from "@/lib/labels";
@@ -8,6 +8,7 @@ import { labels } from "@/lib/labels";
 const nav = [
   { href: "/dashboard", label: labels.km.dashboard, icon: BarChart3 },
   { href: "/meetings/new", label: labels.km.newMeeting, icon: CalendarPlus },
+  { href: "/meetings/call", label: "វីដេអូខល", icon: Video },
   { href: "/meetings", label: labels.km.meetings, icon: History },
   { href: "/tasks", label: labels.km.tasks, icon: CheckSquare },
   { href: "/settings", label: labels.km.settings, icon: Settings }
@@ -21,7 +22,10 @@ export function SidebarNav() {
       {nav.map((item) => {
         const active =
           pathname === item.href ||
-          (item.href === "/meetings" && pathname.startsWith("/meetings/") && pathname !== "/meetings/new");
+          (item.href === "/meetings" &&
+            pathname.startsWith("/meetings/") &&
+            pathname !== "/meetings/new" &&
+            pathname !== "/meetings/call");
         return (
           <a
             key={item.href}

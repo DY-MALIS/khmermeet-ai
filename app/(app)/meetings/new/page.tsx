@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 import { RecordingPanel } from "@/components/recording-panel";
 
 export default function NewMeetingPage() {
@@ -7,6 +8,7 @@ export default function NewMeetingPage() {
         <p className="text-sm font-semibold text-leaf">ថតសំឡេងប្រជុំ</p>
         <h1 className="text-3xl font-bold text-ink">ប្រជុំថ្មី</h1>
         <p className="mt-2 text-slate-500">ថតសំឡេងក្នុង browser, ស្តាប់ preview, រួចរក្សាទុក meeting ទៅ local database។</p>
+        <a className="kh-button-secondary mt-4" href="/meetings/call">បើកប្រជុំវីដេអូ</a>
       </div>
       <RecordingPanel />
     </div>
