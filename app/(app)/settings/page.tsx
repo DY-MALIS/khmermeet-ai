@@ -1,4 +1,5 @@
 import { PlugZap } from "lucide-react";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { requireUser } from "@/lib/session";
 
 const integrations = [
@@ -17,15 +18,11 @@ export default async function SettingsPage() {
         <h1 className="text-3xl font-bold text-ink">ការកំណត់</h1>
       </div>
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">Display language</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="rounded-lg border border-leaf bg-leaf/5 p-4">
-            <input className="mr-2" type="radio" name="language" defaultChecked /> Khmer
-          </label>
-          <label className="rounded-lg border border-slate-200 p-4">
-            <input className="mr-2" type="radio" name="language" /> English
-          </label>
-        </div>
+        <h2 className="mb-4 text-lg font-bold">Display language / ភាសាបង្ហាញ</h2>
+        <LanguageSwitcher />
+        <p className="mt-3 text-sm text-slate-500">
+          ជ្រើស Khmer ឬ English ដើម្បីប្តូរ menu label សំខាន់ៗក្នុង app។
+        </p>
       </section>
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">Account info</h2>

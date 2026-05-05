@@ -2,25 +2,43 @@
 
 import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { readDisplayLanguage } from "@/components/language-switcher";
 import { cn } from "@/components/ui";
-import { labels } from "@/lib/labels";
+import { navigationLabels, type DisplayLanguage } from "@/lib/navigation-labels";
 
-const nav = [
-  { href: "/dashboard", label: labels.km.dashboard, icon: BarChart3 },
-  { href: "/meetings/new", label: labels.km.newMeeting, icon: CalendarPlus },
-  { href: "/meetings/call", label: "វីដេអូខល", icon: Video },
-  { href: "/meetings", label: labels.km.meetings, icon: History },
-  { href: "/transcripts", label: "អត្ថបទប្រជុំ", icon: FileText },
-  { href: "/summaries", label: "សង្ខេបដោយ AI", icon: Bot },
-  { href: "/tasks", label: "Action Tracker", icon: CheckSquare },
-  { href: "/settings", label: labels.km.settings, icon: Settings }
+type NavigationLabelKey = "dashboard" | "meetings" | "recorder" | "transcript" | "aiSummary" | "tasks" | "history" | "settings";
+
+const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarChart3 }> = [
+  { href: "/dashboard", labelKey: "dashboard", icon: BarChart3 },
+  { href: "/meetings/call", labelKey: "meetings", icon: Video },
+  { href: "/meetings/new", labelKey: "recorder", icon: CalendarPlus },
+  { href: "/transcripts", labelKey: "transcript", icon: FileText },
+  { href: "/summaries", labelKey: "aiSummary", icon: Bot },
+  { href: "/tasks", labelKey: "tasks", icon: CheckSquare },
+  { href: "/meetings", labelKey: "history", icon: History },
+  { href: "/settings", labelKey: "settings", icon: Settings }
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
+  const [language, setLanguage] = useState<DisplayLanguage>("km");
+  const labels = navigationLabels[language];
+
+  useEffect(() => {
+    setLanguage(readDisplayLanguage());
+    const handler = (event: Event) => {
+      setLanguage((event as CustomEvent<DisplayLanguage>).detail ?? readDisplayLanguage());
+    };
+    window.addEventListener("khmermeet-language-change", handler);
+    window.addEventListener("storage", () => setLanguage(readDisplayLanguage()));
+    return () => {
+      window.removeEventListener("khmermeet-language-change", handler);
+    };
+  }, []);
 
   return (
-    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-5 lg:block lg:space-y-2 lg:px-4">
+    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-4">
       {nav.map((item) => {
         const active =
           pathname === item.href ||
@@ -43,7 +61,7 @@ export function SidebarNav() {
             aria-current={active ? "page" : undefined}
           >
             <item.icon className="h-4 w-4" />
-            <span className="leading-5">{item.label}</span>
+            <span className="leading-5">{labels[item.labelKey]}</span>
           </a>
         );
       })}

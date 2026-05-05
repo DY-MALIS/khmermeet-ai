@@ -1,4 +1,5 @@
 import { SidebarNav } from "@/components/sidebar-nav";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </a>
         </div>
         <SidebarNav />
+        <div className="px-4 pb-4">
+          <LanguageSwitcher compact />
+        </div>
         <div className="mt-auto hidden border-t border-slate-200 p-4 lg:block">
           <div className="mb-3 rounded-lg bg-slate-50 p-3">
             <p className="text-sm font-semibold text-ink">No-login MVP</p>
