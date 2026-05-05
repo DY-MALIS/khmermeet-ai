@@ -18,10 +18,14 @@ export function RecordingPanel() {
   const [seconds, setSeconds] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setSupported(typeof window !== "undefined" && "MediaRecorder" in window);
+    fetch("/api/health", { cache: "no-store" })
+      .then((response) => setDbUnavailable(!response.ok))
+      .catch(() => setDbUnavailable(true));
   }, []);
 
   useEffect(() => {
@@ -78,6 +82,11 @@ export function RecordingPanel() {
       <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
         Please make sure all participants agree before recording this meeting.
       </div>
+      {dbUnavailable ? (
+        <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
+          Recording controls can open, but saving a meeting needs PostgreSQL. Start database first to save records.
+        </div>
+      ) : null}
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -98,7 +107,7 @@ export function RecordingPanel() {
           <input className="kh-input" name="title" placeholder="ចំណងជើងប្រជុំ" required />
           <input type="hidden" name="audioUrl" value={audioUrl} />
           <input type="hidden" name="duration" value={seconds} />
-          <button className="kh-button-primary" disabled={uploading || !audioUrl}>{uploading ? "កំពុងរក្សាទុកសំឡេង..." : "រក្សាទុកប្រជុំ"}</button>
+          <button className="kh-button-primary" disabled={uploading || !audioUrl || dbUnavailable}>{uploading ? "កំពុងរក្សាទុកសំឡេង..." : "រក្សាទុកប្រជុំ"}</button>
         </form>
       ) : null}
     </div>

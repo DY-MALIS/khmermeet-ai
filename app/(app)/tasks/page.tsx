@@ -10,17 +10,21 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const user = await requireUser();
   const params = await searchParams;
   const now = new Date();
-  const tasks = await prisma.task.findMany({
-    where: {
-      meeting: { createdById: user.id },
-      status: params.status ? (params.status as TaskStatus) : undefined,
-      priority: params.priority ? (params.priority as TaskPriority) : undefined,
-      deadline: params.overdue === "true" ? { lt: now } : undefined,
-      NOT: params.overdue === "true" ? { status: "completed" } : undefined
-    },
-    include: { meeting: true },
-    orderBy: [{ deadline: "asc" }, { createdAt: "desc" }]
-  });
+  const data = await prisma.task
+    .findMany({
+      where: {
+        meeting: { createdById: user.id },
+        status: params.status ? (params.status as TaskStatus) : undefined,
+        priority: params.priority ? (params.priority as TaskPriority) : undefined,
+        deadline: params.overdue === "true" ? { lt: now } : undefined,
+        NOT: params.overdue === "true" ? { status: "completed" } : undefined
+      },
+      include: { meeting: true },
+      orderBy: [{ deadline: "asc" }, { createdAt: "desc" }]
+    })
+    .then((tasks) => ({ tasks, dbUnavailable: false }))
+    .catch(() => ({ tasks: [], dbUnavailable: true }));
+  const { tasks, dbUnavailable } = data;
 
   return (
     <div className="space-y-6">
@@ -28,6 +32,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         <p className="text-sm font-semibold text-leaf">គ្រប់គ្រង action items</p>
         <h1 className="text-3xl font-bold text-ink">កិច្ចការ</h1>
       </div>
+      {dbUnavailable ? (
+        <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/update/delete tasks ត្រូវការ PostgreSQL។
+        </div>
+      ) : null}
       <form className="kh-card grid gap-3 p-4 md:grid-cols-4">
         <select className="kh-input" name="status" defaultValue={params.status ?? ""}>
           <option value="">គ្រប់ស្ថានភាព</option>

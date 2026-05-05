@@ -9,15 +9,19 @@ import { EmptyState } from "@/components/ui";
 export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
-  const meetings = await prisma.meeting.findMany({
-    where: {
-      createdById: user.id,
-      title: params.q ? { contains: params.q, mode: "insensitive" } : undefined,
-      createdAt: params.date ? { gte: new Date(params.date), lt: new Date(new Date(params.date).getTime() + 86400000) } : undefined
-    },
-    include: { tasks: true },
-    orderBy: { createdAt: "desc" }
-  });
+  const data = await prisma.meeting
+    .findMany({
+      where: {
+        createdById: user.id,
+        title: params.q ? { contains: params.q, mode: "insensitive" } : undefined,
+        createdAt: params.date ? { gte: new Date(params.date), lt: new Date(new Date(params.date).getTime() + 86400000) } : undefined
+      },
+      include: { tasks: true },
+      orderBy: { createdAt: "desc" }
+    })
+    .then((meetings) => ({ meetings, dbUnavailable: false }))
+    .catch(() => ({ meetings: [], dbUnavailable: true }));
+  const { meetings, dbUnavailable } = data;
 
   return (
     <div className="space-y-6">
@@ -25,6 +29,11 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
         <p className="text-sm font-semibold text-leaf">រកមើលកិច្ចប្រជុំ</p>
         <h1 className="text-3xl font-bold text-ink">ប្រវត្តិប្រជុំ</h1>
       </div>
+      {dbUnavailable ? (
+        <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/save/delete meetings ត្រូវការ PostgreSQL។
+        </div>
+      ) : null}
       <form className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_220px_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
