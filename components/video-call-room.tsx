@@ -320,6 +320,11 @@ export function VideoCallRoom() {
     await navigator.clipboard.writeText(url);
   }
 
+  async function copyRoomCode() {
+    await navigator.clipboard.writeText(roomId);
+    setAgentNotice("Room code ត្រូវបាន copy រួច។ អ្នកចូលក្រោយអាចវាយ code នេះក្នុងទំព័រ Video Call។");
+  }
+
   function getRecorderMimeType() {
     const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
@@ -460,12 +465,18 @@ export function VideoCallRoom() {
             <span className="text-sm font-semibold text-slate-600">Room code</span>
             <div className="flex gap-2">
               <input className="kh-input uppercase" value={roomId} onChange={(event) => setRoomId(event.target.value.toUpperCase())} disabled={joined} />
+              <button className="kh-button-secondary px-3" type="button" onClick={copyRoomCode} title="Copy room code">
+                <Copy className="h-4 w-4" />
+              </button>
               {!joined ? (
                 <button className="kh-button-secondary px-3" type="button" onClick={() => setRoomId(createRoomId())} title="New room">
                   <RefreshCcw className="h-4 w-4" />
                 </button>
               ) : null}
             </div>
+            <p className="text-xs text-slate-500">
+              អ្នកចូលក្រោយអាចបើកទំព័រ Video Call, វាយ room code នេះ, រួចចុច “ចូល Video Call”។
+            </p>
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
