@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MeetingStatus {
+  recorded
+  transcribed
+  summarized
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum TaskStatus {
+  not_started
+  in_progress
+  completed
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  meetings     Meeting[]
+}
+
+model Meeting {
+  id          String        @id @default(cuid())
+  title       String
+  audioUrl    String?
+  transcript  String?
+  summary     String?
+  language    String        @default("km")
+  duration    Int           @default(0)
+  status      MeetingStatus @default(recorded)
+  createdById String
+  createdBy   User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Task {
+  id           String       @id @default(cuid())
+  meetingId    String
+  meeting      Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  assigneeName String?
+  deadline     DateTime?
+  priority     TaskPriority @default(medium)
+  status       TaskStatus   @default(not_started)
+  sourceText   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
