@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --font-khmer: "Noto Sans Khmer", "Khmer OS Siemreap", "Inter", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: #f7f8f5;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background:
+    linear-gradient(180deg, rgba(24, 116, 95, 0.08), rgba(247, 248, 245, 0) 320px),
+    #f7f8f5;
+  color: #17202a;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.kh-card {
+  @apply rounded-lg border border-black/5 bg-white shadow-soft;
+}
+
+.kh-input {
+  @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-leaf focus:ring-4 focus:ring-leaf/10;
+}
+
+.kh-button {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.kh-button-primary {
+  @apply kh-button bg-leaf text-white hover:bg-leaf/90;
+}
+
+.kh-button-secondary {
+  @apply kh-button border border-slate-200 bg-white text-ink hover:bg-slate-50;
+}
+
+.kh-badge {
+  @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+}

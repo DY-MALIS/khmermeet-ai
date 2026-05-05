@@ -1,0 +1,71 @@
+import Link from "next/link";
+import { CheckCircle2, Clock, FileAudio, ListTodo } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { EmptyState } from "@/components/ui";
+
+export default async function DashboardPage() {
+  const user = await requireUser();
+  const [meetings, tasks] = await Promise.all([
+    prisma.meeting.findMany({ where: { createdById: user.id }, include: { tasks: true }, orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.task.findMany({ where: { meeting: { createdById: user.id } }, include: { meeting: true }, orderBy: { createdAt: "desc" } })
+  ]);
+  const now = new Date();
+  const stats = [
+    { label: "ប្រជុំសរុប", value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf" },
+    { label: "កិច្ចការសរុប", value: tasks.length, icon: ListTodo, tone: "bg-sky/10 text-sky" },
+    { label: "បានបញ្ចប់", value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700" },
+    { label: "ហួសកំណត់", value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-red-100 text-red-700" }
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-leaf">សូមស្វាគមន៍</p>
+          <h1 className="text-3xl font-bold text-ink">ផ្ទាំងគ្រប់គ្រង</h1>
+        </div>
+        <Link className="kh-button-primary" href="/meetings/new">ថតប្រជុំថ្មី</Link>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <div className="kh-card p-5" key={stat.label}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">{stat.label}</p>
+              <span className={`rounded-lg p-2 ${stat.tone}`}><stat.icon className="h-5 w-5" /></span>
+            </div>
+            <p className="mt-4 text-3xl font-bold text-ink">{stat.value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="kh-card p-5">
+          <h2 className="mb-4 text-lg font-bold">ប្រជុំថ្មីៗ</h2>
+          {meetings.length ? (
+            <div className="space-y-3">
+              {meetings.map((meeting) => (
+                <Link href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
+                  <p className="font-semibold text-ink">{meeting.title}</p>
+                  <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} កិច្ចការ</p>
+                </Link>
+              ))}
+            </div>
+          ) : <EmptyState title="មិនទាន់មានប្រជុំ" description="ចាប់ផ្តើមថត ឬបង្កើតប្រជុំថ្មី។" />}
+        </section>
+        <section className="kh-card p-5">
+          <h2 className="mb-4 text-lg font-bold">កិច្ចការកំពុងរង់ចាំ</h2>
+          {tasks.filter((task) => task.status !== "completed").length ? (
+            <div className="space-y-3">
+              {tasks.filter((task) => task.status !== "completed").slice(0, 6).map((task) => (
+                <div key={task.id} className="rounded-lg border border-slate-100 p-3">
+                  <p className="font-semibold text-ink">{task.title}</p>
+                  <p className="text-sm text-slate-500">{task.assigneeName ?? "មិនទាន់កំណត់អ្នកទទួល"} · {task.deadline?.toLocaleDateString() ?? "គ្មានថ្ងៃកំណត់"}</p>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState title="គ្មានកិច្ចការរង់ចាំ" description="កិច្ចការថ្មីនឹងបង្ហាញនៅទីនេះ។" />}
+        </section>
+      </div>
+    </div>
+  );
+}
