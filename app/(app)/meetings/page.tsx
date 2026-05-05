@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Search, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -47,7 +46,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
           {meetings.map((meeting) => (
             <article className="kh-card p-5" key={meeting.id}>
               <div className="mb-4 flex items-start justify-between gap-3">
-                <Link href={`/meetings/${meeting.id}`} className="text-lg font-bold text-ink hover:text-leaf">{meeting.title}</Link>
+                <a href={`/meetings/${meeting.id}`} className="text-lg font-bold text-ink hover:text-leaf">{meeting.title}</a>
                 <form action={deleteMeeting}>
                   <input type="hidden" name="id" value={meeting.id} />
                   <ActionButton className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></ActionButton>

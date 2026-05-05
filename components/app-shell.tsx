@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { BarChart3, CalendarPlus, CheckSquare, History, Settings } from "lucide-react";
 import { labels } from "@/lib/labels";
 
@@ -15,24 +14,24 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen lg:flex">
       <aside className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between px-4 py-4 lg:block lg:px-6">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <a href="/dashboard" className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-lg bg-leaf text-lg font-black text-white">K</div>
             <div>
               <p className="font-bold text-ink">KhmerMeet AI</p>
               <p className="text-xs text-slate-500">AI meeting tracker</p>
             </div>
-          </Link>
+          </a>
         </div>
-        <nav className="flex gap-2 overflow-x-auto px-4 pb-4 lg:block lg:space-y-2 lg:px-4">
+        <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-5 lg:block lg:space-y-2 lg:px-4">
           {nav.map((item) => (
-            <Link
+            <a
               key={item.href}
               href={item.href}
-              className="flex shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-ink"
+              className="flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-ink lg:gap-3"
             >
               <item.icon className="h-4 w-4" />
-              {item.label}
-            </Link>
+              <span className="leading-5">{item.label}</span>
+            </a>
           ))}
         </nav>
         <div className="mt-auto hidden border-t border-slate-200 p-4 lg:block">

@@ -1,4 +1,4 @@
-import Link from "next/link";
+/* eslint-disable @next/next/no-html-link-for-pages */
 import { CheckCircle2, Clock, FileAudio, ListTodo } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
           <p className="text-sm font-semibold text-leaf">សូមស្វាគមន៍</p>
           <h1 className="text-3xl font-bold text-ink">ផ្ទាំងគ្រប់គ្រង</h1>
         </div>
-        <Link className="kh-button-primary" href="/meetings/new">ថតប្រជុំថ្មី</Link>
+        <a className="kh-button-primary" href="/meetings/new">ថតប្រជុំថ្មី</a>
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
@@ -52,10 +52,10 @@ export default async function DashboardPage() {
           {meetings.length ? (
             <div className="space-y-3">
               {meetings.map((meeting) => (
-                <Link href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
+                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
                   <p className="font-semibold text-ink">{meeting.title}</p>
                   <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} កិច្ចការ</p>
-                </Link>
+                </a>
               ))}
             </div>
           ) : <EmptyState title="មិនទាន់មានប្រជុំ" description="ចាប់ផ្តើមថត ឬបង្កើតប្រជុំថ្មី។" />}
