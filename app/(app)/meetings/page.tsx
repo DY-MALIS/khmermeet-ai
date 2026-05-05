@@ -4,6 +4,9 @@ import { requireUser } from "@/lib/session";
 import { deleteMeeting } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
+import type { Prisma } from "@prisma/client";
+
+type MeetingWithTasks = Prisma.MeetingGetPayload<{ include: { tasks: true } }>;
 
 export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string }> }) {
   const user = await requireUser();
@@ -12,14 +15,14 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
     .findMany({
       where: {
         createdById: user.id,
-        title: params.q ? { contains: params.q, mode: "insensitive" } : undefined,
+        title: params.q ? { contains: params.q } : undefined,
         createdAt: params.date ? { gte: new Date(params.date), lt: new Date(new Date(params.date).getTime() + 86400000) } : undefined
       },
       include: { tasks: true },
       orderBy: { createdAt: "desc" }
     })
     .then((meetings) => ({ meetings, dbUnavailable: false }))
-    .catch(() => ({ meetings: [], dbUnavailable: true }));
+    .catch(() => ({ meetings: [] as MeetingWithTasks[], dbUnavailable: true }));
   const { meetings, dbUnavailable } = data;
 
   return (
@@ -30,7 +33,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/save/delete meetings ត្រូវការ PostgreSQL។
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/save/delete meetings ត្រូវការ local database។
         </div>
       ) : null}
       <form className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_220px_auto]">

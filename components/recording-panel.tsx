@@ -84,7 +84,7 @@ export function RecordingPanel() {
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          Recording controls can open, but saving a meeting needs PostgreSQL. Start database first to save records.
+          Recording controls can open, but saving a meeting needs the local database. Run Prisma setup first to save records.
         </div>
       ) : null}
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}

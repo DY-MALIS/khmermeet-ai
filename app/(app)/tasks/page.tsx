@@ -4,7 +4,9 @@ import { requireUser } from "@/lib/session";
 import { deleteTask, updateTask } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
-import type { TaskPriority, TaskStatus } from "@prisma/client";
+
+type TaskPriority = "low" | "medium" | "high";
+type TaskStatus = "not_started" | "in_progress" | "completed";
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ status?: string; priority?: string; overdue?: string }> }) {
   const user = await requireUser();
@@ -34,7 +36,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/update/delete tasks ត្រូវការ PostgreSQL។
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/update/delete tasks ត្រូវការ local database។
         </div>
       ) : null}
       <form className="kh-card grid gap-3 p-4 md:grid-cols-4">

@@ -3,26 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-enum MeetingStatus {
-  recorded
-  transcribed
-  summarized
-}
-
-enum TaskPriority {
-  low
-  medium
-  high
-}
-
-enum TaskStatus {
-  not_started
-  in_progress
-  completed
 }
 
 model User {
@@ -42,7 +24,7 @@ model Meeting {
   summary     String?
   language    String        @default("km")
   duration    Int           @default(0)
-  status      MeetingStatus @default(recorded)
+  status      String        @default("recorded")
   createdById String
   createdBy   User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
   tasks       Task[]
@@ -58,8 +40,8 @@ model Task {
   description  String?
   assigneeName String?
   deadline     DateTime?
-  priority     TaskPriority @default(medium)
-  status       TaskStatus   @default(not_started)
+  priority     String       @default("medium")
+  status       String       @default("not_started")
   sourceText   String?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

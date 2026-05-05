@@ -16,7 +16,7 @@ KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, 
 ## Tech Stack
 
 - Next.js App Router, TypeScript, Tailwind CSS
-- PostgreSQL with Prisma ORM
+- Local SQLite with Prisma ORM for the MVP, structured so it can move back to PostgreSQL later
 - NextAuth credentials auth
 - OpenAI API
 - Local file storage for MVP
@@ -38,28 +38,20 @@ cp .env.example .env
 3. Fill in:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/khmermeet_ai?schema=public"
+DATABASE_URL="file:./dev.db"
 OPENAI_API_KEY="..."
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
 ```
 
-4. Start PostgreSQL locally. The easiest path is Docker:
-
-```bash
-docker compose up -d
-```
-
-If you already have PostgreSQL installed, create a `khmermeet_ai` database that matches `DATABASE_URL`.
-
-5. Run Prisma migration and seed:
+4. Create the local SQLite database and seed demo data:
 
 ```bash
 npm run prisma:migrate
 npm run prisma:seed
 ```
 
-6. Start local dev:
+5. Start local dev:
 
 ```bash
 npm run dev

@@ -24,8 +24,33 @@ function client() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+function fallbackSummary(transcript: string) {
+  const short = transcript.slice(0, 500);
+  return `Meeting overview\nកំណត់ត្រានេះត្រូវបានសង្ខេបដោយ local fallback ព្រោះ OPENAI_API_KEY មិនទាន់បានកំណត់។\n\nKey discussion points\n- ${short}\n\nDecisions made\n- សូមពិនិត្យ transcript ដើម្បីបញ្ជាក់សេចក្តីសម្រេច។\n\nProblems mentioned\n- មិនបានរកឃើញបញ្ហាជាក់លាក់ដោយ fallback mode។\n\nNext steps\n- ពិនិត្យ transcript និងបង្កើតកិច្ចការដែលត្រូវអនុវត្ត។`;
+}
+
+function fallbackTasks(transcript: string) {
+  const sentence = transcript
+    .split(/[។.!?\n]/)
+    .map((item) => item.trim())
+    .find(Boolean);
+  if (!sentence) return [];
+  return [
+    {
+      title: "ពិនិត្យ និងអនុវត្តចំណុចពីប្រជុំ",
+      description: sentence,
+      assigneeName: null,
+      deadline: null,
+      priority: "medium" as const,
+      status: "not_started" as const,
+      sourceText: sentence
+    }
+  ];
+}
+
 export async function generateMeetingSummary(transcript: string) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!process.env.OPENAI_API_KEY) return fallbackSummary(transcript);
   const response = await client().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: buildSummaryPrompt(transcript) }],
@@ -36,6 +61,7 @@ export async function generateMeetingSummary(transcript: string) {
 
 export async function extractMeetingTasks(transcript: string) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!process.env.OPENAI_API_KEY) return fallbackTasks(transcript);
   const response = await client().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: buildTaskExtractionPrompt(transcript) }],

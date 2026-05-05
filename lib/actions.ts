@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openai";
-import type { TaskPriority, TaskStatus } from "@prisma/client";
+
+type TaskPriority = "low" | "medium" | "high";
+type TaskStatus = "not_started" | "in_progress" | "completed";
 
 function formString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -19,12 +21,22 @@ export async function registerUser(formData: FormData) {
   const password = formString(formData, "password");
   if (!name || !email || password.length < 6) throw new Error("Please enter name, email, and a 6+ character password.");
   await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 10) } });
-  redirect("/login");
+  redirect("/dashboard");
 }
 
 export async function createMeeting(formData: FormData) {
   const user = await requireUser();
-  const title = formString(formData, "title") || "កិច្ចប្រជុំគ្មានចំណងជើង";
+  await prisma.user.upsert({
+    where: { id: user.id },
+    update: {},
+    create: {
+      id: user.id,
+      name: user.name ?? "Local Demo",
+      email: user.email ?? "demo@khmermeet.ai",
+      passwordHash: "local-no-login"
+    }
+  });
+  const title = formString(formData, "title") || "Untitled meeting";
   const audioUrl = formString(formData, "audioUrl") || null;
   const duration = Number(formData.get("duration") ?? 0);
   const meeting = await prisma.meeting.create({

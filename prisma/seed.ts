@@ -5,9 +5,10 @@ const prisma = new PrismaClient();
 
 async function main() {
   const demo = await prisma.user.upsert({
-    where: { email: "demo@khmermeet.ai" },
+    where: { id: "local-demo-user" },
     update: {},
     create: {
+      id: "local-demo-user",
       name: "Demo User",
       email: "demo@khmermeet.ai",
       passwordHash: await hash("password123", 10)
@@ -29,9 +30,11 @@ async function main() {
     }
   });
 
-  await prisma.task.createMany({
-    data: [
-      {
+  const tasks = [
+    {
+      id: "demo-task-product-plan",
+      data: {
+        id: "demo-task-product-plan",
         meetingId: meeting.id,
         title: "រៀបចំ product plan",
         description: "Draft plan for Q2 MVP scope.",
@@ -40,8 +43,12 @@ async function main() {
         priority: "high",
         status: "in_progress",
         sourceText: "សុខា នឹងរៀបចំផែនការផលិតផលនៅថ្ងៃសុក្រ។"
-      },
-      {
+      }
+    },
+    {
+      id: "demo-task-budget",
+      data: {
+        id: "demo-task-budget",
         meetingId: meeting.id,
         title: "ពិនិត្យ budget",
         description: "Review Q2 launch budget.",
@@ -51,9 +58,16 @@ async function main() {
         status: "not_started",
         sourceText: "ដារ៉ា ត្រូវត្រួតពិនិត្យ budget មុនថ្ងៃទី 2026-05-20។"
       }
-    ],
-    skipDuplicates: true
-  });
+    }
+  ];
+
+  for (const task of tasks) {
+    await prisma.task.upsert({
+      where: { id: task.id },
+      update: {},
+      create: task.data
+    });
+  }
 }
 
 main()

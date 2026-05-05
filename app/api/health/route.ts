@@ -10,7 +10,7 @@ export async function GET() {
       {
         ok: false,
         database: "unavailable",
-        message: "PostgreSQL is not reachable. Start the database and run Prisma migration/seed."
+        message: "Local database is not ready. Run Prisma migration/seed."
       },
       { status: 503 }
     );

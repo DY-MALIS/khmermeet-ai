@@ -32,7 +32,7 @@ export default async function DashboardPage() {
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ App shell បើកបានហើយ ប៉ុន្តែការរក្សាទុកប្រជុំ/កិច្ចការត្រូវការ PostgreSQL និង Prisma migration។
+          Database មិនទាន់ដំណើរការ។ App shell បើកបានហើយ ប៉ុន្តែការរក្សាទុកប្រជុំ/កិច្ចការត្រូវការ local database និង Prisma setup។
         </div>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
