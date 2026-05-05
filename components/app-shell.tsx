@@ -1,9 +1,6 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { BarChart3, CalendarPlus, CheckSquare, History, LogOut, Settings } from "lucide-react";
-import { authOptions } from "@/lib/auth";
+import { BarChart3, CalendarPlus, CheckSquare, History, Settings } from "lucide-react";
 import { labels } from "@/lib/labels";
-import { LogoutButton } from "@/components/logout-button";
 
 const nav = [
   { href: "/dashboard", label: labels.km.dashboard, icon: BarChart3 },
@@ -14,7 +11,6 @@ const nav = [
 ];
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
-  const session = await getServerSession(authOptions);
   return (
     <div className="min-h-screen lg:flex">
       <aside className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
@@ -26,9 +22,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               <p className="text-xs text-slate-500">AI meeting tracker</p>
             </div>
           </Link>
-          <div className="lg:hidden">
-            <LogoutButton compact />
-          </div>
         </div>
         <nav className="flex gap-2 overflow-x-auto px-4 pb-4 lg:block lg:space-y-2 lg:px-4">
           {nav.map((item) => (
@@ -44,10 +37,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="mt-auto hidden border-t border-slate-200 p-4 lg:block">
           <div className="mb-3 rounded-lg bg-slate-50 p-3">
-            <p className="text-sm font-semibold text-ink">{session?.user?.name}</p>
-            <p className="truncate text-xs text-slate-500">{session?.user?.email}</p>
+            <p className="text-sm font-semibold text-ink">No-login MVP</p>
+            <p className="truncate text-xs text-slate-500">Local dashboard mode</p>
           </div>
-          <LogoutButton icon={<LogOut className="h-4 w-4" />} />
         </div>
       </aside>
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>

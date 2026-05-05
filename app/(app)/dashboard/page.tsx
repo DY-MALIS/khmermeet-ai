@@ -6,10 +6,13 @@ import { EmptyState } from "@/components/ui";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [meetings, tasks] = await Promise.all([
+  const data = await Promise.all([
     prisma.meeting.findMany({ where: { createdById: user.id }, include: { tasks: true }, orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.task.findMany({ where: { meeting: { createdById: user.id } }, include: { meeting: true }, orderBy: { createdAt: "desc" } })
-  ]);
+  ])
+    .then(([meetings, tasks]) => ({ meetings, tasks, dbUnavailable: false }))
+    .catch(() => ({ meetings: [], tasks: [], dbUnavailable: true }));
+  const { meetings, tasks, dbUnavailable } = data;
   const now = new Date();
   const stats = [
     { label: "ប្រជុំសរុប", value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf" },
@@ -27,6 +30,11 @@ export default async function DashboardPage() {
         </div>
         <Link className="kh-button-primary" href="/meetings/new">ថតប្រជុំថ្មី</Link>
       </div>
+      {dbUnavailable ? (
+        <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
+          Database មិនទាន់ដំណើរការ។ App shell បើកបានហើយ ប៉ុន្តែការរក្សាទុកប្រជុំ/កិច្ចការត្រូវការ PostgreSQL និង Prisma migration។
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <div className="kh-card p-5" key={stat.label}>
