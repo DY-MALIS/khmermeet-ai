@@ -1,0 +1,46 @@
+"use client";
+
+import { BarChart3, CalendarPlus, CheckSquare, History, Settings } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { cn } from "@/components/ui";
+import { labels } from "@/lib/labels";
+
+const nav = [
+  { href: "/dashboard", label: labels.km.dashboard, icon: BarChart3 },
+  { href: "/meetings/new", label: labels.km.newMeeting, icon: CalendarPlus },
+  { href: "/meetings", label: labels.km.meetings, icon: History },
+  { href: "/tasks", label: labels.km.tasks, icon: CheckSquare },
+  { href: "/settings", label: labels.km.settings, icon: Settings }
+];
+
+export function SidebarNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-5 lg:block lg:space-y-2 lg:px-4">
+      {nav.map((item) => {
+        const active =
+          pathname === item.href ||
+          (item.href === "/meetings" && pathname.startsWith("/meetings/") && pathname !== "/meetings/new");
+        return (
+          <a
+            key={item.href}
+            href={item.href}
+            onClick={(event) => {
+              event.preventDefault();
+              window.location.assign(item.href);
+            }}
+            className={cn(
+              "flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition lg:gap-3",
+              active ? "bg-leaf/10 text-leaf ring-1 ring-leaf/15" : "text-slate-600 hover:bg-slate-100 hover:text-ink"
+            )}
+            aria-current={active ? "page" : undefined}
+          >
+            <item.icon className="h-4 w-4" />
+            <span className="leading-5">{item.label}</span>
+          </a>
+        );
+      })}
+    </nav>
+  );
+}
