@@ -6,7 +6,7 @@ export default function NewMeetingPage() {
       <div>
         <p className="text-sm font-semibold text-leaf">ថតសំឡេងប្រជុំ</p>
         <h1 className="text-3xl font-bold text-ink">ប្រជុំថ្មី</h1>
-        <p className="mt-2 text-slate-500">ថតសំឡេងក្នុង browser រួចរក្សាទុកទៅ local storage សម្រាប់ MVP។</p>
+        <p className="mt-2 text-slate-500">ថតសំឡេងក្នុង browser, ស្តាប់ preview, រួចរក្សាទុក meeting ទៅ local database។</p>
       </div>
       <RecordingPanel />
     </div>

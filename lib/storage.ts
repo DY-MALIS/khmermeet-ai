@@ -5,7 +5,7 @@ const uploadRoot = path.join(process.cwd(), "uploads");
 
 export async function saveLocalAudio(file: File) {
   await mkdir(uploadRoot, { recursive: true });
-  const ext = file.type.includes("webm") ? "webm" : "audio";
+  const ext = file.type.includes("mp4") ? "m4a" : file.type.includes("webm") ? "webm" : "audio";
   const name = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
   const fullPath = path.join(uploadRoot, name);
   const bytes = Buffer.from(await file.arrayBuffer());

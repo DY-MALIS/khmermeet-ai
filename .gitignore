@@ -1,7 +1,7 @@
 node_modules
 .next
 .env
-uploads
+/uploads
 *.log
 dist
 tsconfig.tsbuildinfo
