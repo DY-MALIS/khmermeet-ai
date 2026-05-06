@@ -3,6 +3,8 @@
 import { Bot, Copy, FileText, LogOut, Mic, MicOff, Phone, RefreshCcw, Save, Square, Video, VideoOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
+import { useDisplayLanguage } from "@/lib/display-language";
+import type { DisplayLanguage } from "@/lib/navigation-labels";
 
 type SignalMessage =
   | { type: "join"; roomId: string; from: string; name: string }
@@ -23,7 +25,7 @@ type Participant = {
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
-  0: { transcript: string };
+  0: { transcript: string; confidence?: number };
 };
 
 type SpeechRecognitionEventLike = Event & {
@@ -39,15 +41,78 @@ type SpeechRecognitionLike = EventTarget & {
   interimResults: boolean;
   lang: string;
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onaudioend: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
   start: () => void;
   stop: () => void;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
+type ListeningStatusKey =
+  | "idle"
+  | "starting"
+  | "listening"
+  | "audio_paused"
+  | "speech_detected"
+  | "processing"
+  | "saved_line"
+  | "speech_retry"
+  | "restarting"
+  | "waiting_retry"
+  | "stopped"
+  | "unavailable";
+
+const listeningStatusLabels: Record<DisplayLanguage, Record<ListeningStatusKey, string>> = {
+  km: {
+    idle: "រង់ចាំ",
+    starting: "កំពុងចាប់ផ្តើមស្ដាប់",
+    listening: "កំពុងស្ដាប់",
+    audio_paused: "សំឡេងផ្អាក",
+    speech_detected: "រកឃើញសំឡេងនិយាយ",
+    processing: "កំពុងវិភាគសំឡេង",
+    saved_line: "បានរក្សា transcript",
+    speech_retry: "កំពុងព្យាយាមស្ដាប់ម្ដងទៀត",
+    restarting: "កំពុង restart smart listener",
+    waiting_retry: "រង់ចាំព្យាយាមម្ដងទៀត",
+    stopped: "បានបញ្ឈប់",
+    unavailable: "Speech-to-text មិនមាន"
+  },
+  en: {
+    idle: "Idle",
+    starting: "Starting smart listener",
+    listening: "Listening",
+    audio_paused: "Audio paused",
+    speech_detected: "Speech detected",
+    processing: "Processing speech",
+    saved_line: "Saved transcript line",
+    speech_retry: "Retrying speech",
+    restarting: "Restarting smart listener",
+    waiting_retry: "Waiting to retry",
+    stopped: "Stopped",
+    unavailable: "Speech-to-text unavailable"
+  }
+};
+
 function createRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function cleanTranscriptSegment(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function appendSmartTranscript(current: string, segment: string) {
+  const clean = cleanTranscriptSegment(segment);
+  if (!clean) return current;
+  const existing = current.trim();
+  if (!existing) return clean;
+  if (existing.includes(clean) || existing.endsWith(clean)) return current;
+  return `${existing}\n${clean}`;
 }
 
 function VideoTile({ participant }: { participant: Participant }) {
@@ -87,6 +152,7 @@ function VideoTile({ participant }: { participant: Participant }) {
 
 export function VideoCallRoom() {
   const selfId = useMemo(() => crypto.randomUUID(), []);
+  const [displayLanguage] = useDisplayLanguage();
   const [roomId, setRoomId] = useState(() => createRoomId());
   const [displayName, setDisplayName] = useState("Local User");
   const [joined, setJoined] = useState(false);
@@ -97,6 +163,9 @@ export function VideoCallRoom() {
   const [agentSaving, setAgentSaving] = useState(false);
   const [agentTranscript, setAgentTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [listeningStatus, setListeningStatus] = useState<ListeningStatusKey>("idle");
+  const [speechConfidence, setSpeechConfidence] = useState<number | null>(null);
+  const [speechRestartCount, setSpeechRestartCount] = useState(0);
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [agentNotice, setAgentNotice] = useState("");
   const [error, setError] = useState("");
@@ -106,6 +175,8 @@ export function VideoCallRoom() {
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef<number>(0);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
+  const shouldRestartSpeechRef = useRef(false);
+  const speechRestartTimerRef = useRef<number | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const namesRef = useRef<Map<string, string>>(new Map());
 
@@ -304,6 +375,11 @@ export function VideoCallRoom() {
   }
 
   function leaveRoom() {
+    shouldRestartSpeechRef.current = false;
+    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
+    speechRestartTimerRef.current = null;
+    speechRef.current?.stop();
+    speechRef.current = null;
     if (roomId) post({ type: "leave", roomId, from: selfId });
     channelRef.current?.close();
     channelRef.current = null;
@@ -352,19 +428,53 @@ export function VideoCallRoom() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "km-KH";
+    recognition.onaudiostart = () => setListeningStatus("listening");
+    recognition.onaudioend = () => setListeningStatus("audio_paused");
+    recognition.onspeechstart = () => setListeningStatus("speech_detected");
+    recognition.onspeechend = () => setListeningStatus("processing");
     recognition.onresult = (event) => {
       let finalText = "";
       let interimText = "";
+      let confidenceTotal = 0;
+      let confidenceCount = 0;
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
-        if (result.isFinal) finalText += `${result[0].transcript} `;
-        else interimText += result[0].transcript;
+        const transcript = cleanTranscriptSegment(result[0].transcript);
+        if (typeof result[0].confidence === "number") {
+          confidenceTotal += result[0].confidence;
+          confidenceCount += 1;
+        }
+        if (result.isFinal) finalText += `${transcript} `;
+        else interimText += transcript;
       }
-      if (finalText) setAgentTranscript((current) => `${current}${finalText}`);
+      if (confidenceCount) setSpeechConfidence(Math.round((confidenceTotal / confidenceCount) * 100));
+      if (finalText) setAgentTranscript((current) => appendSmartTranscript(current, finalText));
       setInterimTranscript(interimText);
+      setListeningStatus(finalText ? "saved_line" : "listening");
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      void event;
+      setListeningStatus("speech_retry");
       setAgentNotice("Speech-to-text មិនដំណើរការល្អនៅ browser នេះទេ។ Agent នឹងរក្សា audio ហើយអ្នកអាចកែ transcript បន្ថែមបាន។");
+    };
+    recognition.onend = () => {
+      if (!shouldRestartSpeechRef.current) {
+        setListeningStatus("stopped");
+        return;
+      }
+      setListeningStatus("restarting");
+      setSpeechRestartCount((count) => count + 1);
+      if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
+      speechRestartTimerRef.current = window.setTimeout(() => {
+        const nextRecognition = createSpeechRecognition();
+        if (!nextRecognition || !shouldRestartSpeechRef.current) return;
+        speechRef.current = nextRecognition;
+        try {
+          nextRecognition.start();
+        } catch {
+          setListeningStatus("waiting_retry");
+        }
+      }, 450);
     };
     return recognition;
   }
@@ -400,21 +510,36 @@ export function VideoCallRoom() {
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
 
+    shouldRestartSpeechRef.current = true;
+    setListeningStatus("starting");
+    setSpeechConfidence(null);
+    setSpeechRestartCount(0);
     const recognition = createSpeechRecognition();
     if (recognition) {
       speechRef.current = recognition;
-      recognition.start();
-      setAgentNotice("Agent កំពុងថតសំឡេង និងសរសេរ transcript ស្វ័យប្រវត្តិ។");
+      try {
+        recognition.start();
+        setAgentNotice("Agent កំពុងថតសំឡេង និងសរសេរ transcript ស្វ័យប្រវត្តិ។ Smart listening នឹង restart ដោយស្វ័យប្រវត្តិ បើ browser ផ្អាក។");
+      } catch {
+        setListeningStatus("waiting_retry");
+        setAgentNotice("Agent កំពុងថត audio។ Speech-to-text នឹងព្យាយាមចាប់ផ្តើមម្តងទៀតដោយស្វ័យប្រវត្តិ។");
+      }
     } else {
+      shouldRestartSpeechRef.current = false;
+      setListeningStatus("unavailable");
       setAgentNotice("Browser នេះមិនគាំទ្រ live speech-to-text ទេ។ Agent នឹងថត audio ហើយរក្សា transcript ដែលអ្នកបញ្ចូលដោយដៃ។");
     }
     setAgentRecording(true);
   }
 
   function stopAgentRecording() {
+    shouldRestartSpeechRef.current = false;
+    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
+    speechRestartTimerRef.current = null;
     speechRef.current?.stop();
     speechRef.current = null;
     setInterimTranscript("");
+    setListeningStatus("stopped");
     setAgentRecording(false);
     callRecorderRef.current?.stop();
   }
@@ -548,7 +673,24 @@ export function VideoCallRoom() {
         </div>
         {agentNotice ? <div className="mt-4 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{agentNotice}</div> : null}
         <label className="mt-4 block space-y-2">
-          <span className="text-sm font-semibold text-slate-600">Live transcript</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-slate-600">Live transcript</span>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold">
+              <span className={cn("rounded-full px-2.5 py-1", agentRecording ? "bg-leaf/10 text-leaf" : "bg-slate-100 text-slate-500")}>
+                {displayLanguage === "en" ? "Smart listening" : "ការស្ដាប់ឆ្លាតវៃ"}: {listeningStatusLabels[displayLanguage][listeningStatus]}
+              </span>
+              {speechConfidence !== null ? (
+                <span className="rounded-full bg-sky/15 px-2.5 py-1 text-sky">
+                  {displayLanguage === "en" ? "Confidence" : "កម្រិតជឿជាក់"} {speechConfidence}%
+                </span>
+              ) : null}
+              {speechRestartCount ? (
+                <span className="rounded-full bg-saffron/15 px-2.5 py-1 text-saffron">
+                  {displayLanguage === "en" ? "Auto retry" : "ព្យាយាមឡើងវិញ"} {speechRestartCount}
+                </span>
+              ) : null}
+            </div>
+          </div>
           <textarea
             className="kh-input min-h-36"
             value={`${agentTranscript}${interimTranscript ? `\n${interimTranscript}` : ""}`}
