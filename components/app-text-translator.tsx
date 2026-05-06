@@ -1,11 +1,12 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { enToKmText, kmToEnText, type AppLanguage } from "@/lib/app-translations";
+import { enToKmText, kmToEnText, phraseTranslationKeys, type AppLanguage } from "@/lib/app-translations";
 import { languageChangeEvent, languageStorageKey, readDisplayLanguage } from "@/lib/display-language";
 
 const ignoredTextTags = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE", "NOSCRIPT", "SVG"]);
-const ignoredAttributeTags = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE", "NOSCRIPT", "SVG"]);
+const ignoredAttributeTags = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "NOSCRIPT", "SVG"]);
 const translatedAttributes = ["placeholder", "aria-label", "title"] as const;
 
 function preserveWhitespace(source: string, next: string) {
@@ -23,7 +24,14 @@ function translateValue(value: string, language: AppLanguage) {
   const dictionary = language === "en" ? kmToEnText : enToKmText;
   const trimmed = value.trim();
   const translated = dictionary[trimmed];
-  return translated ? preserveWhitespace(value, translated) : value;
+  if (translated) return preserveWhitespace(value, translated);
+
+  const phraseKeys = language === "en" ? phraseTranslationKeys : phraseTranslationKeys.map((key) => kmToEnText[key]).filter(Boolean);
+  const replaced = phraseKeys.reduce((current, key) => {
+    const next = dictionary[key];
+    return next ? current.split(key).join(next) : current;
+  }, value);
+  return replaced;
 }
 
 function translateTextNodes(root: ParentNode, language: AppLanguage) {
@@ -69,18 +77,26 @@ function translateApp(language: AppLanguage) {
 }
 
 export function AppTextTranslator() {
+  const pathname = usePathname();
+
   useEffect(() => {
     let frame = 0;
+    let timers: number[] = [];
 
     const apply = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => translateApp(readDisplayLanguage()));
     };
 
-    apply();
+    const applySoon = () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [0, 80, 250, 700].map((delay) => window.setTimeout(apply, delay));
+    };
+
+    applySoon();
 
     const observer = new MutationObserver((mutations) => {
-      if (mutations.some((mutation) => mutation.type === "childList" || mutation.type === "characterData")) apply();
+      if (mutations.some((mutation) => mutation.type === "childList" || mutation.type === "characterData")) applySoon();
     });
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
 
@@ -93,11 +109,12 @@ export function AppTextTranslator() {
 
     return () => {
       window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
       observer.disconnect();
       window.removeEventListener(languageChangeEvent, onLanguageChange);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

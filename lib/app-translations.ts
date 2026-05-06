@@ -124,7 +124,50 @@ export const kmToEnText: Record<string, string> = {
   "ឈ្មោះ": "Name",
   "អ៊ីមែល": "Email",
   "ការភ្ជាប់ប្រព័ន្ធ": "Integrations",
-  "ឆាប់ៗនេះ": "Soon"
+  "ឆាប់ៗនេះ": "Soon",
+
+  "MVP នេះប្រើ WebRTC + BroadcastChannel សម្រាប់ local multi-person call។ ដើម្បីសាកល្បងច្រើននាក់ សូម copy invite ហើយបើកក្នុង browser tab/window ផ្សេងៗលើ machine នេះ។ សម្រាប់ call ឆ្លងកាត់ internet ពិតៗ ត្រូវបន្ថែម signaling server និង TURN server។":
+    "This MVP uses WebRTC + BroadcastChannel for local multi-person calls. To test with multiple people, copy the invite and open it in another browser tab/window on this machine. For real internet calls, add a signaling server and TURN server.",
+  "Agent transcript នឹងបង្ហាញនៅទីនេះ។ អ្នកក៏អាចវាយកំណត់ត្រាបន្ថែមដោយដៃបាន។":
+    "Agent transcript will appear here. You can also type extra notes manually.",
+
+  "ប្រជុំផែនការផលិតផល Q2": "Q2 Product Planning Meeting",
+  "សុខា នឹងរៀបចំផែនការផលិតផលនៅថ្ងៃសុក្រ។ ដារ៉ា ត្រូវត្រួតពិនិត្យ budget មុនថ្ងៃទី 2026-05-20។ ក្រុមសម្រេចចាប់ផ្តើម MVP នៅសប្តាហ៍ក្រោយ។":
+    "Sokha will prepare the product plan on Friday. Dara must review the budget before 2026-05-20. The team decided to start the MVP next week.",
+  "ក្រុមបានពិភាក្សាអំពីផែនការ MVP និងការរៀបចំការងារ Q2.": "The team discussed the MVP plan and Q2 work setup.",
+  "- រៀបចំ product plan\n- ពិនិត្យ budget\n- ចាប់ផ្តើម MVP សប្តាហ៍ក្រោយ":
+    "- Prepare the product plan\n- Review the budget\n- Start the MVP next week",
+  "រៀបចំ product plan": "Prepare product plan",
+  "ពិនិត្យ budget": "Review budget",
+  "- រៀបចំ product plan": "- Prepare the product plan",
+  "- ពិនិត្យ budget": "- Review the budget",
+  "- ចាប់ផ្តើម MVP សប្តាហ៍ក្រោយ": "- Start the MVP next week",
+  "ចាប់ផ្តើម MVP សប្តាហ៍ក្រោយ": "Start the MVP next week",
+  "សុខា": "Sokha",
+  "ដារ៉ា": "Dara",
+  "30 នាទី": "30 min",
+  "នាទី": "min",
+  "high": "High",
+  "medium": "Medium",
+  "low": "Low"
 };
 
 export const enToKmText = Object.fromEntries(Object.entries(kmToEnText).map(([km, en]) => [en, km])) as Record<string, string>;
+
+export const phraseTranslationKeys = [
+  "MVP នេះប្រើ WebRTC + BroadcastChannel សម្រាប់ local multi-person call។ ដើម្បីសាកល្បងច្រើននាក់ សូម copy invite ហើយបើកក្នុង browser tab/window ផ្សេងៗលើ machine នេះ។ សម្រាប់ call ឆ្លងកាត់ internet ពិតៗ ត្រូវបន្ថែម signaling server និង TURN server។",
+  "Agent transcript នឹងបង្ហាញនៅទីនេះ។ អ្នកក៏អាចវាយកំណត់ត្រាបន្ថែមដោយដៃបាន។",
+  "ប្រជុំផែនការផលិតផល Q2",
+  "សុខា នឹងរៀបចំផែនការផលិតផលនៅថ្ងៃសុក្រ។ ដារ៉ា ត្រូវត្រួតពិនិត្យ budget មុនថ្ងៃទី 2026-05-20។ ក្រុមសម្រេចចាប់ផ្តើម MVP នៅសប្តាហ៍ក្រោយ។",
+  "ក្រុមបានពិភាក្សាអំពីផែនការ MVP និងការរៀបចំការងារ Q2.",
+  "- រៀបចំ product plan",
+  "- ពិនិត្យ budget",
+  "- ចាប់ផ្តើម MVP សប្តាហ៍ក្រោយ",
+  "រៀបចំ product plan",
+  "ពិនិត្យ budget",
+  "ចាប់ផ្តើម MVP សប្តាហ៍ក្រោយ",
+  "សុខា",
+  "ដារ៉ា",
+  "30 នាទី",
+  "នាទី"
+] as const;
