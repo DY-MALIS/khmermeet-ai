@@ -67,6 +67,8 @@ type ListeningStatusKey =
   | "stopped"
   | "unavailable";
 
+type MicQualityKey = "idle" | "quiet" | "good" | "loud";
+
 const listeningStatusLabels: Record<DisplayLanguage, Record<ListeningStatusKey, string>> = {
   km: {
     idle: "រង់ចាំ",
@@ -96,6 +98,30 @@ const listeningStatusLabels: Record<DisplayLanguage, Record<ListeningStatusKey, 
     stopped: "Stopped",
     unavailable: "Speech-to-text unavailable"
   }
+};
+
+const micQualityLabels: Record<DisplayLanguage, Record<MicQualityKey, string>> = {
+  km: {
+    idle: "រង់ចាំសម្លេង",
+    quiet: "សម្លេងទាបពេក - សូមនៅជិត microphone",
+    good: "សម្លេងច្បាស់ល្អ",
+    loud: "សម្លេងខ្លាំងពេក - សូមថយពី microphone បន្តិច"
+  },
+  en: {
+    idle: "Waiting for voice",
+    quiet: "Voice is too quiet - move closer to the microphone",
+    good: "Voice is clear",
+    loud: "Voice is too loud - move back from the microphone"
+  }
+};
+
+const clearVoiceAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+  sampleRate: 48000,
+  sampleSize: 16
 };
 
 function createRoomId() {
@@ -166,6 +192,8 @@ export function VideoCallRoom() {
   const [listeningStatus, setListeningStatus] = useState<ListeningStatusKey>("idle");
   const [speechConfidence, setSpeechConfidence] = useState<number | null>(null);
   const [speechRestartCount, setSpeechRestartCount] = useState(0);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micQuality, setMicQuality] = useState<MicQualityKey>("idle");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [agentNotice, setAgentNotice] = useState("");
   const [error, setError] = useState("");
@@ -177,6 +205,9 @@ export function VideoCallRoom() {
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldRestartSpeechRef = useRef(false);
   const speechRestartTimerRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioAnalyserRef = useRef<AnalyserNode | null>(null);
+  const micMonitorFrameRef = useRef<number | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const namesRef = useRef<Map<string, string>>(new Map());
 
@@ -201,6 +232,54 @@ export function VideoCallRoom() {
 
   function post(message: SignalMessage) {
     channelRef.current?.postMessage(message);
+  }
+
+  function stopMicMonitor() {
+    if (micMonitorFrameRef.current) window.cancelAnimationFrame(micMonitorFrameRef.current);
+    micMonitorFrameRef.current = null;
+    audioAnalyserRef.current = null;
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+    setMicLevel(0);
+    setMicQuality("idle");
+  }
+
+  function startMicMonitor(stream: MediaStream) {
+    stopMicMonitor();
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return;
+
+    const context = new AudioContextConstructor();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.82;
+    const source = context.createMediaStreamSource(new MediaStream([audioTrack]));
+    source.connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    audioContextRef.current = context;
+    audioAnalyserRef.current = analyser;
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (const sample of samples) {
+        const centered = (sample - 128) / 128;
+        sum += centered * centered;
+      }
+      const rms = Math.sqrt(sum / samples.length);
+      const level = Math.min(100, Math.round(rms * 260));
+      setMicLevel(level);
+      if (level < 5) setMicQuality("idle");
+      else if (level < 16) setMicQuality("quiet");
+      else if (level > 82) setMicQuality("loud");
+      else setMicQuality("good");
+      micMonitorFrameRef.current = window.requestAnimationFrame(tick);
+    };
+
+    tick();
   }
 
   function makePeer(peerId: string, peerName: string) {
@@ -325,9 +404,10 @@ export function VideoCallRoom() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        audio: clearVoiceAudioConstraints
       });
       localStreamRef.current = stream;
+      startMicMonitor(stream);
       setAudioEnabled(true);
       setVideoEnabled(true);
       setParticipants([
@@ -385,6 +465,7 @@ export function VideoCallRoom() {
     channelRef.current = null;
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
+    stopMicMonitor();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     setParticipants([]);
@@ -672,6 +753,39 @@ export function VideoCallRoom() {
           </div>
         </div>
         {agentNotice ? <div className="mt-4 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{agentNotice}</div> : null}
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600">
+            <span>{displayLanguage === "en" ? "Voice clarity" : "ភាពច្បាស់នៃសម្លេង"}</span>
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1",
+                micQuality === "good" && "bg-leaf/10 text-leaf",
+                micQuality === "quiet" && "bg-saffron/15 text-saffron",
+                micQuality === "loud" && "bg-red-100 text-red-700",
+                micQuality === "idle" && "bg-white text-slate-500"
+              )}
+            >
+              {micQualityLabels[displayLanguage][micQuality]}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-white">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                micQuality === "good" && "bg-leaf",
+                micQuality === "quiet" && "bg-saffron",
+                micQuality === "loud" && "bg-red-500",
+                micQuality === "idle" && "bg-slate-300"
+              )}
+              style={{ width: `${micLevel}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            {displayLanguage === "en"
+              ? "Clear voice mode uses echo cancellation, noise suppression, auto gain, and a live microphone level check."
+              : "Clear voice mode ប្រើ echo cancellation, noise suppression, auto gain និងពិនិត្យកម្រិត microphone ជាបន្តផ្ទាល់។"}
+          </p>
+        </div>
         <label className="mt-4 block space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-semibold text-slate-600">Live transcript</span>
