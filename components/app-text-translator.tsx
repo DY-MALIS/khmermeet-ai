@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { enToKmText, kmToEnText, type AppLanguage } from "@/lib/app-translations";
-import { languageStorageKey, readDisplayLanguage } from "@/components/language-switcher";
+import { languageChangeEvent, languageStorageKey, readDisplayLanguage } from "@/lib/display-language";
 
 const ignoredTextTags = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE", "NOSCRIPT", "SVG"]);
 const ignoredAttributeTags = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE", "NOSCRIPT", "SVG"]);
@@ -88,13 +88,13 @@ export function AppTextTranslator() {
     const onStorage = (event: StorageEvent) => {
       if (event.key === languageStorageKey) apply();
     };
-    window.addEventListener("khmermeet-language-change", onLanguageChange);
+    window.addEventListener(languageChangeEvent, onLanguageChange);
     window.addEventListener("storage", onStorage);
 
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("khmermeet-language-change", onLanguageChange);
+      window.removeEventListener(languageChangeEvent, onLanguageChange);
       window.removeEventListener("storage", onStorage);
     };
   }, []);

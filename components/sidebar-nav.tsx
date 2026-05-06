@@ -2,10 +2,9 @@
 
 import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { readDisplayLanguage } from "@/components/language-switcher";
 import { cn } from "@/components/ui";
-import { navigationLabels, type DisplayLanguage } from "@/lib/navigation-labels";
+import { useDisplayLanguage } from "@/lib/display-language";
+import { navigationLabels } from "@/lib/navigation-labels";
 
 type NavigationLabelKey = "dashboard" | "meetings" | "recorder" | "transcript" | "aiSummary" | "tasks" | "history" | "settings";
 
@@ -22,20 +21,8 @@ const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarC
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const [language, setLanguage] = useState<DisplayLanguage>("km");
+  const [language] = useDisplayLanguage();
   const labels = navigationLabels[language];
-
-  useEffect(() => {
-    setLanguage(readDisplayLanguage());
-    const handler = (event: Event) => {
-      setLanguage((event as CustomEvent<DisplayLanguage>).detail ?? readDisplayLanguage());
-    };
-    window.addEventListener("khmermeet-language-change", handler);
-    window.addEventListener("storage", () => setLanguage(readDisplayLanguage()));
-    return () => {
-      window.removeEventListener("khmermeet-language-change", handler);
-    };
-  }, []);
 
   return (
     <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-4">

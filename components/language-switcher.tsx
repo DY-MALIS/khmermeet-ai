@@ -1,29 +1,18 @@
 "use client";
 
 import { Languages } from "lucide-react";
-import { useEffect, useState } from "react";
 import { cn } from "@/components/ui";
+import { languageStorageKey, readDisplayLanguage, useDisplayLanguage } from "@/lib/display-language";
 import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/navigation-labels";
 
-export const languageStorageKey = "khmermeet-display-language";
-
-export function readDisplayLanguage(): DisplayLanguage {
-  if (typeof window === "undefined") return "km";
-  return window.localStorage.getItem(languageStorageKey) === "en" ? "en" : "km";
-}
+export { languageStorageKey, readDisplayLanguage };
 
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
-  const [language, setLanguage] = useState<DisplayLanguage>("km");
+  const [language, setLanguage] = useDisplayLanguage();
   const labels = navigationLabels[language];
-
-  useEffect(() => {
-    setLanguage(readDisplayLanguage());
-  }, []);
 
   function changeLanguage(next: DisplayLanguage) {
     setLanguage(next);
-    window.localStorage.setItem(languageStorageKey, next);
-    window.dispatchEvent(new CustomEvent("khmermeet-language-change", { detail: next }));
   }
 
   return (
