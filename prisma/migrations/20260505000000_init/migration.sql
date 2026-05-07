@@ -1,12 +1,3 @@
--- CreateEnum
-CREATE TYPE "MeetingStatus" AS ENUM ('recorded', 'transcribed', 'summarized');
-
--- CreateEnum
-CREATE TYPE "TaskPriority" AS ENUM ('low', 'medium', 'high');
-
--- CreateEnum
-CREATE TYPE "TaskStatus" AS ENUM ('not_started', 'in_progress', 'completed');
-
 -- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
@@ -27,7 +18,7 @@ CREATE TABLE "Meeting" (
     "summary" TEXT,
     "language" TEXT NOT NULL DEFAULT 'km',
     "duration" INTEGER NOT NULL DEFAULT 0,
-    "status" "MeetingStatus" NOT NULL DEFAULT 'recorded',
+    "status" TEXT NOT NULL DEFAULT 'recorded',
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -43,8 +34,8 @@ CREATE TABLE "Task" (
     "description" TEXT,
     "assigneeName" TEXT,
     "deadline" TIMESTAMP(3),
-    "priority" "TaskPriority" NOT NULL DEFAULT 'medium',
-    "status" "TaskStatus" NOT NULL DEFAULT 'not_started',
+    "priority" TEXT NOT NULL DEFAULT 'medium',
+    "status" TEXT NOT NULL DEFAULT 'not_started',
     "sourceText" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
