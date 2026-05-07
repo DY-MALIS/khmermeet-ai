@@ -119,9 +119,9 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
-  channelCount: 1,
-  sampleRate: 48000,
-  sampleSize: 16
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 48000 },
+  sampleSize: { ideal: 16 }
 };
 
 function createRoomId() {
@@ -234,6 +234,34 @@ export function VideoCallRoom() {
     channelRef.current?.postMessage(message);
   }
 
+  async function resumeMicAudioContext() {
+    if (audioContextRef.current?.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+  }
+
+  async function getMeetingStream() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: clearVoiceAudioConstraints
+      });
+    } catch {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+      } catch {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({
+          audio: clearVoiceAudioConstraints
+        });
+        setAgentNotice("Camera មិនអាចបើកបានទេ។ App បានបើក audio-only mode ដើម្បីចាប់សំឡេងប្រជុំ។");
+        return audioOnly;
+      }
+    }
+  }
+
   function stopMicMonitor() {
     if (micMonitorFrameRef.current) window.cancelAnimationFrame(micMonitorFrameRef.current);
     micMonitorFrameRef.current = null;
@@ -253,6 +281,7 @@ export function VideoCallRoom() {
     if (!AudioContextConstructor) return;
 
     const context = new AudioContextConstructor();
+    void context.resume();
     const analyser = context.createAnalyser();
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.82;
@@ -263,6 +292,9 @@ export function VideoCallRoom() {
     audioAnalyserRef.current = analyser;
 
     const tick = () => {
+      if (context.state === "suspended") {
+        void context.resume();
+      }
       analyser.getByteTimeDomainData(samples);
       let sum = 0;
       for (const sample of samples) {
@@ -402,14 +434,13 @@ export function VideoCallRoom() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: clearVoiceAudioConstraints
-      });
+      const stream = await getMeetingStream();
       localStreamRef.current = stream;
       startMicMonitor(stream);
+      await resumeMicAudioContext();
+      const hasVideo = stream.getVideoTracks().length > 0;
       setAudioEnabled(true);
-      setVideoEnabled(true);
+      setVideoEnabled(hasVideo);
       setParticipants([
         {
           id: selfId,
@@ -417,7 +448,7 @@ export function VideoCallRoom() {
           stream,
           isLocal: true,
           audioEnabled: true,
-          videoEnabled: true
+          videoEnabled: hasVideo
         }
       ]);
 
@@ -430,7 +461,8 @@ export function VideoCallRoom() {
       post({ type: "join", roomId, from: selfId, name: displayName });
       window.history.replaceState(null, "", `/meetings/call?room=${roomId}`);
     } catch {
-      setError("មិនអាចបើក camera/microphone បានទេ។ សូមចុច Allow ហើយសាកល្បងម្តងទៀត។");
+      setMicQuality("idle");
+      setError("មិនអាចបើក microphone បានទេ។ សូមចុច Allow microphone ក្នុង browser settings ហើយសាកល្បងម្តងទៀត។");
     }
   }
 
@@ -572,6 +604,7 @@ export function VideoCallRoom() {
       setError("Browser នេះមិនគាំទ្រ MediaRecorder ទេ។");
       return;
     }
+    void resumeMicAudioContext();
     const audioStream = getCallAudioStream();
     if (!audioStream.getAudioTracks().length) {
       setError("មិនមាន audio track សម្រាប់ថតទេ។");
