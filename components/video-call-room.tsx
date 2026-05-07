@@ -712,7 +712,10 @@ export function VideoCallRoom() {
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
 
-      const transcript = `${agentTranscript}\n${interimTranscript}`.trim();
+      const liveTranscript = `${agentTranscript}\n${interimTranscript}`.trim();
+      const serverTranscript = typeof uploadJson.transcript === "string" ? uploadJson.transcript.trim() : "";
+      const transcript = serverTranscript || liveTranscript;
+      if (serverTranscript) setAgentTranscript(serverTranscript);
       const duration = Math.max(1, Math.round((Date.now() - callRecordStartedAtRef.current) / 1000));
       const saveResponse = await fetch("/api/call-recordings", {
         method: "POST",
@@ -727,7 +730,11 @@ export function VideoCallRoom() {
       const saveJson = await saveResponse.json();
       if (!saveResponse.ok) throw new Error(saveJson.error ?? "Save failed");
       setSavedMeetingId(saveJson.meetingId);
-      setAgentNotice("Agent បានរក្សា audio, transcript, summary និង tasks រួចរាល់។");
+      setAgentNotice(
+        serverTranscript
+          ? "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
+          : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ OPENAI_API_KEY។"
+      );
     } catch {
       setError("Agent មិនអាចរក្សា meeting បានទេ។ សូមសាកល្បងម្តងទៀត។");
     } finally {

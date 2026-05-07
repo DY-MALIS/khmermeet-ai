@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveLocalAudio } from "@/lib/storage";
+import { saveLocalAudio, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -10,5 +10,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing audio file." }, { status: 400 });
   }
   const audioUrl = await saveLocalAudio(file);
-  return NextResponse.json({ audioUrl });
+  try {
+    const transcript = await transcribeAudio(file);
+    return NextResponse.json({ audioUrl, transcript });
+  } catch (error) {
+    return NextResponse.json({
+      audioUrl,
+      transcript: "",
+      transcriptionError: error instanceof Error ? error.message : "Could not transcribe audio."
+    });
+  }
 }

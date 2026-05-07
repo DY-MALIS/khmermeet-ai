@@ -1,12 +1,13 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
+import { getLocalAudioPath } from "@/lib/storage";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   const safeName = path.basename(name);
   try {
-    const file = await readFile(path.join(process.cwd(), "uploads", safeName));
+    const file = await readFile(getLocalAudioPath(safeName));
     return new NextResponse(file, {
       headers: {
         "Content-Type": safeName.endsWith(".webm")
