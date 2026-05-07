@@ -728,15 +728,21 @@ export function VideoCallRoom() {
         })
       });
       const saveJson = await saveResponse.json();
-      if (!saveResponse.ok) throw new Error(saveJson.error ?? "Save failed");
+      if (!saveResponse.ok) {
+        throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed");
+      }
       setSavedMeetingId(saveJson.meetingId);
       setAgentNotice(
         serverTranscript
           ? "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
           : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ OPENAI_API_KEY។"
       );
-    } catch {
-      setError("Agent មិនអាចរក្សា meeting បានទេ។ សូមសាកល្បងម្តងទៀត។");
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? `Agent មិនអាចរក្សា meeting បានទេ។ ${error.message}`
+          : "Agent មិនអាចរក្សា meeting បានទេ។ សូមសាកល្បងម្តងទៀត។"
+      );
     } finally {
       setAgentSaving(false);
     }

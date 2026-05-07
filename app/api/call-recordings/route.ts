@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openai";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -57,8 +59,26 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ meetingId: meeting.id });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not save call recording.";
+    const isVercel = Boolean(process.env.VERCEL);
+    const isDatabaseError =
+      message.toLowerCase().includes("database") ||
+      message.toLowerCase().includes("prisma") ||
+      message.toLowerCase().includes("sqlite") ||
+      message.toLowerCase().includes("readonly") ||
+      message.toLowerCase().includes("unable to open");
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not save call recording." },
+      {
+        error:
+          isVercel && isDatabaseError
+            ? "Database មិនទាន់ត្រូវបាន configure សម្រាប់ Vercel ទេ។ សូមប្រើ PostgreSQL/Supabase/Neon DATABASE_URL ជំនួស SQLite local file។"
+            : message,
+        hint:
+          isVercel
+            ? "Vercel មិនរក្សា SQLite/local uploads ជាអចិន្ត្រៃយ៍ទេ។ សូមដាក់ production PostgreSQL DATABASE_URL និង OPENAI_API_KEY ក្នុង Vercel Environment Variables។"
+            : undefined
+      },
       { status: 500 }
     );
   }
