@@ -262,6 +262,42 @@ export function VideoCallRoom() {
     }
   }
 
+  async function getAudioOnlyStream() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: clearVoiceAudioConstraints
+      });
+    } catch {
+      return navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+  }
+
+  async function enableMicrophoneOnly() {
+    setError("");
+    try {
+      const stream = await getAudioOnlyStream();
+      localStreamRef.current = stream;
+      startMicMonitor(stream);
+      await resumeMicAudioContext();
+      setAudioEnabled(true);
+      setVideoEnabled(false);
+      updateParticipant({
+        id: selfId,
+        name: displayName,
+        stream,
+        isLocal: true,
+        audioEnabled: true,
+        videoEnabled: false
+      });
+      setAgentNotice("Microphone ត្រូវបានបើកហើយ។ សូមនិយាយសាកល្បង មើល bar Voice clarity រត់ បន្ទាប់មកចុច Start Agent។");
+      return stream;
+    } catch {
+      setMicQuality("idle");
+      setError("មិនអាចបើក microphone បានទេ។ សូមបើក browser permission: Camera/Microphone = Allow ហើយកុំប្រើ in-app browser របស់ Facebook/Telegram។");
+      return null;
+    }
+  }
+
   function stopMicMonitor() {
     if (micMonitorFrameRef.current) window.cancelAnimationFrame(micMonitorFrameRef.current);
     micMonitorFrameRef.current = null;
@@ -592,12 +628,19 @@ export function VideoCallRoom() {
     return recognition;
   }
 
-  function startAgentRecording() {
+  async function startAgentRecording() {
     setError("");
     setAgentNotice("");
     setSavedMeetingId("");
-    if (!joined || !localStreamRef.current) {
-      setError("សូមចូល Video Call មុនពេលចាប់ផ្តើម Agent recording។");
+    if (!localStreamRef.current) {
+      const stream = await enableMicrophoneOnly();
+      if (!stream) {
+        setError("សូមបើក Microphone មុនពេលចាប់ផ្តើម Agent recording។");
+        return;
+      }
+    }
+    if (!localStreamRef.current) {
+      setError("មិនទាន់មាន microphone សម្រាប់ថតទេ។");
       return;
     }
     if (!("MediaRecorder" in window)) {
@@ -767,7 +810,7 @@ export function VideoCallRoom() {
           </div>
           <div className="flex flex-wrap gap-2">
             {!agentRecording ? (
-              <button className="kh-button-primary" type="button" onClick={startAgentRecording} disabled={!joined || agentSaving}>
+              <button className="kh-button-primary" type="button" onClick={() => void startAgentRecording()} disabled={agentSaving}>
                 <Mic className="h-4 w-4" />
                 Start Agent
               </button>
@@ -789,17 +832,24 @@ export function VideoCallRoom() {
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600">
             <span>{displayLanguage === "en" ? "Voice clarity" : "ភាពច្បាស់នៃសម្លេង"}</span>
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-1",
-                micQuality === "good" && "bg-leaf/10 text-leaf",
-                micQuality === "quiet" && "bg-saffron/15 text-saffron",
-                micQuality === "loud" && "bg-red-100 text-red-700",
-                micQuality === "idle" && "bg-white text-slate-500"
-              )}
-            >
-              {micQualityLabels[displayLanguage][micQuality]}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {!localStreamRef.current?.getAudioTracks().length ? (
+                <button className="rounded-full bg-leaf px-3 py-1 text-xs font-bold text-white" type="button" onClick={() => void enableMicrophoneOnly()}>
+                  {displayLanguage === "en" ? "Enable microphone" : "បើក Microphone"}
+                </button>
+              ) : null}
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1",
+                  micQuality === "good" && "bg-leaf/10 text-leaf",
+                  micQuality === "quiet" && "bg-saffron/15 text-saffron",
+                  micQuality === "loud" && "bg-red-100 text-red-700",
+                  micQuality === "idle" && "bg-white text-slate-500"
+                )}
+              >
+                {micQualityLabels[displayLanguage][micQuality]}
+              </span>
+            </div>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-white">
             <div
@@ -818,6 +868,13 @@ export function VideoCallRoom() {
               ? "Clear voice mode uses echo cancellation, noise suppression, auto gain, and a live microphone level check."
               : "Clear voice mode ប្រើ echo cancellation, noise suppression, auto gain និងពិនិត្យកម្រិត microphone ជាបន្តផ្ទាល់។"}
           </p>
+          {!localStreamRef.current?.getAudioTracks().length ? (
+            <p className="mt-1 text-xs font-semibold text-saffron">
+              {displayLanguage === "en"
+                ? "Tap Enable microphone first. On mobile, open this page in Safari or Chrome, not inside Facebook/Telegram."
+                : "សូមចុច បើក Microphone ជាមុន។ លើទូរស័ព្ទ សូមបើកដោយ Safari ឬ Chrome មិនមែន browser ក្នុង Facebook/Telegram។"}
+            </p>
+          ) : null}
         </div>
         <label className="mt-4 block space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
