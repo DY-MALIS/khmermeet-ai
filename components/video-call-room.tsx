@@ -128,6 +128,14 @@ function createRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
+function createClientId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function cleanTranscriptSegment(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -177,7 +185,7 @@ function VideoTile({ participant }: { participant: Participant }) {
 }
 
 export function VideoCallRoom() {
-  const selfId = useMemo(() => crypto.randomUUID(), []);
+  const selfId = useMemo(() => createClientId(), []);
   const [displayLanguage] = useDisplayLanguage();
   const [roomId, setRoomId] = useState(() => createRoomId());
   const [displayName, setDisplayName] = useState("Local User");
@@ -198,6 +206,10 @@ export function VideoCallRoom() {
   const [agentNotice, setAgentNotice] = useState("");
   const [error, setError] = useState("");
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const signalPollRef = useRef<number | null>(null);
+  const signalSinceRef = useRef(0);
+  const signalFailuresRef = useRef(0);
+  const seenSignalsRef = useRef<Set<string>>(new Set());
   const localStreamRef = useRef<MediaStream | null>(null);
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
@@ -226,12 +238,69 @@ export function VideoCallRoom() {
     setParticipants((current) => {
       const exists = current.some((participant) => participant.id === next.id);
       if (!exists) return [...current, next];
-      return current.map((participant) => (participant.id === next.id ? { ...participant, ...next } : participant));
+      return current.map((participant) =>
+        participant.id === next.id ? { ...participant, ...next, stream: next.stream ?? participant.stream } : participant
+      );
     });
+  }
+
+  function markSignalSeen(message: SignalMessage) {
+    const key = JSON.stringify(message);
+    if (seenSignalsRef.current.has(key)) return false;
+    seenSignalsRef.current.add(key);
+    if (seenSignalsRef.current.size > 500) {
+      seenSignalsRef.current = new Set([...seenSignalsRef.current].slice(-250));
+    }
+    return true;
   }
 
   function post(message: SignalMessage) {
     channelRef.current?.postMessage(message);
+    void fetch("/api/call-signals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomId: message.roomId, message })
+    }).catch(() => {
+      signalFailuresRef.current += 1;
+    });
+  }
+
+  function stopServerSignalPolling() {
+    if (signalPollRef.current) window.clearInterval(signalPollRef.current);
+    signalPollRef.current = null;
+    signalSinceRef.current = 0;
+    signalFailuresRef.current = 0;
+  }
+
+  function startServerSignalPolling(activeRoomId: string) {
+    stopServerSignalPolling();
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/call-signals?roomId=${encodeURIComponent(activeRoomId)}&since=${signalSinceRef.current}`, {
+          cache: "no-store"
+        });
+        if (!response.ok) throw new Error("Signal polling failed");
+        const data = (await response.json()) as {
+          nextSince?: number;
+          messages?: Array<{ id: number; message: SignalMessage }>;
+        };
+        signalSinceRef.current = data.nextSince ?? signalSinceRef.current;
+        signalFailuresRef.current = 0;
+        for (const signal of data.messages ?? []) {
+          signalSinceRef.current = Math.max(signalSinceRef.current, signal.id);
+          await handleSignal(signal.message);
+        }
+      } catch {
+        signalFailuresRef.current += 1;
+        if (signalFailuresRef.current === 3) {
+          setAgentNotice("Server signaling មិនអាចភ្ជាប់បានទេ។ អ្នកផ្សេងអាចចូលបានតែក្នុង browser tabs លើ machine ដូចគ្នា។");
+        }
+      }
+    };
+
+    void poll();
+    signalPollRef.current = window.setInterval(() => void poll(), 900);
   }
 
   async function resumeMicAudioContext() {
@@ -241,6 +310,14 @@ export function VideoCallRoom() {
   }
 
   async function getMeetingStream() {
+    if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      throw new Error("INSECURE_CONTEXT");
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("MEDIA_DEVICES_UNAVAILABLE");
+    }
+
     try {
       return await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" },
@@ -263,6 +340,14 @@ export function VideoCallRoom() {
   }
 
   async function getAudioOnlyStream() {
+    if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      throw new Error("INSECURE_CONTEXT");
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("MEDIA_DEVICES_UNAVAILABLE");
+    }
+
     try {
       return await navigator.mediaDevices.getUserMedia({
         audio: clearVoiceAudioConstraints
@@ -408,6 +493,7 @@ export function VideoCallRoom() {
 
   async function handleSignal(message: SignalMessage) {
     if (message.roomId !== roomId || message.from === selfId) return;
+    if (!markSignalSeen(message)) return;
 
     if (message.type === "join") {
       await createOffer(message.from, message.name);
@@ -488,17 +574,24 @@ export function VideoCallRoom() {
         }
       ]);
 
-      const channel = new BroadcastChannel(`khmermeet-call-${roomId}`);
-      channel.onmessage = (event: MessageEvent<SignalMessage>) => {
-        void handleSignal(event.data);
-      };
-      channelRef.current = channel;
+      if ("BroadcastChannel" in window) {
+        const channel = new BroadcastChannel(`khmermeet-call-${roomId}`);
+        channel.onmessage = (event: MessageEvent<SignalMessage>) => {
+          void handleSignal(event.data);
+        };
+        channelRef.current = channel;
+      }
+      startServerSignalPolling(roomId);
       setJoined(true);
       post({ type: "join", roomId, from: selfId, name: displayName });
       window.history.replaceState(null, "", `/meetings/call?room=${roomId}`);
-    } catch {
+    } catch (error) {
       setMicQuality("idle");
-      setError("មិនអាចបើក microphone បានទេ។ សូមចុច Allow microphone ក្នុង browser settings ហើយសាកល្បងម្តងទៀត។");
+      setError(
+        error instanceof Error && error.message === "INSECURE_CONTEXT"
+          ? "Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមប្រើ localhost លើកុំព្យូទ័រ ឬ deploy/open តាម HTTPS ដូចជា Vercel សម្រាប់ទូរស័ព្ទ។"
+          : "មិនអាចបើក microphone បានទេ។ សូមចុច Allow microphone ក្នុង browser settings ហើយសាកល្បងម្តងទៀត។"
+      );
     }
   }
 
@@ -529,6 +622,7 @@ export function VideoCallRoom() {
     speechRef.current?.stop();
     speechRef.current = null;
     if (roomId) post({ type: "leave", roomId, from: selfId });
+    stopServerSignalPolling();
     channelRef.current?.close();
     channelRef.current = null;
     peersRef.current.forEach((peer) => peer.close());
@@ -806,7 +900,7 @@ export function VideoCallRoom() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
 
       <div className="rounded-lg border border-saffron/25 bg-saffron/10 p-4 text-sm text-ink">
-        MVP នេះប្រើ WebRTC + BroadcastChannel សម្រាប់ local multi-person call។ ដើម្បីសាកល្បងច្រើននាក់ សូម copy invite ហើយបើកក្នុង browser tab/window ផ្សេងៗលើ machine នេះ។ សម្រាប់ call ឆ្លងកាត់ internet ពិតៗ ត្រូវបន្ថែម signaling server និង TURN server។
+        MVP នេះប្រើ WebRTC + server signaling សម្រាប់ multi-person call ក្នុង local network/HTTPS។ ដើម្បីសាកល្បង សូម copy invite ហើយបើកក្នុង browser ឬ device ផ្សេងៗ។ សម្រាប់ internet production ពេញលេញ ត្រូវបន្ថែម TURN server។
       </div>
 
       <section className="kh-card p-5">
