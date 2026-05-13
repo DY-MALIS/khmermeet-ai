@@ -214,6 +214,8 @@ export function VideoCallRoom() {
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef<number>(0);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const mixedAudioStreamRef = useRef<MediaStream | null>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldRestartSpeechRef = useRef(false);
   const speechRestartTimerRef = useRef<number | null>(null);
@@ -627,6 +629,7 @@ export function VideoCallRoom() {
     channelRef.current = null;
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
+    stopMixedRecordingAudio();
     stopMicMonitor();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -649,15 +652,53 @@ export function VideoCallRoom() {
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
   }
 
-  function getCallAudioStream() {
+  function stopMixedRecordingAudio() {
+    mixedAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mixedAudioStreamRef.current = null;
+    void recordingAudioContextRef.current?.close();
+    recordingAudioContextRef.current = null;
+  }
+
+  function collectCallAudioTracks() {
     const tracks = new Map<string, MediaStreamTrack>();
-    localStreamRef.current?.getAudioTracks().forEach((track) => tracks.set(track.id, track));
+    localStreamRef.current
+      ?.getAudioTracks()
+      .filter((track) => track.readyState === "live")
+      .forEach((track) => tracks.set(track.id, track));
     participants.forEach((participant) => {
       if (!participant.isLocal) {
-        participant.stream?.getAudioTracks().forEach((track) => tracks.set(track.id, track));
+        participant.stream
+          ?.getAudioTracks()
+          .filter((track) => track.readyState === "live")
+          .forEach((track) => tracks.set(track.id, track));
       }
     });
-    return new MediaStream([...tracks.values()]);
+    return [...tracks.values()];
+  }
+
+  async function getCallAudioStream() {
+    stopMixedRecordingAudio();
+    const tracks = collectCallAudioTracks();
+    if (!tracks.length) return new MediaStream();
+    if (tracks.length === 1) return new MediaStream([tracks[0]]);
+
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return new MediaStream(tracks);
+
+    const context = new AudioContextConstructor({ sampleRate: 48000 });
+    await context.resume();
+    const destination = context.createMediaStreamDestination();
+
+    tracks.forEach((track) => {
+      const source = context.createMediaStreamSource(new MediaStream([track]));
+      const gain = context.createGain();
+      gain.gain.value = track.enabled ? 1 : 0;
+      source.connect(gain).connect(destination);
+    });
+
+    recordingAudioContextRef.current = context;
+    mixedAudioStreamRef.current = destination.stream;
+    return destination.stream;
   }
 
   function createSpeechRecognition() {
@@ -742,7 +783,7 @@ export function VideoCallRoom() {
       return;
     }
     void resumeMicAudioContext();
-    const audioStream = getCallAudioStream();
+    const audioStream = await getCallAudioStream();
     if (!audioStream.getAudioTracks().length) {
       setError("មិនមាន audio track សម្រាប់ថតទេ។");
       return;
@@ -754,7 +795,7 @@ export function VideoCallRoom() {
       if (event.data.size > 0) callChunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
-      audioStream.getTracks().forEach((track) => track.stop());
+      if (mixedAudioStreamRef.current === audioStream) stopMixedRecordingAudio();
       void saveAgentRecording(recorder.mimeType || "audio/webm");
     };
     callRecorderRef.current = recorder;
@@ -770,7 +811,7 @@ export function VideoCallRoom() {
       speechRef.current = recognition;
       try {
         recognition.start();
-        setAgentNotice("Agent កំពុងថតសំឡេង និងសរសេរ transcript ស្វ័យប្រវត្តិ។ Smart listening នឹង restart ដោយស្វ័យប្រវត្តិ បើ browser ផ្អាក។");
+        setAgentNotice("Agent កំពុងថតសំឡេងប្រជុំជាឯកសារតែមួយ និងសរសេរ transcript ស្វ័យប្រវត្តិ។ សូមនិយាយជិត microphone ហើយកុំបិទ tab ពេលកំពុងថត។");
       } catch {
         setListeningStatus("waiting_retry");
         setAgentNotice("Agent កំពុងថត audio។ Speech-to-text នឹងព្យាយាមចាប់ផ្តើមម្តងទៀតដោយស្វ័យប្រវត្តិ។");
