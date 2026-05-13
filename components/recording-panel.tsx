@@ -19,6 +19,7 @@ export function RecordingPanel() {
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [dbUnavailable, setDbUnavailable] = useState(false);
@@ -60,10 +61,15 @@ export function RecordingPanel() {
   async function start() {
     setError("");
     setAudioUrl("");
+    setTranscript("");
     setPreviewUrl("");
     cleanupRecording();
     if (!supported) {
       setError("Browser នេះមិនគាំទ្រ audio recording ទេ។ សូមប្រើ Chrome, Edge, ឬ Firefox ថ្មីៗ។");
+      return;
+    }
+    if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      setError("Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមប្រើ localhost លើកុំព្យូទ័រ ឬ deploy/open តាម HTTPS ដូចជា Vercel។");
       return;
     }
     try {
@@ -89,7 +95,10 @@ export function RecordingPanel() {
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
           const data = await response.json();
-          if (response.ok) setAudioUrl(data.audioUrl);
+          if (response.ok) {
+            setAudioUrl(data.audioUrl);
+            setTranscript(typeof data.transcript === "string" ? data.transcript : "");
+          }
           else setError(data.error ?? "មិនអាចរក្សាទុកសំឡេងបានទេ។");
         } catch {
           setError("មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។");
@@ -127,6 +136,7 @@ export function RecordingPanel() {
     chunks.current = [];
     cleanupRecording();
     setAudioUrl("");
+    setTranscript("");
     setPreviewUrl("");
     setSeconds(0);
     setState("idle");
@@ -172,6 +182,7 @@ export function RecordingPanel() {
           <form action={createMeeting} className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <input className="kh-input" name="title" placeholder="ចំណងជើងប្រជុំ" required />
             <input type="hidden" name="audioUrl" value={audioUrl} />
+            <input type="hidden" name="transcript" value={transcript} />
             <input type="hidden" name="duration" value={seconds} />
             <button className="kh-button-primary" disabled={uploading || !audioUrl || dbUnavailable}>
               <Save className="h-4 w-4" />
@@ -183,7 +194,9 @@ export function RecordingPanel() {
             </button>
           </form>
           {audioUrl ? (
-            <p className="text-sm text-leaf">សំឡេងត្រូវបាន upload រួច។ អ្នកអាចរក្សាទុក meeting record បាន។</p>
+            <p className="text-sm text-leaf">
+              សំឡេងត្រូវបាន upload រួច។ {transcript ? "Transcript ត្រូវបានបង្កើត ហើយនឹងរក្សាទុកជាមួយ meeting record។" : "បើមិនមាន transcript សូមដាក់ OPENAI_API_KEY ឬបញ្ចូល transcript ដោយដៃក្រោយរក្សាទុក។"}
+            </p>
           ) : uploading ? (
             <p className="text-sm text-slate-500">កំពុង upload សំឡេងទៅ local storage...</p>
           ) : null}

@@ -43,8 +43,24 @@ CREATE TABLE "Task" (
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "CallSignal" (
+    "id" SERIAL NOT NULL,
+    "roomId" TEXT NOT NULL,
+    "message" JSONB NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "CallSignal_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
+
+-- CreateIndex
+CREATE INDEX "CallSignal_roomId_id_idx" ON "CallSignal"("roomId", "id");
+
+-- CreateIndex
+CREATE INDEX "CallSignal_createdAt_idx" ON "CallSignal"("createdAt");
 
 -- AddForeignKey
 ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

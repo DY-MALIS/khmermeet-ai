@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openai";
@@ -56,6 +57,13 @@ export async function POST(request: Request) {
         });
       }
     }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/meetings");
+    revalidatePath("/transcripts");
+    revalidatePath("/summaries");
+    revalidatePath("/tasks");
+    revalidatePath(`/meetings/${meeting.id}`);
 
     return NextResponse.json({ meetingId: meeting.id });
   } catch (error) {

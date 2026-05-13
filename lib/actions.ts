@@ -15,6 +15,15 @@ function formString(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function revalidateMeetingViews(meetingId?: string) {
+  revalidatePath("/dashboard");
+  revalidatePath("/meetings");
+  revalidatePath("/transcripts");
+  revalidatePath("/summaries");
+  revalidatePath("/tasks");
+  if (meetingId) revalidatePath(`/meetings/${meetingId}`);
+}
+
 export async function registerUser(formData: FormData) {
   const name = formString(formData, "name");
   const email = formString(formData, "email").toLowerCase();
@@ -38,11 +47,38 @@ export async function createMeeting(formData: FormData) {
   });
   const title = formString(formData, "title") || "Untitled meeting";
   const audioUrl = formString(formData, "audioUrl") || null;
+  const transcript = formString(formData, "transcript");
   const duration = Number(formData.get("duration") ?? 0);
+  const summary = transcript ? await generateMeetingSummary(transcript) : null;
   const meeting = await prisma.meeting.create({
-    data: { title, audioUrl, duration: Number.isFinite(duration) ? duration : 0, createdById: user.id }
+    data: {
+      title,
+      audioUrl,
+      transcript: transcript || null,
+      summary,
+      status: summary ? "summarized" : transcript ? "transcribed" : "recorded",
+      duration: Number.isFinite(duration) ? duration : 0,
+      createdById: user.id
+    }
   });
-  revalidatePath("/meetings");
+  if (transcript) {
+    const tasks = await extractMeetingTasks(transcript);
+    if (tasks.length) {
+      await prisma.task.createMany({
+        data: tasks.map((task) => ({
+          meetingId: meeting.id,
+          title: task.title,
+          description: task.description ?? null,
+          assigneeName: task.assigneeName ?? null,
+          deadline: task.deadline ? new Date(task.deadline) : null,
+          priority: task.priority,
+          status: task.status,
+          sourceText: task.sourceText ?? null
+        }))
+      });
+    }
+  }
+  revalidateMeetingViews(meeting.id);
   redirect(`/meetings/${meeting.id}`);
 }
 
@@ -72,7 +108,7 @@ export async function updateTranscript(formData: FormData) {
     where: { id, createdById: user.id },
     data: { transcript, status: "transcribed" }
   });
-  revalidatePath(`/meetings/${id}`);
+  revalidateMeetingViews(id);
 }
 
 export async function generateSummary(formData: FormData) {
@@ -83,7 +119,7 @@ export async function generateSummary(formData: FormData) {
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   const summary = await generateMeetingSummary(meeting.transcript);
   await prisma.meeting.update({ where: { id }, data: { summary, status: "summarized" } });
-  revalidatePath(`/meetings/${id}`);
+  revalidateMeetingViews(id);
 }
 
 export async function extractTasks(formData: FormData) {
@@ -105,8 +141,7 @@ export async function extractTasks(formData: FormData) {
       sourceText: task.sourceText ?? null
     }))
   });
-  revalidatePath(`/meetings/${id}`);
-  revalidatePath("/tasks");
+  revalidateMeetingViews(id);
 }
 
 export async function createTask(formData: FormData) {
@@ -124,8 +159,7 @@ export async function createTask(formData: FormData) {
       priority: (formString(formData, "priority") || "medium") as TaskPriority
     }
   });
-  revalidatePath(`/meetings/${meetingId}`);
-  revalidatePath("/tasks");
+  revalidateMeetingViews(meetingId);
 }
 
 export async function updateTask(formData: FormData) {
@@ -144,7 +178,7 @@ export async function updateTask(formData: FormData) {
       deadline: deadlineText ? new Date(deadlineText) : null
     }
   });
-  revalidatePath("/tasks");
+  revalidateMeetingViews(task.meetingId);
 }
 
 export async function deleteTask(formData: FormData) {
@@ -153,12 +187,12 @@ export async function deleteTask(formData: FormData) {
   const task = await prisma.task.findFirst({ where: { id, meeting: { createdById: user.id } } });
   if (!task) throw new Error("No task found.");
   await prisma.task.delete({ where: { id } });
-  revalidatePath("/tasks");
+  revalidateMeetingViews(task.meetingId);
 }
 
 export async function deleteMeeting(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
   await prisma.meeting.delete({ where: { id, createdById: user.id } });
-  revalidatePath("/meetings");
+  revalidateMeetingViews();
 }
