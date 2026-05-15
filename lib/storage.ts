@@ -19,7 +19,7 @@ export async function saveLocalAudio(file: File) {
   return `/api/uploads/${name}`;
 }
 
-export async function transcribeAudio(audioFile: File) {
+export async function transcribeAudio(audioFile: File, speakerNames: string[] = []) {
   // TODO: Real-time speech-to-text and Whisper integration.
   // TODO: Speaker detection.
   if (!process.env.OPENAI_API_KEY) return "";
@@ -29,7 +29,8 @@ export async function transcribeAudio(audioFile: File) {
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const primaryModel = process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe";
-  const prompt = "Cambodian team meeting. Transcribe clearly in Khmer, preserving English product and technical terms when spoken.";
+  const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
+  const prompt = `Cambodian team meeting. Transcribe clearly in Khmer, preserving English product and technical terms when spoken.${knownSpeakers} When a speaker can be identified from context or turn-taking, prefix the line with the speaker name like "Name: transcript". If the speaker is unclear, use "Speaker: transcript".`;
 
   try {
     const result = await openai.audio.transcriptions.create({

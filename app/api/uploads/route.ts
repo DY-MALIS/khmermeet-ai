@@ -11,9 +11,14 @@ export async function POST(request: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing audio file." }, { status: 400 });
   }
+  const speakersField = formData.get("speakers");
+  const speakerNames =
+    typeof speakersField === "string"
+      ? parseSpeakerNames(speakersField)
+      : [];
   const audioUrl = await saveLocalAudio(file);
   try {
-    const transcript = await transcribeAudio(file);
+    const transcript = await transcribeAudio(file, speakerNames);
     return NextResponse.json({ audioUrl, transcript });
   } catch (error) {
     return NextResponse.json({
@@ -21,5 +26,19 @@ export async function POST(request: Request) {
       transcript: "",
       transcriptionError: error instanceof Error ? error.message : "Could not transcribe audio."
     });
+  }
+}
+
+function parseSpeakerNames(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((speaker): speaker is string => typeof speaker === "string")
+      .map((speaker) => speaker.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+  } catch {
+    return [];
   }
 }

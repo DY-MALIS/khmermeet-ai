@@ -149,6 +149,12 @@ function appendSmartTranscript(current: string, segment: string) {
   return `${existing}\n${clean}`;
 }
 
+function speakerLine(name: string, text: string) {
+  const clean = cleanTranscriptSegment(text);
+  if (!clean) return "";
+  return `${name || "Speaker"}: ${clean}`;
+}
+
 function VideoTile({ participant }: { participant: Participant }) {
   const ref = useRef<HTMLVideoElement | null>(null);
 
@@ -732,8 +738,8 @@ export function VideoCallRoom() {
         else interimText += transcript;
       }
       if (confidenceCount) setSpeechConfidence(Math.round((confidenceTotal / confidenceCount) * 100));
-      if (finalText) setAgentTranscript((current) => appendSmartTranscript(current, finalText));
-      setInterimTranscript(interimText);
+      if (finalText) setAgentTranscript((current) => appendSmartTranscript(current, speakerLine(displayName, finalText)));
+      setInterimTranscript(interimText ? speakerLine(displayName, interimText) : "");
       setListeningStatus(finalText ? "saved_line" : "listening");
     };
     recognition.onerror = (event) => {
@@ -843,6 +849,10 @@ export function VideoCallRoom() {
       const blob = new Blob(callChunksRef.current, { type: mimeType });
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "call.m4a" : "call.webm");
+      uploadData.append(
+        "speakers",
+        JSON.stringify([...new Set([displayName, ...participants.map((participant) => participant.name)].filter(Boolean))])
+      );
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
