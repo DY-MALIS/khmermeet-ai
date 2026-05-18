@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         transcript: transcript || null,
         summary,
         duration,
-        language: "km",
+        language: "km-en",
         status: transcript ? "summarized" : "recorded",
         createdById: user.id
       }

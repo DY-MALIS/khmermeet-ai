@@ -56,6 +56,7 @@ export async function createMeeting(formData: FormData) {
       audioUrl,
       transcript: transcript || null,
       summary,
+      language: transcript ? "km-en" : "km",
       status: summary ? "summarized" : transcript ? "transcribed" : "recorded",
       duration: Number.isFinite(duration) ? duration : 0,
       createdById: user.id

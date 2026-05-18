@@ -155,6 +155,16 @@ function speakerLine(name: string, text: string) {
   return `${name || "Speaker"}: ${clean}`;
 }
 
+function mediaPermissionHelp(error?: unknown) {
+  if (error instanceof Error && error.message === "INSECURE_CONTEXT") {
+    return "Camera/Microphone ត្រូវការ HTTPS សម្រាប់ទូរស័ព្ទ និងកុំព្យូទ័រផ្សេងៗ។ សូមប្រើ Vercel link https://khmermeet-ai.vercel.app ឬ localhost លើកុំព្យូទ័រដែលរត់ app។";
+  }
+  if (error instanceof Error && error.message === "MEDIA_DEVICES_UNAVAILABLE") {
+    return "Browser នេះមិនគាំទ្រ camera/microphone ទេ។ សូមប្រើ Chrome, Edge, ឬ Safari ថ្មីៗ ហើយកុំបើកក្នុង Facebook/Telegram in-app browser។";
+  }
+  return "មិនអាចបើក camera/microphone បានទេ។ សូមចុច Allow ក្នុង browser permission, បិទ browser tab ផ្សេងដែលកំពុងប្រើ camera/mic, ហើយសាកល្បងម្តងទៀត។";
+}
+
 function VideoTile({ participant }: { participant: Participant }) {
   const ref = useRef<HTMLVideoElement | null>(null);
 
@@ -384,9 +394,9 @@ export function VideoCallRoom() {
       });
       setAgentNotice("Microphone ត្រូវបានបើកហើយ។ សូមនិយាយសាកល្បង មើល bar Voice clarity រត់ បន្ទាប់មកចុច Start Agent។");
       return stream;
-    } catch {
+    } catch (error) {
       setMicQuality("idle");
-      setError("មិនអាចបើក microphone បានទេ។ សូមបើក browser permission: Camera/Microphone = Allow ហើយកុំប្រើ in-app browser របស់ Facebook/Telegram។");
+      setError(mediaPermissionHelp(error));
       return null;
     }
   }
@@ -595,11 +605,7 @@ export function VideoCallRoom() {
       window.history.replaceState(null, "", `/meetings/call?room=${roomId}`);
     } catch (error) {
       setMicQuality("idle");
-      setError(
-        error instanceof Error && error.message === "INSECURE_CONTEXT"
-          ? "Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមប្រើ localhost លើកុំព្យូទ័រ ឬ deploy/open តាម HTTPS ដូចជា Vercel សម្រាប់ទូរស័ព្ទ។"
-          : "មិនអាចបើក microphone បានទេ។ សូមចុច Allow microphone ក្នុង browser settings ហើយសាកល្បងម្តងទៀត។"
-      );
+      setError(mediaPermissionHelp(error));
     }
   }
 
@@ -1025,6 +1031,11 @@ export function VideoCallRoom() {
             {displayLanguage === "en"
               ? "Clear voice mode uses echo cancellation, noise suppression, auto gain, and a live microphone level check."
               : "Clear voice mode ប្រើ echo cancellation, noise suppression, auto gain និងពិនិត្យកម្រិត microphone ជាបន្តផ្ទាល់។"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {displayLanguage === "en"
+              ? "Final AI transcription supports Khmer and English. Browser live transcript is only a quick preview and may vary by device."
+              : "Transcript ចុងក្រោយដោយ AI អាចចាប់បានទាំងខ្មែរ និងអង់គ្លេស។ Live transcript ក្នុង browser គ្រាន់តែជា preview ហើយអាចខុសគ្នាតាម device។"}
           </p>
           {!localStreamRef.current?.getAudioTracks().length ? (
             <p className="mt-1 text-xs font-semibold text-saffron">

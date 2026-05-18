@@ -10,6 +10,10 @@ function formatTime(seconds: number) {
   return `${m}:${s}`;
 }
 
+function recordingPermissionHelp() {
+  return "មិនអាចបើក microphone បានទេ។ សូមចុច Allow ក្នុង browser permission, ប្រើ Chrome/Edge/Safari ថ្មីៗ, ហើយកុំបើកក្នុង Facebook/Telegram in-app browser។";
+}
+
 export function RecordingPanel() {
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -112,7 +116,7 @@ export function RecordingPanel() {
       setSeconds(0);
       setState("recording");
     } catch {
-      setError("មិនអាចបើក microphone បានទេ។ សូមចុច Allow microphone ហើយសាកល្បងម្តងទៀត។");
+      setError(recordingPermissionHelp());
     }
   }
 

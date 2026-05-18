@@ -30,13 +30,12 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const primaryModel = process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe";
   const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
-  const prompt = `Cambodian team meeting. Transcribe clearly in Khmer, preserving English product and technical terms when spoken.${knownSpeakers} When a speaker can be identified from context or turn-taking, prefix the line with the speaker name like "Name: transcript". If the speaker is unclear, use "Speaker: transcript".`;
+  const prompt = `Cambodian team meeting with Khmer and English speakers. Transcribe exactly in the spoken language: keep Khmer as Khmer and English as English, preserving product and technical terms.${knownSpeakers} When a speaker can be identified from context or turn-taking, prefix the line with the speaker name like "Name: transcript". If the speaker is unclear, use "Speaker: transcript".`;
 
   try {
     const result = await openai.audio.transcriptions.create({
       file: audioFile,
       model: primaryModel,
-      language: "km",
       prompt
     });
     return result.text?.trim() ?? "";
@@ -44,7 +43,6 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
     const fallback = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
-      language: "km",
       prompt
     });
     return fallback.text?.trim() ?? "";
