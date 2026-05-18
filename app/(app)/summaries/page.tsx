@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function SummariesPage() {
   const user = await requireUser();
   const meetings = await prisma.meeting

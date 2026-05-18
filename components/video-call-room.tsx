@@ -693,10 +693,19 @@ export function VideoCallRoom() {
   }
 
   function leaveRoom() {
+    const shouldSaveRecording =
+      callRecorderRef.current?.state === "recording" || callRecorderRef.current?.state === "paused" || agentRecording;
+    if (shouldSaveRecording) {
+      stopAgentRecording();
+    }
     shouldRestartSpeechRef.current = false;
     if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
     speechRestartTimerRef.current = null;
-    speechRef.current?.stop();
+    try {
+      speechRef.current?.stop();
+    } catch {
+      // Speech recognition may already be stopped by Stop & Save.
+    }
     speechRef.current = null;
     if (roomId) post({ type: "leave", roomId, from: selfId });
     stopServerSignalPolling();
@@ -704,7 +713,7 @@ export function VideoCallRoom() {
     channelRef.current = null;
     peersRef.current.forEach((peer) => peer.close());
     peersRef.current.clear();
-    stopMixedRecordingAudio();
+    if (!shouldSaveRecording) stopMixedRecordingAudio();
     stopMicMonitor();
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
