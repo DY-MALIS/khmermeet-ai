@@ -182,7 +182,11 @@ function VideoTile({ participant }: { participant: Participant }) {
           autoPlay
           playsInline
           muted={participant.isLocal}
-          className={cn("h-full w-full object-cover", !participant.videoEnabled && "opacity-0")}
+          className={cn(
+            "h-full w-full object-contain bg-slate-950",
+            participant.isLocal && "-scale-x-100",
+            !participant.videoEnabled && "opacity-0"
+          )}
         />
       ) : null}
       {!participant.videoEnabled ? (
@@ -213,6 +217,7 @@ export function VideoCallRoom() {
   const [agentSaving, setAgentSaving] = useState(false);
   const [agentTranscript, setAgentTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [speechLanguage, setSpeechLanguage] = useState<"km-KH" | "en-US">("km-KH");
   const [listeningStatus, setListeningStatus] = useState<ListeningStatusKey>("idle");
   const [speechConfidence, setSpeechConfidence] = useState<number | null>(null);
   const [speechRestartCount, setSpeechRestartCount] = useState(0);
@@ -230,6 +235,9 @@ export function VideoCallRoom() {
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef<number>(0);
+  const agentTranscriptRef = useRef("");
+  const interimTranscriptRef = useRef("");
+  const transcriptSnapshotRef = useRef("");
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const mixedAudioStreamRef = useRef<MediaStream | null>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
@@ -251,6 +259,18 @@ export function VideoCallRoom() {
     return () => leaveRoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    agentTranscriptRef.current = agentTranscript;
+  }, [agentTranscript]);
+
+  useEffect(() => {
+    interimTranscriptRef.current = interimTranscript;
+  }, [interimTranscript]);
+
+  function getCurrentAgentTranscript() {
+    return `${agentTranscriptRef.current}\n${interimTranscriptRef.current}`.trim();
+  }
 
   function updateParticipant(next: Participant) {
     setParticipants((current) => {
@@ -723,7 +743,7 @@ export function VideoCallRoom() {
     const recognition = new Recognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = "km-KH";
+    recognition.lang = speechLanguage;
     recognition.onaudiostart = () => setListeningStatus("listening");
     recognition.onaudioend = () => setListeningStatus("audio_paused");
     recognition.onspeechstart = () => setListeningStatus("speech_detected");
@@ -779,6 +799,7 @@ export function VideoCallRoom() {
     setError("");
     setAgentNotice("");
     setSavedMeetingId("");
+    transcriptSnapshotRef.current = "";
     if (!localStreamRef.current) {
       const stream = await enableMicrophoneOnly();
       if (!stream) {
@@ -837,6 +858,7 @@ export function VideoCallRoom() {
   }
 
   function stopAgentRecording() {
+    transcriptSnapshotRef.current = getCurrentAgentTranscript();
     shouldRestartSpeechRef.current = false;
     if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
     speechRestartTimerRef.current = null;
@@ -863,7 +885,7 @@ export function VideoCallRoom() {
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
 
-      const liveTranscript = `${agentTranscript}\n${interimTranscript}`.trim();
+      const liveTranscript = transcriptSnapshotRef.current || getCurrentAgentTranscript();
       const serverTranscript = typeof uploadJson.transcript === "string" ? uploadJson.transcript.trim() : "";
       const transcript = serverTranscript || liveTranscript;
       if (serverTranscript) setAgentTranscript(serverTranscript);
@@ -883,6 +905,7 @@ export function VideoCallRoom() {
         throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed");
       }
       setSavedMeetingId(saveJson.meetingId);
+      transcriptSnapshotRef.current = "";
       setAgentNotice(
         serverTranscript
           ? "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
@@ -1047,7 +1070,23 @@ export function VideoCallRoom() {
         </div>
         <label className="mt-4 block space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-slate-600">Live transcript</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-slate-600">Live transcript</span>
+              <select
+                className="kh-input h-9 w-auto min-w-36 py-1 text-xs"
+                value={speechLanguage}
+                onChange={(event) => setSpeechLanguage(event.target.value as "km-KH" | "en-US")}
+                disabled={agentRecording}
+                title={
+                  displayLanguage === "en"
+                    ? "Browser live preview language. Final AI transcript still supports Khmer and English."
+                    : "ភាសាសម្រាប់ live preview ក្នុង browser។ Transcript ចុងក្រោយដោយ AI នៅតែគាំទ្រ Khmer និង English។"
+                }
+              >
+                <option value="km-KH">{displayLanguage === "en" ? "Live: Khmer" : "Live: ខ្មែរ"}</option>
+                <option value="en-US">{displayLanguage === "en" ? "Live: English" : "Live: English"}</option>
+              </select>
+            </div>
             <div className="flex flex-wrap gap-2 text-xs font-semibold">
               <span className={cn("rounded-full px-2.5 py-1", agentRecording ? "bg-leaf/10 text-leaf" : "bg-slate-100 text-slate-500")}>
                 {displayLanguage === "en" ? "Smart listening" : "ការស្ដាប់ឆ្លាតវៃ"}: {listeningStatusLabels[displayLanguage][listeningStatus]}
