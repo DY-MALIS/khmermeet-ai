@@ -124,6 +124,14 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleSize: { ideal: 16 }
 };
 
+const targetTeamSize = 10;
+const meshVideoConstraints: MediaTrackConstraints = {
+  facingMode: "user",
+  width: { ideal: 640, max: 960 },
+  height: { ideal: 360, max: 540 },
+  frameRate: { ideal: 15, max: 20 }
+};
+
 function createRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -163,6 +171,40 @@ function mediaPermissionHelp(error?: unknown) {
     return "Browser នេះមិនគាំទ្រ camera/microphone ទេ។ សូមប្រើ Chrome, Edge, ឬ Safari ថ្មីៗ ហើយកុំបើកក្នុង Facebook/Telegram in-app browser។";
   }
   return "មិនអាចបើក camera/microphone បានទេ។ សូមចុច Allow ក្នុង browser permission, បិទ browser tab ផ្សេងដែលកំពុងប្រើ camera/mic, ហើយសាកល្បងម្តងទៀត។";
+}
+
+function getIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+  const stunUrl = process.env.NEXT_PUBLIC_STUN_URL;
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+
+  if (stunUrl) {
+    servers.unshift({ urls: stunUrl.split(",").map((url) => url.trim()).filter(Boolean) });
+  }
+
+  if (turnUrl) {
+    servers.push({
+      urls: turnUrl.split(",").map((url) => url.trim()).filter(Boolean),
+      username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+      credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL
+    });
+  }
+
+  return servers;
+}
+
+function tuneSenderForTeamCall(sender: RTCRtpSender, kind: string) {
+  const params = sender.getParameters();
+  params.encodings = params.encodings?.length ? params.encodings : [{}];
+  if (kind === "video") {
+    params.encodings[0].maxBitrate = 350_000;
+    params.encodings[0].maxFramerate = 15;
+    params.degradationPreference = "maintain-framerate";
+  }
+  if (kind === "audio") {
+    params.encodings[0].maxBitrate = 40_000;
+  }
+  void sender.setParameters(params).catch(() => undefined);
 }
 
 function VideoTile({ participant }: { participant: Participant }) {
@@ -358,7 +400,7 @@ export function VideoCallRoom() {
 
     try {
       return await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user" },
+        video: meshVideoConstraints,
         audio: clearVoiceAudioConstraints
       });
     } catch {
@@ -478,13 +520,14 @@ export function VideoCallRoom() {
     if (existing) return existing;
 
     namesRef.current.set(peerId, peerName);
-    const peer = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-    });
+    const peer = new RTCPeerConnection({ iceServers: getIceServers() });
     peersRef.current.set(peerId, peer);
 
     localStreamRef.current?.getTracks().forEach((track) => {
-      if (localStreamRef.current) peer.addTrack(track, localStreamRef.current);
+      if (localStreamRef.current) {
+        const sender = peer.addTrack(track, localStreamRef.current);
+        tuneSenderForTeamCall(sender, track.kind);
+      }
     });
 
     const remoteStream = new MediaStream();
@@ -980,7 +1023,7 @@ export function VideoCallRoom() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
 
       <div className="rounded-lg border border-saffron/25 bg-saffron/10 p-4 text-sm text-ink">
-        MVP នេះប្រើ WebRTC + server signaling សម្រាប់ multi-person call ក្នុង local network/HTTPS។ ដើម្បីសាកល្បង សូម copy invite ហើយបើកក្នុង browser ឬ device ផ្សេងៗ។ សម្រាប់ internet production ពេញលេញ ត្រូវបន្ថែម TURN server។
+        MVP នេះបាន optimize សម្រាប់ team call ប្រហែល 5-10 នាក់ដោយ video 360p/15fps និង bitrate ទាប។ ប្រសិនបើអ្នកប្រើឆ្លង network ខុសគ្នា សូមដាក់ TURN server ក្នុង Vercel env ដើម្បីឲ្យ video/audio ភ្ជាប់បានរឹងជាងមុន។
       </div>
 
       <section className="kh-card p-5">
@@ -1122,6 +1165,18 @@ export function VideoCallRoom() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {joined ? (
+          <div className="kh-card col-span-full flex flex-col gap-2 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {participants.length}/{targetTeamSize} participants
+            </span>
+            <span>
+              {participants.length > 4
+                ? "Team mode កំពុងប្រើ video quality ទាប ដើម្បីឲ្យ 5-10 នាក់រត់ស្ថិរជាងមុន។"
+                : "Invite អ្នកចូលរួមបានរហូតដល់ 10 នាក់សម្រាប់ test MVP។"}
+            </span>
+          </div>
+        ) : null}
         {participants.length ? (
           participants.map((participant) => <VideoTile key={participant.id} participant={participant} />)
         ) : (

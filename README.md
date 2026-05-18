@@ -66,6 +66,17 @@ Demo login after seeding:
 
 The MVP stores audio files under `uploads/` and serves them through `/api/uploads/[name]`. The storage adapter is isolated in `lib/storage.ts` so it can later move to S3 or Supabase Storage.
 
+Video meetings use browser WebRTC with server signaling. The call page is optimized for a small team test of about 5-10 participants by sending lower-bitrate 360p video. For reliable calls across different networks, configure a TURN server in Vercel:
+
+```env
+NEXT_PUBLIC_STUN_URL="stun:stun.l.google.com:19302"
+NEXT_PUBLIC_TURN_URL="turn:your-turn-host:3478"
+NEXT_PUBLIC_TURN_USERNAME="..."
+NEXT_PUBLIC_TURN_CREDENTIAL="..."
+```
+
+For larger production meetings, move the media layer to an SFU service such as LiveKit, mediasoup, Daily, Twilio, or Agora.
+
 ## Future Improvements
 
 - Real-time speech-to-text
