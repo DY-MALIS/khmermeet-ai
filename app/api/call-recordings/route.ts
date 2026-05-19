@@ -26,35 +26,54 @@ export async function POST(request: Request) {
       }
     });
 
-    const summary = transcript ? await generateMeetingSummary(transcript) : null;
     const meeting = await prisma.meeting.create({
       data: {
         title,
         audioUrl,
         transcript: transcript || null,
-        summary,
+        summary: null,
         duration,
         language: "km-en",
-        status: transcript ? "summarized" : "recorded",
+        status: transcript ? "transcribed" : "recorded",
         createdById: user.id
       }
     });
 
+    let summaryGenerated = false;
+    let tasksCreated = 0;
+    let aiError = "";
+
     if (transcript) {
-      const tasks = await extractMeetingTasks(transcript);
-      if (tasks.length) {
-        await prisma.task.createMany({
-          data: tasks.map((task) => ({
-            meetingId: meeting.id,
-            title: task.title,
-            description: task.description ?? null,
-            assigneeName: task.assigneeName ?? null,
-            deadline: task.deadline ? new Date(task.deadline) : null,
-            priority: task.priority,
-            status: task.status,
-            sourceText: task.sourceText ?? null
-          }))
+      try {
+        const summary = await generateMeetingSummary(transcript);
+        await prisma.meeting.update({
+          where: { id: meeting.id },
+          data: { summary, status: "summarized" }
         });
+        summaryGenerated = true;
+      } catch (error) {
+        aiError = error instanceof Error ? error.message : "AI summary failed.";
+      }
+
+      try {
+        const tasks = await extractMeetingTasks(transcript);
+        if (tasks.length) {
+          await prisma.task.createMany({
+            data: tasks.map((task) => ({
+              meetingId: meeting.id,
+              title: task.title,
+              description: task.description ?? null,
+              assigneeName: task.assigneeName ?? null,
+              deadline: task.deadline ? new Date(task.deadline) : null,
+              priority: task.priority,
+              status: task.status,
+              sourceText: task.sourceText ?? null
+            }))
+          });
+          tasksCreated = tasks.length;
+        }
+      } catch (error) {
+        aiError = [aiError, error instanceof Error ? error.message : "AI task extraction failed."].filter(Boolean).join(" ");
       }
     }
 
@@ -65,7 +84,7 @@ export async function POST(request: Request) {
     revalidatePath("/tasks");
     revalidatePath(`/meetings/${meeting.id}`);
 
-    return NextResponse.json({ meetingId: meeting.id });
+    return NextResponse.json({ meetingId: meeting.id, summaryGenerated, tasksCreated, aiError: aiError || null });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not save call recording.";
     const isVercel = Boolean(process.env.VERCEL);

@@ -239,7 +239,6 @@ function VideoTile({ participant }: { participant: Participant }) {
           muted={participant.isLocal}
           className={cn(
             "h-full w-full object-contain bg-slate-950",
-            participant.isLocal && "-scale-x-100",
             !participant.videoEnabled && "opacity-0"
           )}
         />
@@ -1056,7 +1055,9 @@ export function VideoCallRoom() {
       transcriptSnapshotRef.current = "";
       setAgentNotice(
         serverTranscript
-          ? "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
+          ? saveJson.aiError
+            ? "Agent បានរក្សា audio និង transcript រួច។ AI summary/tasks មានបញ្ហា ប៉ុន្តែទិន្នន័យប្រជុំបានទៅ History និង Transcript ហើយ។"
+            : "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
           : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ OPENAI_API_KEY។"
       );
     } catch (error) {
