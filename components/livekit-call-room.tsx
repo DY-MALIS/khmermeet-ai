@@ -126,7 +126,11 @@ export function LiveKitCallRoom() {
     };
     const handleTrackUnsubscribed = () => syncTiles();
     const handleParticipantChange = () => syncTiles();
-    const handleStateChanged = (state: ConnectionState) => setConnectionState(state);
+    const handleStateChanged = (state: ConnectionState) => {
+      setConnectionState(state);
+      setConnected(state === ConnectionState.Connected);
+      if (state === ConnectionState.Disconnected) setTiles([]);
+    };
 
     room.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
     room.on(RoomEvent.TrackUnsubscribed, handleTrackUnsubscribed);
@@ -161,21 +165,30 @@ export function LiveKitCallRoom() {
       const data = (await response.json()) as { token?: string; url?: string; error?: string; hint?: string };
       if (!response.ok || !data.token || !data.url) throw new Error(data.error ?? data.hint ?? "Could not join LiveKit room.");
 
+      if (room.state !== ConnectionState.Disconnected) await room.disconnect();
       await room.connect(data.url, data.token, { autoSubscribe: true });
-      await room.localParticipant.setMicrophoneEnabled(true, {
+      setConnected(true);
+      setConnectionState(ConnectionState.Connected);
+
+      const microphoneEnabled = await room.localParticipant.setMicrophoneEnabled(true, {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true
-      });
-      await room.localParticipant.setCameraEnabled(true, {
+      }).then(
+        () => true,
+        () => false
+      );
+      const cameraEnabled = await room.localParticipant.setCameraEnabled(true, {
         resolution: { width: 960, height: 540 },
         facingMode: "user",
         frameRate: 20
-      });
+      }).then(
+        () => true,
+        () => false
+      );
       await room.startAudio().catch(() => undefined);
-      setAudioEnabled(true);
-      setVideoEnabled(true);
-      setConnected(true);
+      setAudioEnabled(microphoneEnabled);
+      setVideoEnabled(cameraEnabled);
       setTiles([...collectTiles(room)]);
       setNotice("LiveKit call បានភ្ជាប់រួច។ អ្នកចូលរួមអាចមើលមុខគ្នា និងនិយាយគ្នាបានច្បាស់ជាង WebRTC MVP។");
     } catch (joinError) {
