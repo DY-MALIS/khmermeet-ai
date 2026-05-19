@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, LogOut, Mic, MicOff, Phone, RefreshCcw, Video, VideoOff, Volume2 } from "lucide-react";
+import { Bot, Copy, FileText, LogOut, Mic, MicOff, Phone, RefreshCcw, Save, Square, Video, VideoOff, Volume2 } from "lucide-react";
 import {
   ConnectionState,
   Room,
@@ -24,6 +24,19 @@ type Tile = {
   kind: Track.Kind;
   track: MediaTrack;
   isLocal: boolean;
+};
+
+type SpeakerRecorderState = {
+  speakerName: string;
+  recorder: MediaRecorder;
+  chunks: Blob[];
+  mimeType: string;
+};
+
+type SpeakerRecording = {
+  speakerName: string;
+  blob: Blob;
+  mimeType: string;
 };
 
 function createRoomId() {
@@ -74,6 +87,19 @@ export function LiveKitCallRoom() {
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [agentRecording, setAgentRecording] = useState(false);
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [savedMeetingId, setSavedMeetingId] = useState("");
+  const agentRecordingRef = useRef(false);
+  const callRecorderRef = useRef<MediaRecorder | null>(null);
+  const callChunksRef = useRef<Blob[]>([]);
+  const callRecordStartedAtRef = useRef(0);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const recordingSourceNodesRef = useRef<MediaStreamAudioSourceNode[]>([]);
+  const recordingTrackIdsRef = useRef<Set<string>>(new Set());
+  const speakerRecordersRef = useRef<Map<string, SpeakerRecorderState>>(new Map());
+  const speakerRecordingsReadyRef = useRef<Promise<SpeakerRecording[]> | null>(null);
   const room = useMemo(
     () =>
       new Room({
@@ -94,7 +120,10 @@ export function LiveKitCallRoom() {
     if (!params.get("room")) window.history.replaceState(null, "", `/meetings/call?room=${roomParam}`);
 
     const syncTiles = () => setTiles([...collectTiles(room)]);
-    const handleTrackSubscribed = () => syncTiles();
+    const handleTrackSubscribed = () => {
+      syncTiles();
+      if (agentRecordingRef.current) startRecordingCurrentAudioTracks();
+    };
     const handleTrackUnsubscribed = () => syncTiles();
     const handleParticipantChange = () => syncTiles();
     const handleStateChanged = (state: ConnectionState) => setConnectionState(state);
@@ -112,6 +141,7 @@ export function LiveKitCallRoom() {
     });
 
     return () => {
+      stopMixedRecordingAudio();
       room.disconnect();
       room.removeAllListeners();
     };
@@ -156,6 +186,7 @@ export function LiveKitCallRoom() {
   }
 
   async function leaveRoom() {
+    if (agentRecordingRef.current) stopAgentRecording();
     await room.disconnect();
     setConnected(false);
     setTiles([]);
@@ -184,6 +215,196 @@ export function LiveKitCallRoom() {
 
   async function copyInvite() {
     await navigator.clipboard.writeText(`${window.location.origin}/meetings/call?room=${roomName}`);
+  }
+
+  function getRecorderMimeType() {
+    const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+    return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+  }
+
+  function getRecorderOptions(mimeType: string, audioBitsPerSecond = 32000) {
+    return mimeType ? { mimeType, audioBitsPerSecond } : { audioBitsPerSecond };
+  }
+
+  function collectNamedAudioTracks() {
+    const tracks = new Map<string, { track: MediaStreamTrack; speakerName: string }>();
+    room.localParticipant.trackPublications.forEach((publication) => {
+      const track = publication.track as MediaTrack | undefined;
+      if (publication.kind === Track.Kind.Audio && track?.mediaStreamTrack.readyState === "live") {
+        tracks.set(track.mediaStreamTrack.id, { track: track.mediaStreamTrack, speakerName: displayName || "You" });
+      }
+    });
+    room.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((publication) => {
+        const track = publication.track as MediaTrack | undefined;
+        if (publication.kind === Track.Kind.Audio && track?.mediaStreamTrack.readyState === "live") {
+          tracks.set(track.mediaStreamTrack.id, { track: track.mediaStreamTrack, speakerName: participant.name || participant.identity });
+        }
+      });
+    });
+    return [...tracks.values()];
+  }
+
+  function stopMixedRecordingAudio() {
+    recordingDestinationRef.current = null;
+    recordingSourceNodesRef.current = [];
+    recordingTrackIdsRef.current.clear();
+    void recordingAudioContextRef.current?.close();
+    recordingAudioContextRef.current = null;
+  }
+
+  function addTrackToMixedRecording(track: MediaStreamTrack) {
+    const context = recordingAudioContextRef.current;
+    const destination = recordingDestinationRef.current;
+    if (!context || !destination || track.kind !== "audio" || track.readyState !== "live" || recordingTrackIdsRef.current.has(track.id)) return;
+
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const gain = context.createGain();
+    gain.gain.value = track.enabled ? 1 : 0;
+    source.connect(gain).connect(destination);
+    recordingSourceNodesRef.current.push(source);
+    recordingTrackIdsRef.current.add(track.id);
+  }
+
+  function startSpeakerRecorderForTrack(track: MediaStreamTrack, speakerName: string) {
+    if (!("MediaRecorder" in window) || track.kind !== "audio" || track.readyState !== "live") return;
+    if (speakerRecordersRef.current.has(track.id)) return;
+
+    const mimeType = getRecorderMimeType();
+    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 24000));
+    const state: SpeakerRecorderState = { speakerName, recorder, chunks: [], mimeType: recorder.mimeType || mimeType || "audio/webm" };
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) state.chunks.push(event.data);
+    };
+    recorder.start(1000);
+    speakerRecordersRef.current.set(track.id, state);
+  }
+
+  function startRecordingCurrentAudioTracks() {
+    collectNamedAudioTracks().forEach(({ track, speakerName }) => {
+      addTrackToMixedRecording(track);
+      startSpeakerRecorderForTrack(track, speakerName);
+    });
+  }
+
+  function stopSpeakerRecorders() {
+    const states = [...speakerRecordersRef.current.values()];
+    if (!states.length) return Promise.resolve([] as SpeakerRecording[]);
+    return Promise.all(
+      states.map(
+        (state) =>
+          new Promise<SpeakerRecording>((resolve) => {
+            const finish = () => resolve({ speakerName: state.speakerName, blob: new Blob(state.chunks, { type: state.mimeType }), mimeType: state.mimeType });
+            if (state.recorder.state === "inactive") {
+              finish();
+              return;
+            }
+            state.recorder.onstop = finish;
+            state.recorder.stop();
+          })
+      )
+    ).then((recordings) => {
+      speakerRecordersRef.current.clear();
+      return recordings.filter((recording) => recording.blob.size > 0);
+    });
+  }
+
+  async function startAgentRecording() {
+    setError("");
+    setNotice("");
+    setSavedMeetingId("");
+    if (!connected) {
+      setError("សូមចូល HD Video Call មុនពេលចាប់ផ្តើម Agent។");
+      return;
+    }
+    if (!("MediaRecorder" in window)) {
+      setError("Browser នេះមិនគាំទ្រ audio recording ទេ។");
+      return;
+    }
+
+    const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) {
+      setError("Browser នេះមិនគាំទ្រ audio mixer ទេ។");
+      return;
+    }
+
+    const context = new AudioContextConstructor({ sampleRate: 48000 });
+    await context.resume();
+    const destination = context.createMediaStreamDestination();
+    recordingAudioContextRef.current = context;
+    recordingDestinationRef.current = destination;
+    agentRecordingRef.current = true;
+    speakerRecordingsReadyRef.current = null;
+    startRecordingCurrentAudioTracks();
+
+    if (!destination.stream.getAudioTracks().length) {
+      agentRecordingRef.current = false;
+      stopMixedRecordingAudio();
+      setError("មិនទាន់មាន audio track សម្រាប់ថតទេ។ សូមពិនិត្យ microphone និងអ្នកចូលរួម។");
+      return;
+    }
+
+    const mimeType = getRecorderMimeType();
+    const recorder = new MediaRecorder(destination.stream, getRecorderOptions(mimeType));
+    callChunksRef.current = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) callChunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => void saveAgentRecording(recorder.mimeType || "audio/webm");
+    callRecorderRef.current = recorder;
+    callRecordStartedAtRef.current = Date.now();
+    recorder.start(1000);
+    setAgentRecording(true);
+    setNotice("Meeting Agent កំពុងថតសំឡេងពីអ្នកចូលរួមទាំងអស់ក្នុង HD call។ ចុច Stop & Save ពេលប្រជុំចប់។");
+  }
+
+  function stopAgentRecording() {
+    agentRecordingRef.current = false;
+    speakerRecordingsReadyRef.current = stopSpeakerRecorders();
+    setAgentRecording(false);
+    if (callRecorderRef.current && callRecorderRef.current.state !== "inactive") callRecorderRef.current.stop();
+  }
+
+  async function saveAgentRecording(mimeType: string) {
+    setAgentSaving(true);
+    setNotice("Agent កំពុង upload audio និងរក្សា meeting record...");
+    try {
+      const speakerRecordings = speakerRecordingsReadyRef.current ? await speakerRecordingsReadyRef.current : await stopSpeakerRecorders();
+      speakerRecordingsReadyRef.current = null;
+      const blob = new Blob(callChunksRef.current, { type: mimeType });
+      const uploadData = new FormData();
+      uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
+      uploadData.append("speakers", JSON.stringify([...new Set(collectNamedAudioTracks().map((track) => track.speakerName))]));
+      uploadData.append("speakerAudioNames", JSON.stringify(speakerRecordings.map((recording) => recording.speakerName)));
+      speakerRecordings.forEach((recording, index) => {
+        uploadData.append("speakerAudio", recording.blob, `speaker-${index + 1}.${recording.mimeType.includes("mp4") ? "m4a" : "webm"}`);
+      });
+      const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
+      const uploadJson = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
+
+      const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript.trim() : "";
+      const duration = Math.max(1, Math.round((Date.now() - callRecordStartedAtRef.current) / 1000));
+      const saveResponse = await fetch("/api/call-recordings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `HD video call ${roomName}`,
+          audioUrl: uploadJson.audioUrl,
+          transcript,
+          duration
+        })
+      });
+      const saveJson = await saveResponse.json();
+      if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed");
+      setSavedMeetingId(saveJson.meetingId);
+      setNotice(transcript ? "Agent បានរក្សា audio/transcript ហើយ។ Summary, tasks, history នឹងទាញទិន្នន័យនេះ។" : "Agent បានរក្សា audio រួច។ បើ transcript ទទេ សូមពិនិត្យ OPENAI_API_KEY។");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save meeting recording.");
+    } finally {
+      stopMixedRecordingAudio();
+      setAgentSaving(false);
+    }
   }
 
   return (
@@ -244,6 +465,46 @@ export function LiveKitCallRoom() {
       <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
         HD mode ប្រើ LiveKit SFU សម្រាប់ video/audio ច្បាស់ និងអ្នកចូលរួម 10-20 នាក់។ Status: {connectionState}
       </div>
+
+      <section className="kh-card p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold text-leaf">
+              <Bot className="h-4 w-4" />
+              Meeting Agent
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងបញ្ជូនទៅប្រព័ន្ធទាំងអស់</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Agent ថតសំឡេងពីអ្នកចូលរួមទាំងអស់ក្នុង HD call រួចបង្កើត transcript, summary, tasks និង history។
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {!agentRecording ? (
+              <button className="kh-button-primary" type="button" onClick={() => void startAgentRecording()} disabled={!connected || agentSaving}>
+                <Mic className="h-4 w-4" />
+                Start Agent
+              </button>
+            ) : (
+              <button className="kh-button-secondary text-red-600" type="button" onClick={stopAgentRecording}>
+                <Square className="h-4 w-4" />
+                Stop & Save
+              </button>
+            )}
+            {savedMeetingId ? (
+              <a className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>
+                <FileText className="h-4 w-4" />
+                Open record
+              </a>
+            ) : null}
+          </div>
+        </div>
+        {agentSaving ? (
+          <p className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+            <Save className="h-4 w-4" />
+            កំពុងរក្សាទុក...
+          </p>
+        ) : null}
+      </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {tiles.filter((tile) => tile.kind === Track.Kind.Video).map((tile) => (
