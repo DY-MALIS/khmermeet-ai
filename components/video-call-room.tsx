@@ -23,6 +23,19 @@ type Participant = {
   videoEnabled: boolean;
 };
 
+type SpeakerRecorderState = {
+  speakerName: string;
+  recorder: MediaRecorder;
+  chunks: Blob[];
+  mimeType: string;
+};
+
+type SpeakerRecording = {
+  speakerName: string;
+  blob: Blob;
+  mimeType: string;
+};
+
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
   0: { transcript: string; confidence?: number };
@@ -277,9 +290,12 @@ export function VideoCallRoom() {
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef<number>(0);
+  const speakerRecordersRef = useRef<Map<string, SpeakerRecorderState>>(new Map());
+  const speakerRecordingsReadyRef = useRef<Promise<SpeakerRecording[]> | null>(null);
   const agentTranscriptRef = useRef("");
   const interimTranscriptRef = useRef("");
   const transcriptSnapshotRef = useRef("");
+  const agentRecordingRef = useRef(false);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const mixedAudioStreamRef = useRef<MediaStream | null>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
@@ -309,6 +325,10 @@ export function VideoCallRoom() {
   useEffect(() => {
     interimTranscriptRef.current = interimTranscript;
   }, [interimTranscript]);
+
+  useEffect(() => {
+    agentRecordingRef.current = agentRecording;
+  }, [agentRecording]);
 
   function getCurrentAgentTranscript() {
     return `${agentTranscriptRef.current}\n${interimTranscriptRef.current}`.trim();
@@ -540,7 +560,12 @@ export function VideoCallRoom() {
     });
 
     peer.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => remoteStream.addTrack(track));
+      event.streams[0]?.getTracks().forEach((track) => {
+        remoteStream.addTrack(track);
+        if (track.kind === "audio" && agentRecordingRef.current) {
+          startSpeakerRecorderForTrack(track, namesRef.current.get(peerId) ?? peerName);
+        }
+      });
       updateParticipant({
         id: peerId,
         name: namesRef.current.get(peerId) ?? peerName,
@@ -743,21 +768,77 @@ export function VideoCallRoom() {
     recordingAudioContextRef.current = null;
   }
 
-  function collectCallAudioTracks() {
-    const tracks = new Map<string, MediaStreamTrack>();
+  function collectNamedCallAudioTracks() {
+    const tracks = new Map<string, { track: MediaStreamTrack; speakerName: string }>();
     localStreamRef.current
       ?.getAudioTracks()
       .filter((track) => track.readyState === "live")
-      .forEach((track) => tracks.set(track.id, track));
+      .forEach((track) => tracks.set(track.id, { track, speakerName: displayName || "Local User" }));
     participants.forEach((participant) => {
-      if (!participant.isLocal) {
-        participant.stream
-          ?.getAudioTracks()
-          .filter((track) => track.readyState === "live")
-          .forEach((track) => tracks.set(track.id, track));
-      }
+      participant.stream
+        ?.getAudioTracks()
+        .filter((track) => track.readyState === "live")
+        .forEach((track) => tracks.set(track.id, { track, speakerName: participant.name || "Speaker" }));
     });
     return [...tracks.values()];
+  }
+
+  function collectCallAudioTracks() {
+    return collectNamedCallAudioTracks().map((item) => item.track);
+  }
+
+  function startSpeakerRecorderForTrack(track: MediaStreamTrack, speakerName: string) {
+    if (!("MediaRecorder" in window) || track.kind !== "audio" || track.readyState !== "live") return;
+    if (speakerRecordersRef.current.has(track.id)) return;
+
+    const mimeType = getRecorderMimeType();
+    const recorder = new MediaRecorder(new MediaStream([track]), mimeType ? { mimeType } : undefined);
+    const state: SpeakerRecorderState = {
+      speakerName: speakerName || "Speaker",
+      recorder,
+      chunks: [],
+      mimeType: recorder.mimeType || mimeType || "audio/webm"
+    };
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) state.chunks.push(event.data);
+    };
+    recorder.start(1000);
+    speakerRecordersRef.current.set(track.id, state);
+  }
+
+  function startSpeakerRecordersForCurrentTracks() {
+    collectNamedCallAudioTracks().forEach(({ track, speakerName }) => startSpeakerRecorderForTrack(track, speakerName));
+  }
+
+  function stopSpeakerRecorders() {
+    const states = [...speakerRecordersRef.current.values()];
+    if (!states.length) return Promise.resolve([] as SpeakerRecording[]);
+
+    return Promise.all(
+      states.map(
+        (state) =>
+          new Promise<SpeakerRecording>((resolve) => {
+            const finish = () => {
+              resolve({
+                speakerName: state.speakerName,
+                blob: new Blob(state.chunks, { type: state.mimeType }),
+                mimeType: state.mimeType
+              });
+            };
+
+            if (state.recorder.state === "inactive") {
+              finish();
+              return;
+            }
+
+            state.recorder.onstop = finish;
+            state.recorder.stop();
+          })
+      )
+    ).then((recordings) => {
+      speakerRecordersRef.current.clear();
+      return recordings.filter((recording) => recording.blob.size > 0);
+    });
   }
 
   async function getCallAudioStream() {
@@ -886,6 +967,8 @@ export function VideoCallRoom() {
     callRecorderRef.current = recorder;
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
+    speakerRecordingsReadyRef.current = null;
+    startSpeakerRecordersForCurrentTracks();
 
     shouldRestartSpeechRef.current = true;
     setListeningStatus("starting");
@@ -911,6 +994,7 @@ export function VideoCallRoom() {
 
   function stopAgentRecording() {
     transcriptSnapshotRef.current = getCurrentAgentTranscript();
+    speakerRecordingsReadyRef.current = stopSpeakerRecorders();
     shouldRestartSpeechRef.current = false;
     if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
     speechRestartTimerRef.current = null;
@@ -919,7 +1003,9 @@ export function VideoCallRoom() {
     setInterimTranscript("");
     setListeningStatus("stopped");
     setAgentRecording(false);
-    callRecorderRef.current?.stop();
+    if (callRecorderRef.current && callRecorderRef.current.state !== "inactive") {
+      callRecorderRef.current.stop();
+    }
   }
 
   async function saveAgentRecording(mimeType: string) {
@@ -927,12 +1013,22 @@ export function VideoCallRoom() {
     setAgentNotice("Agent កំពុង upload audio និងរក្សា meeting record...");
     try {
       const blob = new Blob(callChunksRef.current, { type: mimeType });
+      const speakerRecordings = speakerRecordingsReadyRef.current ? await speakerRecordingsReadyRef.current : await stopSpeakerRecorders();
+      speakerRecordingsReadyRef.current = null;
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "call.m4a" : "call.webm");
       uploadData.append(
         "speakers",
         JSON.stringify([...new Set([displayName, ...participants.map((participant) => participant.name)].filter(Boolean))])
       );
+      uploadData.append("speakerAudioNames", JSON.stringify(speakerRecordings.map((recording) => recording.speakerName)));
+      speakerRecordings.forEach((recording, index) => {
+        uploadData.append(
+          "speakerAudio",
+          recording.blob,
+          `speaker-${index + 1}.${recording.mimeType.includes("mp4") ? "m4a" : "webm"}`
+        );
+      });
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
