@@ -226,6 +226,7 @@ function VideoTile({ participant }: { participant: Participant }) {
   useEffect(() => {
     if (ref.current && participant.stream) {
       ref.current.srcObject = participant.stream;
+      void ref.current.play().catch(() => undefined);
     }
   }, [participant.stream]);
 
@@ -237,6 +238,7 @@ function VideoTile({ participant }: { participant: Participant }) {
           autoPlay
           playsInline
           muted={participant.isLocal}
+          onLoadedMetadata={(event) => void event.currentTarget.play().catch(() => undefined)}
           className={cn(
             "h-full w-full object-contain bg-slate-950",
             !participant.videoEnabled && "opacity-0"
@@ -296,10 +298,14 @@ export function VideoCallRoom() {
   const transcriptSnapshotRef = useRef("");
   const agentRecordingRef = useRef(false);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const recordingSourceNodesRef = useRef<MediaStreamAudioSourceNode[]>([]);
+  const recordingTrackIdsRef = useRef<Set<string>>(new Set());
   const mixedAudioStreamRef = useRef<MediaStream | null>(null);
   const speechRef = useRef<SpeechRecognitionLike | null>(null);
   const shouldRestartSpeechRef = useRef(false);
   const speechRestartTimerRef = useRef<number | null>(null);
+  const speechWatchdogTimerRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioAnalyserRef = useRef<AnalyserNode | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
@@ -562,6 +568,7 @@ export function VideoCallRoom() {
       event.streams[0]?.getTracks().forEach((track) => {
         remoteStream.addTrack(track);
         if (track.kind === "audio" && agentRecordingRef.current) {
+          addTrackToMixedRecording(track);
           startSpeakerRecorderForTrack(track, namesRef.current.get(peerId) ?? peerName);
         }
       });
@@ -723,8 +730,7 @@ export function VideoCallRoom() {
       stopAgentRecording();
     }
     shouldRestartSpeechRef.current = false;
-    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
-    speechRestartTimerRef.current = null;
+    clearSpeechTimers();
     try {
       speechRef.current?.stop();
     } catch {
@@ -760,9 +766,16 @@ export function VideoCallRoom() {
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
   }
 
+  function getRecorderOptions(mimeType: string, audioBitsPerSecond = 32000) {
+    return mimeType ? { mimeType, audioBitsPerSecond } : { audioBitsPerSecond };
+  }
+
   function stopMixedRecordingAudio() {
     mixedAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
     mixedAudioStreamRef.current = null;
+    recordingDestinationRef.current = null;
+    recordingSourceNodesRef.current = [];
+    recordingTrackIdsRef.current.clear();
     void recordingAudioContextRef.current?.close();
     recordingAudioContextRef.current = null;
   }
@@ -791,7 +804,7 @@ export function VideoCallRoom() {
     if (speakerRecordersRef.current.has(track.id)) return;
 
     const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(new MediaStream([track]), mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 24000));
     const state: SpeakerRecorderState = {
       speakerName: speakerName || "Speaker",
       recorder,
@@ -844,7 +857,6 @@ export function VideoCallRoom() {
     stopMixedRecordingAudio();
     const tracks = collectCallAudioTracks();
     if (!tracks.length) return new MediaStream();
-    if (tracks.length === 1) return new MediaStream([tracks[0]]);
 
     const AudioContextConstructor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextConstructor) return new MediaStream(tracks);
@@ -853,16 +865,62 @@ export function VideoCallRoom() {
     await context.resume();
     const destination = context.createMediaStreamDestination();
 
-    tracks.forEach((track) => {
-      const source = context.createMediaStreamSource(new MediaStream([track]));
-      const gain = context.createGain();
-      gain.gain.value = track.enabled ? 1 : 0;
-      source.connect(gain).connect(destination);
-    });
-
     recordingAudioContextRef.current = context;
+    recordingDestinationRef.current = destination;
     mixedAudioStreamRef.current = destination.stream;
+    tracks.forEach((track) => addTrackToMixedRecording(track));
     return destination.stream;
+  }
+
+  function addTrackToMixedRecording(track: MediaStreamTrack) {
+    const context = recordingAudioContextRef.current;
+    const destination = recordingDestinationRef.current;
+    if (!context || !destination || track.kind !== "audio" || track.readyState !== "live" || recordingTrackIdsRef.current.has(track.id)) return;
+
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const gain = context.createGain();
+    gain.gain.value = track.enabled ? 1 : 0;
+    source.connect(gain).connect(destination);
+    recordingSourceNodesRef.current.push(source);
+    recordingTrackIdsRef.current.add(track.id);
+  }
+
+  function clearSpeechTimers() {
+    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
+    if (speechWatchdogTimerRef.current) window.clearTimeout(speechWatchdogTimerRef.current);
+    speechRestartTimerRef.current = null;
+    speechWatchdogTimerRef.current = null;
+  }
+
+  function restartSpeechRecognition(delay = 450) {
+    if (!shouldRestartSpeechRef.current) return;
+    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
+    speechRestartTimerRef.current = window.setTimeout(() => {
+      if (!shouldRestartSpeechRef.current) return;
+      setListeningStatus("restarting");
+      try {
+        speechRef.current?.stop();
+      } catch {
+        // The browser may already have stopped the recognizer.
+      }
+      const nextRecognition = createSpeechRecognition();
+      if (!nextRecognition || !shouldRestartSpeechRef.current) return;
+      speechRef.current = nextRecognition;
+      try {
+        nextRecognition.start();
+      } catch {
+        setListeningStatus("waiting_retry");
+      }
+    }, delay);
+  }
+
+  function armSpeechWatchdog(delay = 3500) {
+    if (!shouldRestartSpeechRef.current) return;
+    if (speechWatchdogTimerRef.current) window.clearTimeout(speechWatchdogTimerRef.current);
+    speechWatchdogTimerRef.current = window.setTimeout(() => {
+      if (!shouldRestartSpeechRef.current) return;
+      restartSpeechRecognition(0);
+    }, delay);
   }
 
   function createSpeechRecognition() {
@@ -876,11 +934,21 @@ export function VideoCallRoom() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = speechLanguage;
-    recognition.onaudiostart = () => setListeningStatus("listening");
-    recognition.onaudioend = () => setListeningStatus("audio_paused");
+    recognition.onaudiostart = () => {
+      setListeningStatus("listening");
+      armSpeechWatchdog();
+    };
+    recognition.onaudioend = () => {
+      setListeningStatus("audio_paused");
+      armSpeechWatchdog(1400);
+    };
     recognition.onspeechstart = () => setListeningStatus("speech_detected");
-    recognition.onspeechend = () => setListeningStatus("processing");
+    recognition.onspeechend = () => {
+      setListeningStatus("processing");
+      armSpeechWatchdog(1800);
+    };
     recognition.onresult = (event) => {
+      armSpeechWatchdog();
       let finalText = "";
       let interimText = "";
       let confidenceTotal = 0;
@@ -904,6 +972,7 @@ export function VideoCallRoom() {
       void event;
       setListeningStatus("speech_retry");
       setAgentNotice("Speech-to-text មិនដំណើរការល្អនៅ browser នេះទេ។ Agent នឹងរក្សា audio ហើយអ្នកអាចកែ transcript បន្ថែមបាន។");
+      restartSpeechRecognition(800);
     };
     recognition.onend = () => {
       if (!shouldRestartSpeechRef.current) {
@@ -912,17 +981,7 @@ export function VideoCallRoom() {
       }
       setListeningStatus("restarting");
       setSpeechRestartCount((count) => count + 1);
-      if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
-      speechRestartTimerRef.current = window.setTimeout(() => {
-        const nextRecognition = createSpeechRecognition();
-        if (!nextRecognition || !shouldRestartSpeechRef.current) return;
-        speechRef.current = nextRecognition;
-        try {
-          nextRecognition.start();
-        } catch {
-          setListeningStatus("waiting_retry");
-        }
-      }, 450);
+      restartSpeechRecognition(450);
     };
     return recognition;
   }
@@ -947,14 +1006,16 @@ export function VideoCallRoom() {
       setError("Browser នេះមិនគាំទ្រ MediaRecorder ទេ។");
       return;
     }
+    agentRecordingRef.current = true;
     void resumeMicAudioContext();
     const audioStream = await getCallAudioStream();
     if (!audioStream.getAudioTracks().length) {
+      agentRecordingRef.current = false;
       setError("មិនមាន audio track សម្រាប់ថតទេ។");
       return;
     }
     const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(audioStream, getRecorderOptions(mimeType));
     callChunksRef.current = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) callChunksRef.current.push(event.data);
@@ -978,6 +1039,7 @@ export function VideoCallRoom() {
       speechRef.current = recognition;
       try {
         recognition.start();
+        armSpeechWatchdog();
         setAgentNotice("Agent កំពុងថតសំឡេងប្រជុំជាឯកសារតែមួយ និងសរសេរ transcript ស្វ័យប្រវត្តិ។ សូមនិយាយជិត microphone ហើយកុំបិទ tab ពេលកំពុងថត។");
       } catch {
         setListeningStatus("waiting_retry");
@@ -994,9 +1056,9 @@ export function VideoCallRoom() {
   function stopAgentRecording() {
     transcriptSnapshotRef.current = getCurrentAgentTranscript();
     speakerRecordingsReadyRef.current = stopSpeakerRecorders();
+    agentRecordingRef.current = false;
     shouldRestartSpeechRef.current = false;
-    if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
-    speechRestartTimerRef.current = null;
+    clearSpeechTimers();
     speechRef.current?.stop();
     speechRef.current = null;
     setInterimTranscript("");
