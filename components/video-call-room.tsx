@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Copy, FileText, LogOut, Mic, MicOff, Phone, RefreshCcw, Save, Square, Video, VideoOff } from "lucide-react";
+import { Bot, Copy, FileText, LogOut, Mic, MicOff, Phone, RefreshCcw, Save, Square, Volume2, Video, VideoOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
 import { useDisplayLanguage } from "@/lib/display-language";
@@ -282,6 +282,7 @@ export function VideoCallRoom() {
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [agentNotice, setAgentNotice] = useState("");
   const [error, setError] = useState("");
+  const [speakerUnlocked, setSpeakerUnlocked] = useState(false);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const signalPollRef = useRef<number | null>(null);
   const signalSinceRef = useRef(0);
@@ -412,6 +413,14 @@ export function VideoCallRoom() {
     if (audioContextRef.current?.state === "suspended") {
       await audioContextRef.current.resume();
     }
+  }
+
+  async function unlockRemotePlayback() {
+    await resumeMicAudioContext().catch(() => undefined);
+    const videos = Array.from(document.querySelectorAll("video"));
+    await Promise.all(videos.map((video) => video.play().catch(() => undefined)));
+    setSpeakerUnlocked(true);
+    setAgentNotice("Speaker ត្រូវបានបើកហើយ។ ប្រសិនបើនៅតែមិនលឺ សូមពិនិត្យ volume/device speaker និងឲ្យអ្នកម្ខាងទៀត Unmute microphone។");
   }
 
   async function getMeetingStream() {
@@ -672,6 +681,7 @@ export function VideoCallRoom() {
       localStreamRef.current = stream;
       startMicMonitor(stream);
       await resumeMicAudioContext();
+      await unlockRemotePlayback();
       const hasVideo = stream.getVideoTracks().length > 0;
       setAudioEnabled(true);
       setVideoEnabled(hasVideo);
@@ -1171,6 +1181,10 @@ export function VideoCallRoom() {
                 <Copy className="h-4 w-4" />
                 Copy invite
               </button>
+              <button className={cn("kh-button-secondary", speakerUnlocked && "border-leaf/30 bg-leaf/10 text-leaf")} type="button" onClick={() => void unlockRemotePlayback()}>
+                <Volume2 className="h-4 w-4" />
+                Enable speaker
+              </button>
               <button className="kh-button-secondary" type="button" onClick={toggleAudio}>
                 {audioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
                 {audioEnabled ? "Mute" : "Unmute"}
@@ -1191,7 +1205,7 @@ export function VideoCallRoom() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
 
       <div className="rounded-lg border border-saffron/25 bg-saffron/10 p-4 text-sm text-ink">
-        MVP នេះបាន optimize សម្រាប់ team call ប្រហែល 5-10 នាក់ដោយ video 360p/15fps និង bitrate ទាប។ ប្រសិនបើអ្នកប្រើឆ្លង network ខុសគ្នា សូមដាក់ TURN server ក្នុង Vercel env ដើម្បីឲ្យ video/audio ភ្ជាប់បានរឹងជាងមុន។
+        MVP WebRTC នេះសាកល្បងល្អបំផុតប្រហែល 2-5 នាក់។ សម្រាប់ 10-20 នាក់, សំឡេងលឺច្បាស់, video មើលគ្នាបានរឹង និង transcript ច្បាស់ ត្រូវប្ដូរទៅ SFU ដូចជា LiveKit/Agora/Daily និងដាក់ TURN server។ បើមិនលឺសំឡេង សូមចុច Enable speaker ហើយឲ្យអ្នកម្ខាងទៀត Unmute microphone។
       </div>
 
       <section className="kh-card p-5">
