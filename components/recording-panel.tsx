@@ -4,6 +4,15 @@ import { Mic, Pause, Play, RotateCcw, Save, Square, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react";
 import { createMeeting } from "@/lib/actions";
 
+const clearVoiceAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 48000 },
+  sampleSize: { ideal: 16 }
+};
+
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = Math.floor(seconds % 60).toString().padStart(2, "0");
@@ -53,6 +62,10 @@ export function RecordingPanel() {
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
   }
 
+  function getRecorderOptions(mimeType: string) {
+    return mimeType ? { mimeType, audioBitsPerSecond: 192000 } : { audioBitsPerSecond: 192000 };
+  }
+
   function cleanupRecording() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -78,10 +91,10 @@ export function RecordingPanel() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        audio: clearVoiceAudioConstraints
       });
       const mimeType = getMimeType();
-      const media = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const media = new MediaRecorder(stream, getRecorderOptions(mimeType));
       streamRef.current = stream;
       chunks.current = [];
       media.ondataavailable = (event) => {

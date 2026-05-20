@@ -780,6 +780,15 @@ export function VideoCallRoom() {
     return mimeType ? { mimeType, audioBitsPerSecond } : { audioBitsPerSecond };
   }
 
+  function commitInterimTranscript() {
+    const interim = interimTranscriptRef.current.trim();
+    if (!interim) return;
+    setAgentTranscript((current) => appendSmartTranscript(current, interim));
+    agentTranscriptRef.current = appendSmartTranscript(agentTranscriptRef.current, interim);
+    setInterimTranscript("");
+    interimTranscriptRef.current = "";
+  }
+
   function stopMixedRecordingAudio() {
     mixedAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
     mixedAudioStreamRef.current = null;
@@ -814,7 +823,7 @@ export function VideoCallRoom() {
     if (speakerRecordersRef.current.has(track.id)) return;
 
     const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 96000));
+    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 160000));
     const state: SpeakerRecorderState = {
       speakerName: speakerName || "Speaker",
       recorder,
@@ -889,8 +898,14 @@ export function VideoCallRoom() {
 
     const source = context.createMediaStreamSource(new MediaStream([track]));
     const gain = context.createGain();
-    gain.gain.value = track.enabled ? 1 : 0;
-    source.connect(gain).connect(destination);
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -32;
+    compressor.knee.value = 24;
+    compressor.ratio.value = 6;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+    gain.gain.value = track.enabled ? 1.7 : 0;
+    source.connect(compressor).connect(gain).connect(destination);
     recordingSourceNodesRef.current.push(source);
     recordingTrackIdsRef.current.add(track.id);
   }
@@ -904,6 +919,7 @@ export function VideoCallRoom() {
 
   function restartSpeechRecognition(delay = 450) {
     if (!shouldRestartSpeechRef.current) return;
+    commitInterimTranscript();
     if (speechRestartTimerRef.current) window.clearTimeout(speechRestartTimerRef.current);
     speechRestartTimerRef.current = window.setTimeout(() => {
       if (!shouldRestartSpeechRef.current) return;
@@ -944,6 +960,7 @@ export function VideoCallRoom() {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = speechLanguage;
+    (recognition as SpeechRecognitionLike & { maxAlternatives?: number }).maxAlternatives = 3;
     recognition.onaudiostart = () => {
       setListeningStatus("listening");
       armSpeechWatchdog();
@@ -974,17 +991,25 @@ export function VideoCallRoom() {
         else interimText += transcript;
       }
       if (confidenceCount) setSpeechConfidence(Math.round((confidenceTotal / confidenceCount) * 100));
-      if (finalText) setAgentTranscript((current) => appendSmartTranscript(current, speakerLine(displayName, finalText)));
-      setInterimTranscript(interimText ? speakerLine(displayName, interimText) : "");
+      if (finalText) {
+        const line = speakerLine(displayName, finalText);
+        setAgentTranscript((current) => appendSmartTranscript(current, line));
+        agentTranscriptRef.current = appendSmartTranscript(agentTranscriptRef.current, line);
+      }
+      const nextInterim = interimText ? speakerLine(displayName, interimText) : "";
+      setInterimTranscript(nextInterim);
+      interimTranscriptRef.current = nextInterim;
       setListeningStatus(finalText ? "saved_line" : "listening");
     };
     recognition.onerror = (event) => {
       void event;
+      commitInterimTranscript();
       setListeningStatus("speech_retry");
       setAgentNotice("Speech-to-text មិនដំណើរការល្អនៅ browser នេះទេ។ Agent នឹងរក្សា audio ហើយអ្នកអាចកែ transcript បន្ថែមបាន។");
       restartSpeechRecognition(800);
     };
     recognition.onend = () => {
+      commitInterimTranscript();
       if (!shouldRestartSpeechRef.current) {
         setListeningStatus("stopped");
         return;
@@ -1025,7 +1050,7 @@ export function VideoCallRoom() {
       return;
     }
     const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(audioStream, getRecorderOptions(mimeType));
+    const recorder = new MediaRecorder(audioStream, getRecorderOptions(mimeType, 256000));
     callChunksRef.current = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) callChunksRef.current.push(event.data);

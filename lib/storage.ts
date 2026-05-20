@@ -30,9 +30,12 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
   const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
   const prompt = [
     "This is a Cambodian team meeting with Khmer and English speakers.",
+    "Transcribe the full audio as completely as possible.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, or skip repeated words.",
     "Keep Khmer words in Khmer script and English words in English.",
     "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
+    "If the audio contains pauses, continue transcribing after every pause.",
+    "If a word is unclear, write the most likely word instead of dropping the sentence.",
     "Add punctuation only when it helps readability.",
     knownSpeakers,
     'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript". If unclear, use "Speaker: transcript".'

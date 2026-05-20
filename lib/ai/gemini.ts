@@ -6,6 +6,11 @@ type GeminiPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } };
 
+type GeminiWirePart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } }
+  | { inline_data: { mime_type: string; data: string } };
+
 const taskSchema = z.object({
   tasks: z.array(
     z.object({
@@ -36,6 +41,29 @@ export function transcriptionModel() {
 
 export async function generateGeminiContent(
   parts: GeminiPart[],
+  options: { model?: string; json?: boolean; temperature?: number } = {}
+) {
+  try {
+    return await requestGeminiContent(parts, options);
+  } catch (error) {
+    const hasAudio = parts.some((part) => "inlineData" in part);
+    if (!hasAudio || !(error instanceof Error) || !error.message.includes("Gemini API error 400")) {
+      throw error;
+    }
+
+    return requestGeminiContent(
+      parts.map((part) =>
+        "inlineData" in part
+          ? { inline_data: { mime_type: part.inlineData.mimeType, data: part.inlineData.data } }
+          : part
+      ),
+      options
+    );
+  }
+}
+
+async function requestGeminiContent(
+  parts: GeminiWirePart[],
   options: { model?: string; json?: boolean; temperature?: number } = {}
 ) {
   const apiKey = getGeminiKey();
