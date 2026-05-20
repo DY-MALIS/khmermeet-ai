@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
-import OpenAI from "openai";
 import path from "path";
+import { generateGeminiContent, transcriptionModel } from "@/lib/ai/gemini";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 
@@ -20,15 +20,13 @@ export async function saveLocalAudio(file: File) {
 }
 
 export async function transcribeAudio(audioFile: File, speakerNames: string[] = []) {
-  // TODO: Real-time speech-to-text and Whisper integration.
+  // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
-  if (!process.env.OPENAI_API_KEY) return "";
-  if (audioFile.size > 25 * 1024 * 1024) {
-    throw new Error("Audio is larger than the 25 MB transcription limit.");
+  if (!process.env.GEMINI_API_KEY) return "";
+  if (audioFile.size > 20 * 1024 * 1024) {
+    throw new Error("Audio is larger than the 20 MB Gemini inline transcription limit.");
   }
 
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const primaryModel = process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-transcribe";
   const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
   const prompt = [
     "This is a Cambodian team meeting with Khmer and English speakers.",
@@ -39,20 +37,18 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
     knownSpeakers,
     'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript". If unclear, use "Speaker: transcript".'
   ].filter(Boolean).join(" ");
+  const audioBase64 = Buffer.from(await audioFile.arrayBuffer()).toString("base64");
 
-  try {
-    const result = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: primaryModel,
-      prompt
-    });
-    return result.text?.trim() ?? "";
-  } catch {
-    const fallback = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: "whisper-1",
-      prompt
-    });
-    return fallback.text?.trim() ?? "";
-  }
+  return generateGeminiContent(
+    [
+      { text: prompt },
+      {
+        inlineData: {
+          mimeType: audioFile.type || "audio/webm",
+          data: audioBase64
+        }
+      }
+    ],
+    { model: transcriptionModel(), temperature: 0 }
+  );
 }

@@ -1130,7 +1130,7 @@ export function VideoCallRoom() {
           ? saveJson.aiError
             ? "Agent បានរក្សា audio និង transcript រួច។ AI summary/tasks មានបញ្ហា ប៉ុន្តែទិន្នន័យប្រជុំបានទៅ History និង Transcript ហើយ។"
             : "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
-          : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ OPENAI_API_KEY។"
+          : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ GEMINI_API_KEY។"
       );
     } catch (error) {
       setError(
@@ -1205,7 +1205,7 @@ export function VideoCallRoom() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
 
       <div className="rounded-lg border border-saffron/25 bg-saffron/10 p-4 text-sm text-ink">
-        MVP WebRTC នេះសាកល្បងល្អបំផុតប្រហែល 2-5 នាក់។ សម្រាប់ 10-20 នាក់, សំឡេងលឺច្បាស់, video មើលគ្នាបានរឹង និង transcript ច្បាស់ ត្រូវប្ដូរទៅ SFU ដូចជា LiveKit/Agora/Daily និងដាក់ TURN server។ បើមិនលឺសំឡេង សូមចុច Enable speaker ហើយឲ្យអ្នកម្ខាងទៀត Unmute microphone។
+        MVP WebRTC នេះសាកល្បងល្អបំផុតប្រហែល 2-5 នាក់។ សម្រាប់អ្នកចូលរួមច្រើនជាងនេះ និង network ខុសគ្នា សូមដាក់ TURN server ឲ្យរឹងមាំ ឬប្រើ media server/SFU ផ្សេងនៅពេល production។ បើមិនលឺសំឡេង សូមចុច Enable speaker ហើយឲ្យអ្នកម្ខាងទៀត Unmute microphone។
       </div>
 
       <section className="kh-card p-5">

@@ -1,0 +1,125 @@
+import { z } from "zod";
+import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
+import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
+
+type GeminiPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+const taskSchema = z.object({
+  tasks: z.array(
+    z.object({
+      title: z.string().min(1),
+      description: z.string().nullable().optional(),
+      assigneeName: z.string().nullable().optional(),
+      deadline: z.string().nullable().optional(),
+      priority: z.enum(["low", "medium", "high"]).default("medium"),
+      status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"),
+      sourceText: z.string().nullable().optional()
+    })
+  )
+});
+
+function getGeminiKey() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is missing.");
+  return apiKey;
+}
+
+function textModel() {
+  return process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash";
+}
+
+export function transcriptionModel() {
+  return process.env.GEMINI_TRANSCRIBE_MODEL ?? textModel();
+}
+
+export async function generateGeminiContent(
+  parts: GeminiPart[],
+  options: { model?: string; json?: boolean; temperature?: number } = {}
+) {
+  const apiKey = getGeminiKey();
+  const model = options.model ?? textModel();
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: {
+          temperature: options.temperature ?? (options.json ? 0.1 : 0.2),
+          ...(options.json ? { responseMimeType: "application/json" } : {})
+        }
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Gemini API error ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  return (
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("\n")
+      .trim() ?? ""
+  );
+}
+
+function fallbackSummary(transcript: string) {
+  const short = transcript.slice(0, 500);
+  return `Meeting overview\nកំណត់ត្រានេះត្រូវបានសង្ខេបដោយ local fallback ព្រោះ GEMINI_API_KEY មិនទាន់បានកំណត់។\n\nKey discussion points\n- ${short}\n\nDecisions made\n- សូមពិនិត្យ transcript ដើម្បីបញ្ជាក់សេចក្តីសម្រេច។\n\nProblems mentioned\n- មិនបានរកឃើញបញ្ហាជាក់លាក់ដោយ fallback mode។\n\nNext steps\n- ពិនិត្យ transcript និងបង្កើតកិច្ចការដែលត្រូវអនុវត្ត។`;
+}
+
+function fallbackTasks(transcript: string) {
+  const sentence = transcript
+    .split(/[។.!?\n]/)
+    .map((item) => item.trim())
+    .find(Boolean);
+  if (!sentence) return [];
+  return [
+    {
+      title: "ពិនិត្យ និងអនុវត្តចំណុចពីប្រជុំ",
+      description: sentence,
+      assigneeName: null,
+      deadline: null,
+      priority: "medium" as const,
+      status: "not_started" as const,
+      sourceText: sentence
+    }
+  ];
+}
+
+function parseJsonObject(raw: string) {
+  const cleaned = raw
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  return JSON.parse(cleaned || "{\"tasks\":[]}");
+}
+
+export async function generateMeetingSummary(transcript: string) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!process.env.GEMINI_API_KEY) return fallbackSummary(transcript);
+  return generateGeminiContent([{ text: buildSummaryPrompt(transcript) }], {
+    model: textModel(),
+    temperature: 0.2
+  });
+}
+
+export async function extractMeetingTasks(transcript: string) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!process.env.GEMINI_API_KEY) return fallbackTasks(transcript);
+  const raw = await generateGeminiContent([{ text: buildTaskExtractionPrompt(transcript) }], {
+    model: textModel(),
+    json: true,
+    temperature: 0.1
+  });
+  return taskSchema.parse(parseJsonObject(raw)).tasks;
+}

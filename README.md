@@ -1,14 +1,15 @@
 # KhmerMeet AI
 
-KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, paste transcripts, generate Khmer summaries, extract action tasks, assign owners, set deadlines, and track progress.
+KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, paste or generate transcripts, create Khmer/English summaries, extract action tasks, assign owners, set deadlines, and track progress.
 
 ## Features
 
 - Email/password auth with protected dashboard
 - Browser audio recording with local file storage
-- Manual transcript editing with future speech-to-text adapter
-- OpenAI summary generation in Khmer
-- OpenAI JSON task extraction
+- Browser WebRTC video meetings for local MVP testing
+- Gemini transcription for Khmer and English meeting audio
+- Gemini meeting summaries in Khmer by default
+- Gemini JSON action task extraction
 - Meeting history, meeting detail, task management, settings
 - Responsive SaaS dashboard UI with Khmer-friendly typography
 - Text export for transcript and summary
@@ -16,9 +17,9 @@ KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, 
 ## Tech Stack
 
 - Next.js App Router, TypeScript, Tailwind CSS
-- Local SQLite with Prisma ORM for the MVP, structured so it can move back to PostgreSQL later
+- Prisma ORM with `DATABASE_URL`
 - NextAuth credentials auth
-- OpenAI API
+- Gemini API
 - Local file storage for MVP
 
 ## Setup
@@ -39,12 +40,15 @@ cp .env.example .env
 
 ```env
 DATABASE_URL="file:./dev.db"
-OPENAI_API_KEY="..."
+GEMINI_API_KEY="..."
+GEMINI_TEXT_MODEL=gemini-2.5-flash
+GEMINI_TRANSCRIBE_MODEL=gemini-2.5-flash
+GEMINI_TRANSCRIBE_TIMEOUT_MS=45000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
 ```
 
-4. Create the local SQLite database and seed demo data:
+4. Create the database and seed demo data:
 
 ```bash
 npm run prisma:migrate
@@ -64,9 +68,9 @@ Demo login after seeding:
 
 ## Notes
 
-The MVP stores audio files under `uploads/` and serves them through `/api/uploads/[name]`. The storage adapter is isolated in `lib/storage.ts` so it can later move to S3 or Supabase Storage.
+The MVP stores audio files under `uploads/` locally and serves them through `/api/uploads/[name]`. On Vercel, local uploads are temporary, so production should move this adapter in `lib/storage.ts` to S3 or Supabase Storage.
 
-Video meetings use browser WebRTC with server signaling. The call page is optimized for a small team test of about 5-10 participants by sending lower-bitrate 360p video. For reliable calls across different networks, configure a TURN server in Vercel:
+Video meetings use browser WebRTC with server signaling. For reliable calls across different networks, configure a TURN server in Vercel:
 
 ```env
 NEXT_PUBLIC_STUN_URL="stun:stun.l.google.com:19302"
@@ -75,7 +79,7 @@ NEXT_PUBLIC_TURN_USERNAME="..."
 NEXT_PUBLIC_TURN_CREDENTIAL="..."
 ```
 
-For larger production meetings, move the media layer to an SFU service such as LiveKit, mediasoup, Daily, Twilio, or Agora.
+Gemini powers transcription, summary generation, and task extraction. Gemini is not a media server; video/audio transport is handled by WebRTC.
 
 ## Future Improvements
 

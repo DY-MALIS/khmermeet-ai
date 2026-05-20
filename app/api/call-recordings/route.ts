@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openai";
+import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
 
 export const maxDuration = 60;
 
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
             : message,
         hint:
           isVercel
-            ? "Vercel មិនរក្សា SQLite/local uploads ជាអចិន្ត្រៃយ៍ទេ។ សូមដាក់ production PostgreSQL DATABASE_URL និង OPENAI_API_KEY ក្នុង Vercel Environment Variables។"
+            ? "Vercel មិនរក្សា SQLite/local uploads ជាអចិន្ត្រៃយ៍ទេ។ សូមដាក់ production PostgreSQL DATABASE_URL និង GEMINI_API_KEY ក្នុង Vercel Environment Variables។"
             : undefined
       },
       { status: 500 }

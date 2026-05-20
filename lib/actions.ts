@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openai";
+import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
