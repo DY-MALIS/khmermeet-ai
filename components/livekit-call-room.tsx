@@ -366,7 +366,7 @@ export function LiveKitCallRoom() {
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
   }
 
-  function getRecorderOptions(mimeType: string, audioBitsPerSecond = 32000) {
+  function getRecorderOptions(mimeType: string, audioBitsPerSecond = 128000) {
     return mimeType ? { mimeType, audioBitsPerSecond } : { audioBitsPerSecond };
   }
 
@@ -415,7 +415,7 @@ export function LiveKitCallRoom() {
     if (speakerRecordersRef.current.has(track.id)) return;
 
     const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 24000));
+    const recorder = new MediaRecorder(new MediaStream([track]), getRecorderOptions(mimeType, 96000));
     const state: SpeakerRecorderState = { speakerName, recorder, chunks: [], mimeType: recorder.mimeType || mimeType || "audio/webm" };
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) state.chunks.push(event.data);

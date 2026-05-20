@@ -3,7 +3,7 @@ import { saveLocalAudio, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export const maxDuration = 60;
-const transcriptionTimeoutMs = Number(process.env.OPENAI_TRANSCRIBE_TIMEOUT_MS ?? 18000);
+const transcriptionTimeoutMs = Number(process.env.OPENAI_TRANSCRIBE_TIMEOUT_MS ?? 45000);
 
 export async function POST(request: Request) {
   await requireUser();
