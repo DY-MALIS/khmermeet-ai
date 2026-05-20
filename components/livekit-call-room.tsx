@@ -183,7 +183,9 @@ export function LiveKitCallRoom() {
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantChange);
     room.on(RoomEvent.DataReceived, handleDataReceived);
     room.on(RoomEvent.ConnectionStateChanged, handleStateChanged);
-    room.on(RoomEvent.MediaDevicesError, (mediaError) => setError(mediaError.message));
+    room.on(RoomEvent.MediaDevicesError, () => {
+      setNotice("Audio-only mode: camera or microphone permission/device is missing. You can still join by voice if the microphone is available.");
+    });
     room.on(RoomEvent.AudioPlaybackStatusChanged, (playing: boolean) => {
       if (!playing) setNotice("Browser បាន block speaker។ សូមចុច Enable speaker ដើម្បីឲ្យលឺសំឡេងអ្នកផ្សេង។");
     });
@@ -252,14 +254,30 @@ export function LiveKitCallRoom() {
 
   async function toggleAudio() {
     const next = !audioEnabled;
-    await room.localParticipant.setMicrophoneEnabled(next);
-    setAudioEnabled(next);
+    const ok = await room.localParticipant.setMicrophoneEnabled(next, {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }).then(
+      () => true,
+      () => false
+    );
+    setAudioEnabled(ok ? next : false);
+    if (!ok) setError("Microphone is not available. Please allow microphone permission or connect a microphone.");
   }
 
   async function toggleVideo() {
     const next = !videoEnabled;
-    await room.localParticipant.setCameraEnabled(next);
-    setVideoEnabled(next);
+    const ok = await room.localParticipant.setCameraEnabled(next, {
+      resolution: { width: 960, height: 540 },
+      facingMode: "user",
+      frameRate: 20
+    }).then(
+      () => true,
+      () => false
+    );
+    setVideoEnabled(ok ? next : false);
+    if (!ok) setNotice("No camera found. You are still connected in audio-only mode.");
     setTiles([...collectTiles(room)]);
   }
 
@@ -675,7 +693,18 @@ export function LiveKitCallRoom() {
         {tiles.filter((tile) => tile.kind === Track.Kind.Audio).map((tile) => (
           <TrackTile key={tile.id} tile={tile} />
         ))}
-        {!tiles.some((tile) => tile.kind === Track.Kind.Video) ? (
+        {connected && !tiles.some((tile) => tile.kind === Track.Kind.Video) ? (
+          <div className="kh-card col-span-full grid min-h-72 place-items-center p-8 text-center">
+            <div>
+              <Mic className="mx-auto mb-3 h-10 w-10 text-leaf" />
+              <p className="text-lg font-bold text-ink">Audio-only meeting</p>
+              <p className="mt-2 text-sm text-slate-500">
+                No camera is active on this device. You can still talk, listen, and let Agent record/transcribe the meeting.
+              </p>
+            </div>
+          </div>
+        ) : null}
+        {!connected && !tiles.some((tile) => tile.kind === Track.Kind.Video) ? (
           <div className="kh-card col-span-full grid min-h-72 place-items-center p-8 text-center">
             <div>
               <Video className="mx-auto mb-3 h-10 w-10 text-leaf" />
