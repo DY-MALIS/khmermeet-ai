@@ -39,6 +39,34 @@ type SpeakerRecording = {
   mimeType: string;
 };
 
+type SpeechRecognitionEventResult = {
+  transcript: string;
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<{
+    isFinal: boolean;
+    0: SpeechRecognitionEventResult;
+  }>;
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+};
+
 function createRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -90,7 +118,13 @@ export function LiveKitCallRoom() {
   const [agentRecording, setAgentRecording] = useState(false);
   const [agentSaving, setAgentSaving] = useState(false);
   const [savedMeetingId, setSavedMeetingId] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [liveTranscriptLanguage, setLiveTranscriptLanguage] = useState<"km-KH" | "en-US">("km-KH");
+  const [liveTranscriptSupported, setLiveTranscriptSupported] = useState(true);
   const agentRecordingRef = useRef(false);
+  const liveTranscriptRef = useRef("");
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef(0);
@@ -126,6 +160,15 @@ export function LiveKitCallRoom() {
     };
     const handleTrackUnsubscribed = () => syncTiles();
     const handleParticipantChange = () => syncTiles();
+    const handleDataReceived = (payload: Uint8Array, participant?: { name?: string; identity?: string }, _kind?: unknown, topic?: string) => {
+      if (topic !== "khmermeet-transcript") return;
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload)) as { speaker?: string; text?: string };
+        if (data.text) appendLiveTranscriptLine(data.speaker || participant?.name || participant?.identity || "Speaker", data.text, false);
+      } catch {
+        // Ignore non-transcript room data.
+      }
+    };
     const handleStateChanged = (state: ConnectionState) => {
       setConnectionState(state);
       setConnected(state === ConnectionState.Connected);
@@ -138,6 +181,7 @@ export function LiveKitCallRoom() {
     room.on(RoomEvent.LocalTrackUnpublished, handleTrackUnsubscribed);
     room.on(RoomEvent.ParticipantConnected, handleParticipantChange);
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantChange);
+    room.on(RoomEvent.DataReceived, handleDataReceived);
     room.on(RoomEvent.ConnectionStateChanged, handleStateChanged);
     room.on(RoomEvent.MediaDevicesError, (mediaError) => setError(mediaError.message));
     room.on(RoomEvent.AudioPlaybackStatusChanged, (playing: boolean) => {
@@ -145,6 +189,7 @@ export function LiveKitCallRoom() {
     });
 
     return () => {
+      stopLiveTranscript();
       stopMixedRecordingAudio();
       room.disconnect();
       room.removeAllListeners();
@@ -228,6 +273,74 @@ export function LiveKitCallRoom() {
 
   async function copyInvite() {
     await navigator.clipboard.writeText(`${window.location.origin}/meetings/call?room=${roomName}`);
+  }
+
+  function appendLiveTranscriptLine(speakerName: string, text: string, publish = true) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    const cleanSpeaker = speakerName.trim() || "Speaker";
+    const line = `${cleanSpeaker}: ${cleanText}`;
+    liveTranscriptRef.current = [liveTranscriptRef.current, line].filter(Boolean).join("\n");
+    setLiveTranscript(liveTranscriptRef.current);
+    if (publish && room.state === ConnectionState.Connected) {
+      const payload = new TextEncoder().encode(JSON.stringify({ speaker: cleanSpeaker, text: cleanText }));
+      void room.localParticipant.publishData(payload, { reliable: true, topic: "khmermeet-transcript" }).catch(() => undefined);
+    }
+  }
+
+  function stopLiveTranscript() {
+    if (speechRestartTimerRef.current) clearTimeout(speechRestartTimerRef.current);
+    speechRestartTimerRef.current = null;
+    const recognition = speechRecognitionRef.current;
+    speechRecognitionRef.current = null;
+    if (recognition) {
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.onresult = null;
+      try {
+        recognition.stop();
+      } catch {
+        // Some browsers throw if recognition is already stopped.
+      }
+    }
+  }
+
+  function startLiveTranscript() {
+    const SpeechRecognitionConstructor =
+      (window as SpeechRecognitionWindow).SpeechRecognition || (window as SpeechRecognitionWindow).webkitSpeechRecognition;
+    if (!SpeechRecognitionConstructor) {
+      setLiveTranscriptSupported(false);
+      setNotice("Browser នេះមិនគាំទ្រ live transcript preview ទេ។ Agent នឹងបម្លែងពី audio ពេល Stop & Save។");
+      return;
+    }
+
+    stopLiveTranscript();
+    setLiveTranscriptSupported(true);
+    const recognition = new SpeechRecognitionConstructor();
+    speechRecognitionRef.current = recognition;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = liveTranscriptLanguage;
+    recognition.onresult = (event) => {
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const text = result[0]?.transcript ?? "";
+        if (result.isFinal) appendLiveTranscriptLine(displayName || "You", text);
+      }
+    };
+    recognition.onerror = () => {
+      if (!agentRecordingRef.current) return;
+      speechRestartTimerRef.current = setTimeout(startLiveTranscript, 1200);
+    };
+    recognition.onend = () => {
+      if (!agentRecordingRef.current) return;
+      speechRestartTimerRef.current = setTimeout(startLiveTranscript, 700);
+    };
+    try {
+      recognition.start();
+    } catch {
+      speechRestartTimerRef.current = setTimeout(startLiveTranscript, 1000);
+    }
   }
 
   function getRecorderMimeType() {
@@ -326,6 +439,8 @@ export function LiveKitCallRoom() {
     setError("");
     setNotice("");
     setSavedMeetingId("");
+    setLiveTranscript("");
+    liveTranscriptRef.current = "";
     if (!connected) {
       setError("សូមចូល HD Video Call មុនពេលចាប់ផ្តើម Agent។");
       return;
@@ -367,12 +482,14 @@ export function LiveKitCallRoom() {
     callRecorderRef.current = recorder;
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
+    startLiveTranscript();
     setAgentRecording(true);
     setNotice("Meeting Agent កំពុងថតសំឡេងពីអ្នកចូលរួមទាំងអស់ក្នុង HD call។ ចុច Stop & Save ពេលប្រជុំចប់។");
   }
 
   function stopAgentRecording() {
     agentRecordingRef.current = false;
+    stopLiveTranscript();
     speakerRecordingsReadyRef.current = stopSpeakerRecorders();
     setAgentRecording(false);
     if (callRecorderRef.current && callRecorderRef.current.state !== "inactive") callRecorderRef.current.stop();
@@ -396,7 +513,8 @@ export function LiveKitCallRoom() {
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Upload failed");
 
-      const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript.trim() : "";
+      const uploadTranscript = typeof uploadJson.transcript === "string" ? uploadJson.transcript.trim() : "";
+      const transcript = uploadTranscript || liveTranscriptRef.current.trim();
       const duration = Math.max(1, Math.round((Date.now() - callRecordStartedAtRef.current) / 1000));
       const saveResponse = await fetch("/api/call-recordings", {
         method: "POST",
@@ -517,6 +635,37 @@ export function LiveKitCallRoom() {
             កំពុងរក្សាទុក...
           </p>
         ) : null}
+        <div className="mt-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ink">Live transcript</p>
+              <p className="text-xs text-slate-500">Preview បង្ហាញពេល Agent កំពុងថត។ ពេល Stop & Save វានឹងរក្សាទុកជាមួយ meeting record។</p>
+            </div>
+            <select
+              className="kh-input max-w-44"
+              value={liveTranscriptLanguage}
+              onChange={(event) => setLiveTranscriptLanguage(event.target.value as "km-KH" | "en-US")}
+              disabled={agentRecording}
+            >
+              <option value="km-KH">ខ្មែរ</option>
+              <option value="en-US">English</option>
+            </select>
+          </div>
+          {!liveTranscriptSupported ? (
+            <p className="rounded-md bg-saffron/10 p-3 text-sm text-ink">
+              Browser នេះមិនគាំទ្រ live transcript preview ទេ។ សូមប្រើ Chrome/Edge លើ HTTPS ឬអនុញ្ញាត microphone។
+            </p>
+          ) : null}
+          <textarea
+            className="kh-input min-h-36 w-full resize-y"
+            value={liveTranscript}
+            onChange={(event) => {
+              liveTranscriptRef.current = event.target.value;
+              setLiveTranscript(event.target.value);
+            }}
+            placeholder="Live transcript នឹងបង្ហាញនៅទីនេះ ពេលអ្នកចុច Start Agent ហើយនិយាយ..."
+          />
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
