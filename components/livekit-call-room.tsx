@@ -123,8 +123,10 @@ export function LiveKitCallRoom() {
   const [liveTranscriptSupported, setLiveTranscriptSupported] = useState(true);
   const agentRecordingRef = useRef(false);
   const liveTranscriptRef = useRef("");
+  const liveInterimRef = useRef("");
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const directMicStreamRef = useRef<MediaStream | null>(null);
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
   const callRecordStartedAtRef = useRef(0);
@@ -299,6 +301,7 @@ export function LiveKitCallRoom() {
     const cleanSpeaker = speakerName.trim() || "Speaker";
     const line = `${cleanSpeaker}: ${cleanText}`;
     liveTranscriptRef.current = [liveTranscriptRef.current, line].filter(Boolean).join("\n");
+    liveInterimRef.current = "";
     setLiveTranscript(liveTranscriptRef.current);
     if (publish && room.state === ConnectionState.Connected) {
       const payload = new TextEncoder().encode(JSON.stringify({ speaker: cleanSpeaker, text: cleanText }));
@@ -306,7 +309,23 @@ export function LiveKitCallRoom() {
     }
   }
 
+  function showLiveInterim(text: string) {
+    liveInterimRef.current = text.trim();
+    setLiveTranscript(
+      [liveTranscriptRef.current, liveInterimRef.current ? `${displayName || "You"}: ${liveInterimRef.current}` : ""]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+
+  function commitLiveInterim() {
+    const text = liveInterimRef.current.trim();
+    if (!text) return;
+    appendLiveTranscriptLine(displayName || "You", text);
+  }
+
   function stopLiveTranscript() {
+    commitLiveInterim();
     if (speechRestartTimerRef.current) clearTimeout(speechRestartTimerRef.current);
     speechRestartTimerRef.current = null;
     const recognition = speechRecognitionRef.current;
@@ -340,18 +359,23 @@ export function LiveKitCallRoom() {
     recognition.interimResults = true;
     recognition.lang = liveTranscriptLanguage;
     recognition.onresult = (event) => {
+      let interimText = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
         const text = result[0]?.transcript ?? "";
         if (result.isFinal) appendLiveTranscriptLine(displayName || "You", text);
+        else interimText = [interimText, text].filter(Boolean).join(" ");
       }
+      if (interimText) showLiveInterim(interimText);
     };
     recognition.onerror = () => {
       if (!agentRecordingRef.current) return;
+      commitLiveInterim();
       speechRestartTimerRef.current = setTimeout(startLiveTranscript, 1200);
     };
     recognition.onend = () => {
       if (!agentRecordingRef.current) return;
+      commitLiveInterim();
       speechRestartTimerRef.current = setTimeout(startLiveTranscript, 700);
     };
     try {
@@ -390,6 +414,8 @@ export function LiveKitCallRoom() {
   }
 
   function stopMixedRecordingAudio() {
+    directMicStreamRef.current?.getTracks().forEach((track) => track.stop());
+    directMicStreamRef.current = null;
     recordingDestinationRef.current = null;
     recordingSourceNodesRef.current = [];
     recordingTrackIdsRef.current.clear();
@@ -429,6 +455,30 @@ export function LiveKitCallRoom() {
       addTrackToMixedRecording(track);
       startSpeakerRecorderForTrack(track, speakerName);
     });
+  }
+
+  async function startDirectMicrophoneCapture() {
+    if (!navigator.mediaDevices?.getUserMedia || directMicStreamRef.current) return;
+    const hasLocalAudio = collectNamedAudioTracks().some(({ speakerName }) => speakerName === (displayName || "You"));
+    if (hasLocalAudio) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000
+        }
+      });
+      directMicStreamRef.current = stream;
+      stream.getAudioTracks().forEach((track) => {
+        addTrackToMixedRecording(track);
+        startSpeakerRecorderForTrack(track, displayName || "You");
+      });
+    } catch {
+      // If direct capture is unavailable, LiveKit tracks and live transcript still run.
+    }
   }
 
   function stopSpeakerRecorders() {
@@ -482,6 +532,7 @@ export function LiveKitCallRoom() {
     agentRecordingRef.current = true;
     speakerRecordingsReadyRef.current = null;
     startRecordingCurrentAudioTracks();
+    await startDirectMicrophoneCapture();
 
     if (!destination.stream.getAudioTracks().length) {
       agentRecordingRef.current = false;
@@ -507,6 +558,7 @@ export function LiveKitCallRoom() {
 
   function stopAgentRecording() {
     agentRecordingRef.current = false;
+    commitLiveInterim();
     stopLiveTranscript();
     speakerRecordingsReadyRef.current = stopSpeakerRecorders();
     setAgentRecording(false);
@@ -679,6 +731,7 @@ export function LiveKitCallRoom() {
             value={liveTranscript}
             onChange={(event) => {
               liveTranscriptRef.current = event.target.value;
+              liveInterimRef.current = "";
               setLiveTranscript(event.target.value);
             }}
             placeholder="Live transcript នឹងបង្ហាញនៅទីនេះ ពេលអ្នកចុច Start Agent ហើយនិយាយ..."
