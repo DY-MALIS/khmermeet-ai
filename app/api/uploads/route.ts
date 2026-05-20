@@ -3,6 +3,7 @@ import { saveLocalAudio, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export const maxDuration = 60;
+const transcriptionTimeoutMs = Number(process.env.OPENAI_TRANSCRIBE_TIMEOUT_MS ?? 18000);
 
 export async function POST(request: Request) {
   await requireUser();
@@ -21,8 +22,8 @@ export async function POST(request: Request) {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);
     const speakerAudioNamesField = formData.get("speakerAudioNames");
     const speakerAudioNames = typeof speakerAudioNamesField === "string" ? parseSpeakerNames(speakerAudioNamesField) : [];
-    const speakerTranscript = await transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames);
-    const transcript = speakerTranscript || (await transcribeAudio(file, speakerNames));
+    const speakerTranscript = await withTimeout(transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames), transcriptionTimeoutMs);
+    const transcript = speakerTranscript || (await withTimeout(transcribeAudio(file, speakerNames), transcriptionTimeoutMs));
     return NextResponse.json({ audioUrl, transcript });
   } catch (error) {
     return NextResponse.json({
@@ -31,6 +32,15 @@ export async function POST(request: Request) {
       transcriptionError: error instanceof Error ? error.message : "Could not transcribe audio."
     });
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("Transcription timed out, but the audio was uploaded.")), timeoutMs)
+    )
+  ]);
 }
 
 async function transcribeSpeakerAudio(files: File[], names: string[]) {
