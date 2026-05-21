@@ -49,34 +49,47 @@ export async function createMeeting(formData: FormData) {
   const audioUrl = formString(formData, "audioUrl") || null;
   const transcript = formString(formData, "transcript");
   const duration = Number(formData.get("duration") ?? 0);
-  const summary = transcript ? await generateMeetingSummary(transcript) : null;
   const meeting = await prisma.meeting.create({
     data: {
       title,
       audioUrl,
       transcript: transcript || null,
-      summary,
+      summary: null,
       language: transcript ? "km-en" : "km",
-      status: summary ? "summarized" : transcript ? "transcribed" : "recorded",
+      status: transcript ? "transcribed" : "recorded",
       duration: Number.isFinite(duration) ? duration : 0,
       createdById: user.id
     }
   });
   if (transcript) {
-    const tasks = await extractMeetingTasks(transcript);
-    if (tasks.length) {
-      await prisma.task.createMany({
-        data: tasks.map((task) => ({
-          meetingId: meeting.id,
-          title: task.title,
-          description: task.description ?? null,
-          assigneeName: task.assigneeName ?? null,
-          deadline: task.deadline ? new Date(task.deadline) : null,
-          priority: task.priority,
-          status: task.status,
-          sourceText: task.sourceText ?? null
-        }))
+    try {
+      const summary = await generateMeetingSummary(transcript);
+      await prisma.meeting.update({
+        where: { id: meeting.id },
+        data: { summary, status: "summarized" }
       });
+    } catch {
+      // Keep the meeting saved even if Gemini quota/billing is unavailable.
+    }
+
+    try {
+      const tasks = await extractMeetingTasks(transcript);
+      if (tasks.length) {
+        await prisma.task.createMany({
+          data: tasks.map((task) => ({
+            meetingId: meeting.id,
+            title: task.title,
+            description: task.description ?? null,
+            assigneeName: task.assigneeName ?? null,
+            deadline: task.deadline ? new Date(task.deadline) : null,
+            priority: task.priority,
+            status: task.status,
+            sourceText: task.sourceText ?? null
+          }))
+        });
+      }
+    } catch {
+      // Tasks can be generated later from the meeting detail page.
     }
   }
   revalidateMeetingViews(meeting.id);
