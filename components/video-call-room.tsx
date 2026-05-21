@@ -291,10 +291,9 @@ export function VideoCallRoom() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const callRecorderRef = useRef<MediaRecorder | null>(null);
   const callChunksRef = useRef<Blob[]>([]);
-  const liveTranscriptChunksRef = useRef<Blob[]>([]);
-  const liveTranscriptChunkStartedAtRef = useRef<number>(0);
+  const liveTranscriptRecorderRef = useRef<MediaRecorder | null>(null);
+  const liveTranscriptRestartTimerRef = useRef<number | null>(null);
   const liveTranscriptInFlightRef = useRef(false);
-  const liveTranscriptPendingFlushRef = useRef(false);
   const callRecordStartedAtRef = useRef<number>(0);
   const speakerRecordersRef = useRef<Map<string, SpeakerRecorderState>>(new Map());
   const speakerRecordingsReadyRef = useRef<Promise<SpeakerRecording[]> | null>(null);
@@ -798,37 +797,62 @@ export function VideoCallRoom() {
   }
 
   function resetLiveGeminiTranscript() {
-    liveTranscriptChunksRef.current = [];
-    liveTranscriptChunkStartedAtRef.current = Date.now();
+    if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
+    liveTranscriptRestartTimerRef.current = null;
     liveTranscriptInFlightRef.current = false;
-    liveTranscriptPendingFlushRef.current = false;
   }
 
-  function queueLiveGeminiChunk(chunk: Blob, mimeType: string) {
-    if (!agentRecordingRef.current || !chunk.size) return;
-    liveTranscriptChunksRef.current.push(chunk);
-    const elapsed = Date.now() - liveTranscriptChunkStartedAtRef.current;
-    const bytes = liveTranscriptChunksRef.current.reduce((total, item) => total + item.size, 0);
-    if (elapsed >= 3500 || bytes >= 220_000) {
-      void flushLiveGeminiTranscript(mimeType);
+  function stopLiveGeminiRecorder() {
+    if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
+    liveTranscriptRestartTimerRef.current = null;
+    const recorder = liveTranscriptRecorderRef.current;
+    liveTranscriptRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
     }
   }
 
-  async function flushLiveGeminiTranscript(mimeType: string) {
-    if (!liveTranscriptChunksRef.current.length) return;
-    if (liveTranscriptInFlightRef.current) {
-      liveTranscriptPendingFlushRef.current = true;
-      return;
-    }
+  function startLiveGeminiRecorder(stream: MediaStream, mimeType: string) {
+    stopLiveGeminiRecorder();
+    resetLiveGeminiTranscript();
 
-    const chunks = liveTranscriptChunksRef.current;
-    liveTranscriptChunksRef.current = [];
-    liveTranscriptChunkStartedAtRef.current = Date.now();
+    const startCycle = () => {
+      if (!agentRecordingRef.current) return;
+      const tracks = stream.getAudioTracks().filter((track) => track.readyState === "live");
+      if (!tracks.length) return;
+
+      const recorder = new MediaRecorder(new MediaStream(tracks), getRecorderOptions(mimeType, 160000));
+      const chunks: Blob[] = [];
+      const liveMimeType = recorder.mimeType || mimeType || "audio/webm";
+      liveTranscriptRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (chunks.length) {
+          const blob = new Blob(chunks, { type: liveMimeType });
+          void sendLiveGeminiBlob(blob, liveMimeType);
+        }
+        if (agentRecordingRef.current) {
+          liveTranscriptRestartTimerRef.current = window.setTimeout(startCycle, 150);
+        }
+      };
+
+      recorder.start();
+      liveTranscriptRestartTimerRef.current = window.setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 4500);
+    };
+
+    startCycle();
+  }
+
+  async function sendLiveGeminiBlob(blob: Blob, mimeType: string) {
+    if (!blob.size || blob.size < 4000) return;
     liveTranscriptInFlightRef.current = true;
 
     try {
-      const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size < 4000) return;
       const formData = new FormData();
       formData.append("audio", blob, mimeType.includes("mp4") ? "live-chunk.m4a" : "live-chunk.webm");
       formData.append("speakers", JSON.stringify(getParticipantNames()));
@@ -848,10 +872,6 @@ export function VideoCallRoom() {
       setListeningStatus("speech_retry");
     } finally {
       liveTranscriptInFlightRef.current = false;
-      if (liveTranscriptPendingFlushRef.current) {
-        liveTranscriptPendingFlushRef.current = false;
-        void flushLiveGeminiTranscript(mimeType);
-      }
     }
   }
 
@@ -1122,17 +1142,16 @@ export function VideoCallRoom() {
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         callChunksRef.current.push(event.data);
-        queueLiveGeminiChunk(event.data, recorder.mimeType || mimeType || "audio/webm");
       }
     };
     recorder.onstop = () => {
-      void flushLiveGeminiTranscript(recorder.mimeType || mimeType || "audio/webm");
       if (mixedAudioStreamRef.current === audioStream) stopMixedRecordingAudio();
       void saveAgentRecording(recorder.mimeType || "audio/webm");
     };
     callRecorderRef.current = recorder;
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
+    startLiveGeminiRecorder(audioStream, mimeType);
     speakerRecordingsReadyRef.current = null;
     startSpeakerRecordersForCurrentTracks();
 
@@ -1163,6 +1182,7 @@ export function VideoCallRoom() {
     transcriptSnapshotRef.current = getCurrentAgentTranscript();
     speakerRecordingsReadyRef.current = stopSpeakerRecorders();
     agentRecordingRef.current = false;
+    stopLiveGeminiRecorder();
     shouldRestartSpeechRef.current = false;
     clearSpeechTimers();
     speechRef.current?.stop();
