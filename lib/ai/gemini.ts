@@ -62,6 +62,23 @@ export async function generateGeminiContent(
   }
 }
 
+function toGeminiErrorMessage(status: number, detail: string) {
+  const lower = detail.toLowerCase();
+  if (status === 403 && lower.includes("suspended")) {
+    return "Gemini API key ត្រូវបាន suspended។ សូមបង្កើត API key ថ្មី ហើយដាក់ GEMINI_API_KEY ថ្មីក្នុង Vercel។";
+  }
+  if (status === 403) {
+    return "Gemini API permission denied។ សូមពិនិត្យ GEMINI_API_KEY និង API access ក្នុង Google AI Studio។";
+  }
+  if (status === 429 || lower.includes("quota")) {
+    return "Gemini quota បានអស់។ សូមបន្ថែម quota/billing ឬប្ដូរ API key ថ្មី។";
+  }
+  if (status === 400) {
+    return "Gemini មិនអាចអាន audio chunk នេះបាន។ សូមនិយាយម្ដងទៀត ឬពិនិត្យ microphone។";
+  }
+  return `Gemini API error ${status}`;
+}
+
 async function requestGeminiContent(
   parts: GeminiWirePart[],
   options: { model?: string; json?: boolean; temperature?: number } = {}
@@ -85,7 +102,7 @@ async function requestGeminiContent(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Gemini API error ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+    throw new Error(toGeminiErrorMessage(response.status, detail));
   }
 
   const payload = (await response.json()) as {

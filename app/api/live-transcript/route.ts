@@ -19,11 +19,19 @@ export async function POST(request: Request) {
     const transcript = await transcribeAudio(file, speakerNames);
     return NextResponse.json({ transcript });
   } catch (error) {
+    const message = error instanceof Error ? sanitizeError(error.message) : "Could not transcribe live audio.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not transcribe live audio." },
+      { error: message },
       { status: 500 }
     );
   }
+}
+
+function sanitizeError(message: string) {
+  return message
+    .replace(/key=AIza[0-9A-Za-z_-]+/g, "key=[hidden]")
+    .replace(/AIza[0-9A-Za-z_-]+/g, "[hidden-api-key]")
+    .slice(0, 500);
 }
 
 function parseSpeakerNames(value: string) {
