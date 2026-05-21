@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   await requireUser();

@@ -30,6 +30,7 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
   const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
   const prompt = [
     "This is a Cambodian team meeting with Khmer and English speakers.",
+    "This audio may be one live meeting chunk, so it may start or end in the middle of a sentence.",
     "Transcribe the full audio as completely as possible.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, or skip repeated words.",
     "Keep Khmer words in Khmer script and English words in English.",

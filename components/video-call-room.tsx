@@ -294,6 +294,7 @@ export function VideoCallRoom() {
   const liveTranscriptRecorderRef = useRef<MediaRecorder | null>(null);
   const liveTranscriptRestartTimerRef = useRef<number | null>(null);
   const liveTranscriptInFlightRef = useRef(false);
+  const liveTranscriptQueueRef = useRef<Array<{ blob: Blob; mimeType: string }>>([]);
   const callRecordStartedAtRef = useRef<number>(0);
   const speakerRecordersRef = useRef<Map<string, SpeakerRecorderState>>(new Map());
   const speakerRecordingsReadyRef = useRef<Promise<SpeakerRecording[]> | null>(null);
@@ -800,6 +801,7 @@ export function VideoCallRoom() {
     if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
     liveTranscriptRestartTimerRef.current = null;
     liveTranscriptInFlightRef.current = false;
+    liveTranscriptQueueRef.current = [];
   }
 
   function stopLiveGeminiRecorder() {
@@ -832,26 +834,46 @@ export function VideoCallRoom() {
       recorder.onstop = () => {
         if (chunks.length) {
           const blob = new Blob(chunks, { type: liveMimeType });
-          void sendLiveGeminiBlob(blob, liveMimeType);
+          enqueueLiveGeminiBlob(blob, liveMimeType);
         }
         if (agentRecordingRef.current) {
-          liveTranscriptRestartTimerRef.current = window.setTimeout(startCycle, 150);
+          liveTranscriptRestartTimerRef.current = window.setTimeout(startCycle, 100);
         }
       };
 
       recorder.start();
       liveTranscriptRestartTimerRef.current = window.setTimeout(() => {
         if (recorder.state === "recording") recorder.stop();
-      }, 4500);
+      }, 8000);
     };
 
     startCycle();
   }
 
-  async function sendLiveGeminiBlob(blob: Blob, mimeType: string) {
+  function enqueueLiveGeminiBlob(blob: Blob, mimeType: string) {
     if (!blob.size || blob.size < 4000) return;
-    liveTranscriptInFlightRef.current = true;
+    liveTranscriptQueueRef.current.push({ blob, mimeType });
+    void processLiveGeminiQueue();
+  }
 
+  async function processLiveGeminiQueue() {
+    if (liveTranscriptInFlightRef.current) return;
+    const next = liveTranscriptQueueRef.current.shift();
+    if (!next) return;
+
+    liveTranscriptInFlightRef.current = true;
+    setListeningStatus("processing");
+    try {
+      await sendLiveGeminiBlob(next.blob, next.mimeType);
+    } finally {
+      liveTranscriptInFlightRef.current = false;
+      if (liveTranscriptQueueRef.current.length) {
+        void processLiveGeminiQueue();
+      }
+    }
+  }
+
+  async function sendLiveGeminiBlob(blob: Blob, mimeType: string) {
     try {
       const formData = new FormData();
       formData.append("audio", blob, mimeType.includes("mp4") ? "live-chunk.m4a" : "live-chunk.webm");
@@ -870,8 +892,6 @@ export function VideoCallRoom() {
       }
     } catch {
       setListeningStatus("speech_retry");
-    } finally {
-      liveTranscriptInFlightRef.current = false;
     }
   }
 
