@@ -109,7 +109,7 @@ const listeningStatusLabels: Record<DisplayLanguage, Record<ListeningStatusKey, 
     restarting: "Restarting smart listener",
     waiting_retry: "Waiting to retry",
     stopped: "Stopped",
-    unavailable: "Speech-to-text unavailable"
+    unavailable: "Browser preview off"
   }
 };
 
@@ -277,6 +277,8 @@ export function VideoCallRoom() {
   const [listeningStatus, setListeningStatus] = useState<ListeningStatusKey>("idle");
   const [speechConfidence, setSpeechConfidence] = useState<number | null>(null);
   const [speechRestartCount, setSpeechRestartCount] = useState(0);
+  const [liveTranscriptPending, setLiveTranscriptPending] = useState(0);
+  const [liveTranscriptError, setLiveTranscriptError] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [micQuality, setMicQuality] = useState<MicQualityKey>("idle");
   const [savedMeetingId, setSavedMeetingId] = useState("");
@@ -802,6 +804,8 @@ export function VideoCallRoom() {
     liveTranscriptRestartTimerRef.current = null;
     liveTranscriptInFlightRef.current = false;
     liveTranscriptQueueRef.current = [];
+    setLiveTranscriptPending(0);
+    setLiveTranscriptError("");
   }
 
   function stopLiveGeminiRecorder() {
@@ -853,6 +857,7 @@ export function VideoCallRoom() {
   function enqueueLiveGeminiBlob(blob: Blob, mimeType: string) {
     if (!blob.size || blob.size < 4000) return;
     liveTranscriptQueueRef.current.push({ blob, mimeType });
+    setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
     void processLiveGeminiQueue();
   }
 
@@ -860,6 +865,7 @@ export function VideoCallRoom() {
     if (liveTranscriptInFlightRef.current) return;
     const next = liveTranscriptQueueRef.current.shift();
     if (!next) return;
+    setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
 
     liveTranscriptInFlightRef.current = true;
     setListeningStatus("processing");
@@ -867,6 +873,7 @@ export function VideoCallRoom() {
       await sendLiveGeminiBlob(next.blob, next.mimeType);
     } finally {
       liveTranscriptInFlightRef.current = false;
+      setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
       if (liveTranscriptQueueRef.current.length) {
         void processLiveGeminiQueue();
       }
@@ -882,6 +889,7 @@ export function VideoCallRoom() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Live transcript failed");
       const transcript = typeof data.transcript === "string" ? data.transcript.trim() : "";
+      setLiveTranscriptError("");
       if (transcript) {
         setAgentTranscript((current) => {
           const next = appendSmartTranscript(current, transcript);
@@ -890,7 +898,8 @@ export function VideoCallRoom() {
         });
         setListeningStatus("saved_line");
       }
-    } catch {
+    } catch (error) {
+      setLiveTranscriptError(error instanceof Error ? error.message : "Gemini live transcript failed.");
       setListeningStatus("speech_retry");
     }
   }
@@ -1179,6 +1188,8 @@ export function VideoCallRoom() {
     setListeningStatus("starting");
     setSpeechConfidence(null);
     setSpeechRestartCount(0);
+    setLiveTranscriptPending(0);
+    setLiveTranscriptError("");
     const recognition = createSpeechRecognition();
     if (recognition) {
       speechRef.current = recognition;
@@ -1462,8 +1473,18 @@ export function VideoCallRoom() {
                   {displayLanguage === "en" ? "Auto retry" : "ព្យាយាមឡើងវិញ"} {speechRestartCount}
                 </span>
               ) : null}
+              {agentRecording ? (
+                <span className="rounded-full bg-sky/15 px-2.5 py-1 text-sky">
+                  Gemini {liveTranscriptPending ? `queue ${liveTranscriptPending}` : liveTranscriptInFlightRef.current ? "processing" : "ready"}
+                </span>
+              ) : null}
             </div>
           </div>
+          {liveTranscriptError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              Gemini live transcript error: {liveTranscriptError}
+            </div>
+          ) : null}
           <textarea
             className="kh-input min-h-36"
             value={`${agentTranscript}${interimTranscript ? `\n${interimTranscript}` : ""}`}
