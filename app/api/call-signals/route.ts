@@ -33,6 +33,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const roomId = searchParams.get("roomId")?.trim();
   const since = Number(searchParams.get("since") ?? 0);
+  const latestOnly = searchParams.get("latest") === "1";
 
   if (!roomId) {
     return NextResponse.json({ error: "Missing roomId." }, { status: 400 });
@@ -42,6 +43,14 @@ export async function GET(request: Request) {
     await prisma.callSignal.deleteMany({
       where: { createdAt: { lt: new Date(Date.now() - SIGNAL_TTL_DATE_MS) } }
     });
+    if (latestOnly) {
+      const latest = await prisma.callSignal.findFirst({
+        where: { roomId },
+        orderBy: { id: "desc" },
+        select: { id: true }
+      });
+      return NextResponse.json({ nextSince: latest?.id ?? 0, messages: [] });
+    }
     const rows = await prisma.callSignal.findMany({
       where: { roomId, id: { gt: Number.isFinite(since) ? since : 0 } },
       orderBy: { id: "asc" },
@@ -50,10 +59,14 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       nextSince: rows.at(-1)?.id ?? since,
-      messages: rows.map((row) => ({ id: row.id, message: row.message }))
+      messages: rows.map((row) => ({ id: row.id, createdAt: row.createdAt.toISOString(), message: row.message }))
     });
   } catch {
     cleanupRoom(roomId);
+    if (latestOnly) {
+      const latest = getSignalStore().get(roomId)?.at(-1);
+      return NextResponse.json({ nextSince: latest?.id ?? 0, messages: [] });
+    }
     const messages = getSignalStore()
       .get(roomId)
       ?.filter((signal) => signal.id > since) ?? [];

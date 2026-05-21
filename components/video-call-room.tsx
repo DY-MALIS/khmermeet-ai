@@ -288,6 +288,7 @@ export function VideoCallRoom() {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const signalPollRef = useRef<number | null>(null);
   const signalSinceRef = useRef(0);
+  const joinedAtRef = useRef(0);
   const signalFailuresRef = useRef(0);
   const seenSignalsRef = useRef<Set<string>>(new Set());
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -384,6 +385,19 @@ export function VideoCallRoom() {
     signalFailuresRef.current = 0;
   }
 
+  async function initializeSignalCursor(activeRoomId: string) {
+    try {
+      const response = await fetch(`/api/call-signals?roomId=${encodeURIComponent(activeRoomId)}&latest=1`, {
+        cache: "no-store"
+      });
+      if (!response.ok) return;
+      const data = (await response.json()) as { nextSince?: number };
+      signalSinceRef.current = data.nextSince ?? 0;
+    } catch {
+      signalSinceRef.current = 0;
+    }
+  }
+
   function startServerSignalPolling(activeRoomId: string) {
     stopServerSignalPolling();
 
@@ -395,12 +409,13 @@ export function VideoCallRoom() {
         if (!response.ok) throw new Error("Signal polling failed");
         const data = (await response.json()) as {
           nextSince?: number;
-          messages?: Array<{ id: number; message: SignalMessage }>;
+          messages?: Array<{ id: number; createdAt?: string | number; message: SignalMessage }>;
         };
         signalSinceRef.current = data.nextSince ?? signalSinceRef.current;
         signalFailuresRef.current = 0;
         for (const signal of data.messages ?? []) {
           signalSinceRef.current = Math.max(signalSinceRef.current, signal.id);
+          if (getSignalCreatedAtMs(signal.createdAt) < joinedAtRef.current) continue;
           await handleSignal(signal.message);
         }
       } catch {
@@ -413,6 +428,15 @@ export function VideoCallRoom() {
 
     void poll();
     signalPollRef.current = window.setInterval(() => void poll(), 900);
+  }
+
+  function getSignalCreatedAtMs(value: string | number | undefined) {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const parsed = Date.parse(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return Date.now();
   }
 
   async function resumeMicAudioContext() {
@@ -709,6 +733,8 @@ export function VideoCallRoom() {
         };
         channelRef.current = channel;
       }
+      joinedAtRef.current = Date.now();
+      await initializeSignalCursor(roomId);
       startServerSignalPolling(roomId);
       setJoined(true);
       post({ type: "join", roomId, from: selfId, name: displayName });
@@ -827,7 +853,7 @@ export function VideoCallRoom() {
       const tracks = stream.getAudioTracks().filter((track) => track.readyState === "live");
       if (!tracks.length) return;
 
-      const recorder = new MediaRecorder(new MediaStream(tracks), getRecorderOptions(mimeType, 160000));
+      const recorder = new MediaRecorder(new MediaStream(tracks), getRecorderOptions(mimeType, 256000));
       const chunks: Blob[] = [];
       const liveMimeType = recorder.mimeType || mimeType || "audio/webm";
       liveTranscriptRecorderRef.current = recorder;
@@ -848,14 +874,14 @@ export function VideoCallRoom() {
       recorder.start();
       liveTranscriptRestartTimerRef.current = window.setTimeout(() => {
         if (recorder.state === "recording") recorder.stop();
-      }, 8000);
+      }, 12000);
     };
 
     startCycle();
   }
 
   function enqueueLiveGeminiBlob(blob: Blob, mimeType: string) {
-    if (!blob.size || blob.size < 4000) return;
+    if (!blob.size || blob.size < 1200) return;
     liveTranscriptQueueRef.current.push({ blob, mimeType });
     setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
     void processLiveGeminiQueue();
@@ -931,6 +957,14 @@ export function VideoCallRoom() {
 
   function collectCallAudioTracks() {
     return collectNamedCallAudioTracks().map((item) => item.track);
+  }
+
+  function getBestLiveTranscriptStream(mixedStream: MediaStream) {
+    const liveTracks = collectCallAudioTracks().filter((track) => track.readyState === "live");
+    if (liveTracks.length === 1) {
+      return new MediaStream([liveTracks[0]]);
+    }
+    return mixedStream;
   }
 
   function startSpeakerRecorderForTrack(track: MediaStreamTrack, speakerName: string) {
@@ -1159,6 +1193,7 @@ export function VideoCallRoom() {
     agentRecordingRef.current = true;
     void resumeMicAudioContext();
     const audioStream = await getCallAudioStream();
+    const liveAudioStream = getBestLiveTranscriptStream(audioStream);
     if (!audioStream.getAudioTracks().length) {
       agentRecordingRef.current = false;
       setError("មិនមាន audio track សម្រាប់ថតទេ។");
@@ -1180,7 +1215,7 @@ export function VideoCallRoom() {
     callRecorderRef.current = recorder;
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
-    startLiveGeminiRecorder(audioStream, mimeType);
+    startLiveGeminiRecorder(liveAudioStream, mimeType);
     speakerRecordingsReadyRef.current = null;
     startSpeakerRecordersForCurrentTracks();
 
