@@ -115,6 +115,7 @@ export function RecordingPanel() {
           if (response.ok) {
             setAudioUrl(data.audioUrl);
             setTranscript(typeof data.transcript === "string" ? data.transcript : "");
+            setDbUnavailable(false);
           }
           else setError(data.error ?? "មិនអាចរក្សាទុកសំឡេងបានទេ។");
         } catch {
@@ -167,7 +168,7 @@ export function RecordingPanel() {
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          Recording controls can open, but saving a meeting needs the local database. Run Prisma setup first to save records.
+          Database status could not be checked from this browser. You can still record and try saving; the server will confirm when it saves.
         </div>
       ) : null}
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -201,7 +202,7 @@ export function RecordingPanel() {
             <input type="hidden" name="audioUrl" value={audioUrl} />
             <input type="hidden" name="transcript" value={transcript} />
             <input type="hidden" name="duration" value={seconds} />
-            <button className="kh-button-primary" disabled={uploading || !audioUrl || dbUnavailable}>
+            <button className="kh-button-primary" disabled={uploading || !audioUrl}>
               <Save className="h-4 w-4" />
               {uploading ? "កំពុង upload..." : "រក្សាទុកប្រជុំ"}
             </button>
