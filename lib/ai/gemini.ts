@@ -26,7 +26,7 @@ const taskSchema = z.object({
 });
 
 function getGeminiKey() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!apiKey) throw new Error("GEMINI_API_KEY is missing.");
   return apiKey;
 }

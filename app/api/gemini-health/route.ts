@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { generateGeminiContent } from "@/lib/ai/gemini";
 
+export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function GET() {
-  if (!process.env.GEMINI_API_KEY) {
+  const diagnostics = getDiagnostics();
+  if (!diagnostics.hasKey) {
     return NextResponse.json(
       {
         ok: false,
         status: "missing_key",
-        message: "GEMINI_API_KEY is missing in this deployment."
+        message: "GEMINI_API_KEY is missing in this deployment.",
+        diagnostics
       },
       { status: 500 }
     );
@@ -23,6 +27,7 @@ export async function GET() {
       ok: true,
       status: "working",
       message: "Gemini API key is working.",
+      diagnostics,
       sample: text.slice(0, 40)
     });
   } catch (error) {
@@ -30,11 +35,23 @@ export async function GET() {
       {
         ok: false,
         status: "failed",
-        message: error instanceof Error ? sanitizeError(error.message) : "Gemini test failed."
+        message: error instanceof Error ? sanitizeError(error.message) : "Gemini test failed.",
+        diagnostics
       },
       { status: 500 }
     );
   }
+}
+
+function getDiagnostics() {
+  const key = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "") ?? "";
+  return {
+    hasKey: Boolean(key),
+    keyFingerprint: key ? createHash("sha256").update(key).digest("hex").slice(0, 10) : null,
+    keyLength: key.length || 0,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
+    environment: process.env.VERCEL_ENV ?? "local"
+  };
 }
 
 function sanitizeError(message: string) {
