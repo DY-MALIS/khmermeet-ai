@@ -31,12 +31,13 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
   const prompt = [
     "This is a Cambodian team meeting with Khmer and English speakers.",
     "This audio may be one live meeting chunk, so it may start or end in the middle of a sentence.",
+    "For short chunks, return any audible words even if the sentence is incomplete.",
     "Transcribe the full audio as completely as possible.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, or skip repeated words.",
     "Keep Khmer words in Khmer script and English words in English.",
     "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
     "If the audio contains pauses, continue transcribing after every pause.",
-    "If a word is unclear, write the most likely word instead of dropping the sentence.",
+    "If a word is unclear, write the most likely word instead of dropping the sentence. Do not return an empty transcript unless there is truly no speech.",
     "Add punctuation only when it helps readability.",
     knownSpeakers,
     'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript". If unclear, use "Speaker: transcript".'

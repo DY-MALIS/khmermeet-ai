@@ -357,6 +357,14 @@ export function VideoCallRoom() {
     });
   }
 
+  function updateExistingParticipant(next: Partial<Participant> & { id: string }) {
+    setParticipants((current) =>
+      current.map((participant) =>
+        participant.id === next.id ? { ...participant, ...next, stream: next.stream ?? participant.stream } : participant
+      )
+    );
+  }
+
   function markSignalSeen(message: SignalMessage) {
     const key = JSON.stringify(message);
     if (seenSignalsRef.current.has(key)) return false;
@@ -595,13 +603,6 @@ export function VideoCallRoom() {
     });
 
     const remoteStream = new MediaStream();
-    updateParticipant({
-      id: peerId,
-      name: peerName,
-      stream: remoteStream,
-      audioEnabled: true,
-      videoEnabled: true
-    });
 
     peer.ontrack = (event) => {
       event.streams[0]?.getTracks().forEach((track) => {
@@ -682,10 +683,9 @@ export function VideoCallRoom() {
 
     if (message.type === "media") {
       namesRef.current.set(message.from, message.name);
-      updateParticipant({
+      updateExistingParticipant({
         id: message.from,
         name: message.name,
-        stream: participants.find((participant) => participant.id === message.from)?.stream,
         audioEnabled: message.audioEnabled,
         videoEnabled: message.videoEnabled
       });
@@ -874,7 +874,7 @@ export function VideoCallRoom() {
       recorder.start();
       liveTranscriptRestartTimerRef.current = window.setTimeout(() => {
         if (recorder.state === "recording") recorder.stop();
-      }, 12000);
+      }, 6000);
     };
 
     startCycle();
