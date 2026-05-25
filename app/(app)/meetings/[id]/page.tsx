@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { extractTasks, generateSummary, updateTranscript } from "@/lib/actions";
 import { getMeetingById } from "@/lib/actions";
+import { formatMeetingDuration } from "@/lib/time-format";
 
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +17,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <div>
           <p className="text-sm font-semibold text-leaf">ព័ត៌មានប្រជុំ</p>
           <h1 className="text-3xl font-bold text-ink">{meeting.title}</h1>
-          <p className="mt-2 text-sm text-slate-500">{meeting.createdAt.toLocaleString()} · {Math.round(meeting.duration / 60)} នាទី</p>
+          <p className="mt-2 text-sm text-slate-500">{meeting.createdAt.toLocaleString()} · {formatMeetingDuration(meeting.duration)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <ExportButton title={meeting.title} transcript={meeting.transcript} summary={meeting.summary} />

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { deleteMeeting } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
+import { formatMeetingDuration } from "@/lib/time-format";
 import type { Prisma } from "@prisma/client";
 
 type MeetingWithTasks = Prisma.MeetingGetPayload<{ include: { tasks: true } }>;
@@ -55,7 +56,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
                   <ActionButton className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></ActionButton>
                 </form>
               </div>
-              <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {Math.round(meeting.duration / 60)} នាទី</p>
+              <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {formatMeetingDuration(meeting.duration)}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="kh-badge bg-leaf/10 text-leaf">{meeting.status}</span>
                 <span className="kh-badge bg-slate-100 text-slate-600">{meeting.tasks.length} tasks</span>
