@@ -297,6 +297,7 @@ export function VideoCallRoom() {
   const liveTranscriptRecorderRef = useRef<MediaRecorder | null>(null);
   const liveTranscriptRestartTimerRef = useRef<number | null>(null);
   const liveTranscriptInFlightRef = useRef(false);
+  const liveTranscriptBlockedRef = useRef(false);
   const liveTranscriptQueueRef = useRef<Array<{ blob: Blob; mimeType: string }>>([]);
   const callRecordStartedAtRef = useRef<number>(0);
   const speakerRecordersRef = useRef<Map<string, SpeakerRecorderState>>(new Map());
@@ -829,6 +830,7 @@ export function VideoCallRoom() {
     if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
     liveTranscriptRestartTimerRef.current = null;
     liveTranscriptInFlightRef.current = false;
+    liveTranscriptBlockedRef.current = false;
     liveTranscriptQueueRef.current = [];
     setLiveTranscriptPending(0);
     setLiveTranscriptError("");
@@ -849,6 +851,7 @@ export function VideoCallRoom() {
     resetLiveGeminiTranscript();
 
     const startCycle = () => {
+      if (liveTranscriptBlockedRef.current) return;
       if (!agentRecordingRef.current) return;
       const tracks = stream.getAudioTracks().filter((track) => track.readyState === "live");
       if (!tracks.length) return;
@@ -881,6 +884,7 @@ export function VideoCallRoom() {
   }
 
   function enqueueLiveGeminiBlob(blob: Blob, mimeType: string) {
+    if (liveTranscriptBlockedRef.current) return;
     if (!blob.size || blob.size < 1200) return;
     liveTranscriptQueueRef.current.push({ blob, mimeType });
     setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
@@ -888,6 +892,7 @@ export function VideoCallRoom() {
   }
 
   async function processLiveGeminiQueue() {
+    if (liveTranscriptBlockedRef.current) return;
     if (liveTranscriptInFlightRef.current) return;
     const next = liveTranscriptQueueRef.current.shift();
     if (!next) return;
@@ -904,6 +909,11 @@ export function VideoCallRoom() {
         void processLiveGeminiQueue();
       }
     }
+  }
+
+  function isLiveTranscriptBlockedError(message: string) {
+    const lower = message.toLowerCase();
+    return lower.includes("quota") || lower.includes("suspended") || lower.includes("403") || lower.includes("permission_denied");
   }
 
   async function sendLiveGeminiBlob(blob: Blob, mimeType: string) {
@@ -925,7 +935,15 @@ export function VideoCallRoom() {
         setListeningStatus("saved_line");
       }
     } catch (error) {
-      setLiveTranscriptError(error instanceof Error ? error.message : "Gemini live transcript failed.");
+      const message = error instanceof Error ? error.message : "Gemini live transcript failed.";
+      setLiveTranscriptError(message);
+      if (isLiveTranscriptBlockedError(message)) {
+        liveTranscriptBlockedRef.current = true;
+        liveTranscriptQueueRef.current = [];
+        setLiveTranscriptPending(0);
+        stopLiveGeminiRecorder();
+        setAgentNotice("Gemini quota/API key មិនទាន់ដំណើរការ។ Agent នឹងបន្តថត audio ប៉ុន្តែ live transcript ត្រូវការ quota/billing ឬ API key ថ្មីមុន។");
+      }
       setListeningStatus("speech_retry");
     }
   }

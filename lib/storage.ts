@@ -6,6 +6,32 @@ import { prisma } from "@/lib/prisma";
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 const databaseAudioLimit = 12 * 1024 * 1024;
 
+function cleanTranscriptionText(text: string) {
+  const noSpeechPatterns = [
+    /no clear speech detected/i,
+    /there is no discernible speech/i,
+    /no discernible speech/i,
+    /provided audio/i,
+    /cannot transcribe/i,
+    /unable to transcribe/i,
+    /there is no speech/i,
+    /no speech detected/i
+  ];
+
+  const cleaned = text
+    .replace(/^```(?:text)?/i, "")
+    .replace(/```$/i, "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !noSpeechPatterns.some((pattern) => pattern.test(line)))
+    .filter((line) => !/^speaker\s*\d+\s*:\s*$/i.test(line))
+    .join("\n")
+    .trim();
+
+  return noSpeechPatterns.some((pattern) => pattern.test(cleaned)) ? "" : cleaned;
+}
+
 export function getLocalAudioPath(name: string) {
   return path.join(uploadRoot, path.basename(name));
 }
@@ -85,21 +111,25 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
   const prompt = [
     "This is a Cambodian team meeting with Khmer and English speakers. The meeting may switch between Khmer and English at any time.",
     "Detect Khmer and English automatically in the same audio. Do not force everything into one language.",
+    "Do not translate between languages. If a person speaks Khmer, write Khmer script. If a person speaks English, write English. If they mix Khmer and English, keep the mixed language exactly.",
     "This audio may be one live meeting chunk, so it may start or end in the middle of a sentence.",
     "For short chunks, return any audible words even if the sentence is incomplete.",
     "Transcribe the full audio as completely as possible.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, or skip repeated words.",
+    "Return only transcript text. Do not include explanations, analysis, confidence notes, or phrases like 'No clear speech detected'.",
+    "If there is truly no speech, return an empty string.",
+    "Do not invent speakers, names, or dialogue. Only write words actually heard in this audio.",
     "Keep Khmer words in Khmer script and English words in English.",
     "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
     "If the audio contains pauses, continue transcribing after every pause.",
-    "If a word is unclear, write the most likely word instead of dropping the sentence. Do not return an empty transcript unless there is truly no speech.",
+    "If a word is unclear, write the most likely heard word, but never invent a full sentence.",
     "Add punctuation only when it helps readability.",
     knownSpeakers,
     'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript". If unclear, use "Speaker: transcript".'
   ].filter(Boolean).join(" ");
   const audioBase64 = Buffer.from(await audioFile.arrayBuffer()).toString("base64");
 
-  return generateGeminiContent(
+  const transcript = await generateGeminiContent(
     [
       { text: prompt },
       {
@@ -111,4 +141,5 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
     ],
     { model: transcriptionModel(), temperature: 0 }
   );
+  return cleanTranscriptionText(transcript);
 }
