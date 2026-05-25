@@ -27,6 +27,8 @@ export function RecordingPanel() {
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const startedAtRef = useRef(0);
+  const accumulatedMsRef = useRef(0);
   const chunks = useRef<Blob[]>([]);
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
@@ -53,7 +55,12 @@ export function RecordingPanel() {
 
   useEffect(() => {
     if (state !== "recording") return;
-    const timer = setInterval(() => setSeconds((current) => current + 1), 1000);
+    const updateElapsed = () => {
+      const elapsedMs = accumulatedMsRef.current + (startedAtRef.current ? Date.now() - startedAtRef.current : 0);
+      setSeconds(Math.max(1, Math.floor(elapsedMs / 1000)));
+    };
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 250);
     return () => clearInterval(timer);
   }, [state]);
 
@@ -127,6 +134,8 @@ export function RecordingPanel() {
       };
       recorder.current = media;
       media.start(1000);
+      startedAtRef.current = Date.now();
+      accumulatedMsRef.current = 0;
       setSeconds(0);
       setState("recording");
     } catch {
@@ -136,15 +145,22 @@ export function RecordingPanel() {
 
   function pause() {
     recorder.current?.pause();
+    accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
+    startedAtRef.current = 0;
+    setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
     setState("paused");
   }
 
   function resume() {
     recorder.current?.resume();
+    startedAtRef.current = Date.now();
     setState("recording");
   }
 
   function stop() {
+    accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
+    startedAtRef.current = 0;
+    setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
     recorder.current?.stop();
     setState("stopped");
   }
@@ -157,6 +173,8 @@ export function RecordingPanel() {
     setTranscript("");
     setPreviewUrl("");
     setSeconds(0);
+    startedAtRef.current = 0;
+    accumulatedMsRef.current = 0;
     setState("idle");
     setError("");
   }
