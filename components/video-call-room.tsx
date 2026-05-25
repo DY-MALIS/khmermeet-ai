@@ -137,12 +137,12 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleSize: { ideal: 16 }
 };
 
-const targetTeamSize = 10;
+const targetTeamSize = 20;
 const meshVideoConstraints: MediaTrackConstraints = {
   facingMode: "user",
-  width: { ideal: 640, max: 960 },
-  height: { ideal: 360, max: 540 },
-  frameRate: { ideal: 15, max: 20 }
+  width: { ideal: 480, max: 640 },
+  height: { ideal: 270, max: 360 },
+  frameRate: { ideal: 12, max: 15 }
 };
 
 function createRoomId() {
@@ -210,12 +210,12 @@ function tuneSenderForTeamCall(sender: RTCRtpSender, kind: string) {
   const params = sender.getParameters();
   params.encodings = params.encodings?.length ? params.encodings : [{}];
   if (kind === "video") {
-    params.encodings[0].maxBitrate = 350_000;
-    params.encodings[0].maxFramerate = 15;
+    params.encodings[0].maxBitrate = 180_000;
+    params.encodings[0].maxFramerate = 12;
     params.degradationPreference = "maintain-framerate";
   }
   if (kind === "audio") {
-    params.encodings[0].maxBitrate = 40_000;
+    params.encodings[0].maxBitrate = 32_000;
   }
   void sender.setParameters(params).catch(() => undefined);
 }
@@ -1538,16 +1538,16 @@ export function VideoCallRoom() {
         ) : null}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {joined ? (
           <div className="kh-card col-span-full flex flex-col gap-2 p-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
             <span>
               {participants.length}/{targetTeamSize} participants
             </span>
             <span>
-              {participants.length > 4
-                ? "Team mode កំពុងប្រើ video quality ទាប ដើម្បីឲ្យ 5-10 នាក់រត់ស្ថិរជាងមុន។"
-                : "Invite អ្នកចូលរួមបានរហូតដល់ 10 នាក់សម្រាប់ test MVP។"}
+              {participants.length > 8
+                ? "Team mode កំពុងប្រើ video quality ទាប ដើម្បីឲ្យ 10-20 នាក់រត់ស្ថិរជាងមុន។ សម្រាប់ 20 នាក់ពិតៗ គួរប្រើ SFU server។"
+                : "Invite អ្នកចូលរួមបានរហូតដល់ 20 នាក់សម្រាប់ test MVP។"}
             </span>
           </div>
         ) : null}

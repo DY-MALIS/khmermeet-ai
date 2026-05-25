@@ -32,6 +32,15 @@ model Meeting {
   updatedAt   DateTime      @updatedAt
 }
 
+model AudioFile {
+  id        String   @id @default(cuid())
+  filename  String
+  mimeType  String
+  data      Bytes
+  size      Int
+  createdAt DateTime @default(now())
+}
+
 model Task {
   id           String       @id @default(cuid())
   meetingId    String
