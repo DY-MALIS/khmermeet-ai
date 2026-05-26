@@ -21,7 +21,12 @@ const summaryHeadings = [
 ];
 
 function normalizeSummaryHeading(line: string) {
-  return line.replace(/^\d+\.\s*/, "").replace(/^#+\s*/, "").replace(/:$/, "").trim();
+  return line
+    .replace(/\*\*/g, "")
+    .replace(/^\d+\.\s*/, "")
+    .replace(/^#+\s*/, "")
+    .replace(/:$/, "")
+    .trim();
 }
 
 function isSummaryHeading(line: string) {
@@ -47,7 +52,12 @@ function SummaryDisplay({ summary }: { summary: string }) {
       current = { title: "សង្ខេបប្រជុំ", items: [] };
       sections.push(current);
     }
-    current.items.push(line.replace(/^[-•]\s*/, ""));
+    const item = line
+      .replace(/\*\*/g, "")
+      .replace(/^[-•*]\s*/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+    if (item) current.items.push(item);
   });
 
   if (!sections.length) {

@@ -118,10 +118,15 @@ export async function updateTranscript(formData: FormData) {
   const id = formString(formData, "id");
   const transcript = formString(formData, "transcript");
   if (!transcript) throw new Error("Transcript is empty.");
-  await prisma.meeting.update({
-    where: { id, createdById: user.id },
-    data: { transcript, status: "transcribed" }
-  });
+  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  if (!meeting) throw new Error("No meeting found.");
+  await prisma.$transaction([
+    prisma.task.deleteMany({ where: { meetingId: id } }),
+    prisma.meeting.update({
+      where: { id },
+      data: { transcript, summary: null, status: "transcribed" }
+    })
+  ]);
   revalidateMeetingViews(id);
 }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { generateGeminiContent } from "@/lib/ai/gemini";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ answer: fallbackAgentAnswer(command, meeting), updatedSummary: false });
     }
 
+    const regeneratingSummary = shouldRegenerateSummary(command);
     const prompt = [
       "You are KhmerMeet AI Summary Agent for Cambodian teams.",
       "Help the user command, inspect, select, rewrite, or improve a meeting summary.",
@@ -73,19 +75,22 @@ export async function POST(request: Request) {
       "Follow the user's preference: shorter, longer, bullet points, formal tone, simple language, selected person/name, selected section, decisions, problems, next steps, or action tasks.",
       "When the user asks to select names, people, section A/B, or specific text, answer only from the provided meeting data.",
       "Do not invent facts that are not in the transcript, summary, or tasks.",
+      "Do not use markdown bold markers like **.",
       "If data is missing, say what is missing and suggest the next action.",
       "",
       `User command: ${command}`,
       "",
       `Meeting title: ${meeting.title}`,
       "",
-      `Current summary:\n${meeting.summary ?? "No summary yet."}`,
+      regeneratingSummary
+        ? "Important: For this summary command, use ONLY the transcript below as the source of truth. Ignore the old summary if it conflicts with the transcript."
+        : `Current summary:\n${meeting.summary ?? "No summary yet."}`,
       "",
       `Transcript:\n${meeting.transcript?.slice(0, 12000) ?? "No transcript yet."}`,
       "",
       `Action tasks:\n${taskText}`,
       "",
-      shouldRegenerateSummary(command)
+      regeneratingSummary
         ? "The user is asking for a new or improved summary. Follow the requested length and style. If the user does not specify a format, return: Meeting overview, Key discussion points, Decisions made, Problems mentioned, Next steps."
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
@@ -93,11 +98,13 @@ export async function POST(request: Request) {
     const answer = await generateGeminiContent([{ text: prompt }], { temperature: 0.2 });
     let updatedSummary = false;
 
-    if (shouldRegenerateSummary(command) && answer.trim()) {
+    if (regeneratingSummary && answer.trim()) {
       await prisma.meeting.update({
         where: { id: meeting.id },
         data: { summary: answer.trim(), status: "summarized" }
       });
+      revalidatePath(`/meetings/${meeting.id}`);
+      revalidatePath("/summaries");
       updatedSummary = true;
     }
 
