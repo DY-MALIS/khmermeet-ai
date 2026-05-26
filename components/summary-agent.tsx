@@ -7,6 +7,8 @@ type SummaryAgentMeeting = {
   id: string;
   title: string;
   updatedAt: string;
+  hasSummary?: boolean;
+  hasTranscript?: boolean;
 };
 
 export function SummaryAgent({ meetings }: { meetings: SummaryAgentMeeting[] }) {
@@ -89,7 +91,7 @@ export function SummaryAgent({ meetings }: { meetings: SummaryAgentMeeting[] }) 
           <select className="kh-input" value={meetingId} onChange={(event) => setMeetingId(event.target.value)}>
             {meetings.map((meeting) => (
               <option key={meeting.id} value={meeting.id}>
-                {meeting.title}
+                {meeting.title}{meeting.hasSummary ? "" : " · no summary yet"}
               </option>
             ))}
           </select>
@@ -115,6 +117,8 @@ export function SummaryAgent({ meetings }: { meetings: SummaryAgentMeeting[] }) 
       <div className="mt-3 flex flex-wrap gap-2">
         {[
           "សង្ខេបប្រជុំនេះជាខ្មែរ",
+          "សង្ខេបឲ្យខ្លីជាងនេះ",
+          "សង្ខេបឲ្យវែង និងលម្អិត",
           "បង្ហាញសេចក្តីសម្រេចចិត្ត",
           "បង្ហាញ next steps",
           "រៀបចំ action items"
@@ -135,7 +139,10 @@ export function SummaryAgent({ meetings }: { meetings: SummaryAgentMeeting[] }) 
       </div>
 
       {selectedMeeting ? (
-        <p className="mt-3 text-xs text-slate-500">Agent កំពុងប្រើ meeting: {selectedMeeting.title}</p>
+        <p className="mt-3 text-xs text-slate-500">
+          Agent កំពុងប្រើ meeting: {selectedMeeting.title}
+          {!selectedMeeting.hasSummary && selectedMeeting.hasTranscript ? " · អាចបញ្ជាឲ្យសង្ខេបពី transcript បាន" : ""}
+        </p>
       ) : null}
       {error ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {answer ? (

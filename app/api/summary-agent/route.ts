@@ -8,8 +8,17 @@ export const maxDuration = 60;
 function shouldRegenerateSummary(command: string) {
   const lower = command.toLowerCase();
   return (
+    lower.includes("summarize") ||
+    lower.includes("summary") ||
     lower.includes("regenerate") ||
     lower.includes("new summary") ||
+    lower.includes("shorter") ||
+    lower.includes("longer") ||
+    lower.includes("concise") ||
+    lower.includes("detailed") ||
+    command.includes("សង្ខេប") ||
+    command.includes("ខ្លី") ||
+    command.includes("វែង") ||
     command.includes("សង្ខេបឡើងវិញ") ||
     command.includes("បង្កើតសង្ខេប") ||
     command.includes("រៀបចំ summary")
@@ -59,8 +68,10 @@ export async function POST(request: Request) {
 
     const prompt = [
       "You are KhmerMeet AI Summary Agent for Cambodian teams.",
-      "Help the user command, inspect, rewrite, or improve a meeting summary.",
+      "Help the user command, inspect, select, rewrite, or improve a meeting summary.",
       "Answer in Khmer by default, but if the user writes English, answer in English.",
+      "Follow the user's preference: shorter, longer, bullet points, formal tone, simple language, selected person/name, selected section, decisions, problems, next steps, or action tasks.",
+      "When the user asks to select names, people, section A/B, or specific text, answer only from the provided meeting data.",
       "Do not invent facts that are not in the transcript, summary, or tasks.",
       "If data is missing, say what is missing and suggest the next action.",
       "",
@@ -75,7 +86,7 @@ export async function POST(request: Request) {
       `Action tasks:\n${taskText}`,
       "",
       shouldRegenerateSummary(command)
-        ? "The user is asking for a new or improved summary. Return a complete meeting summary with: Meeting overview, Key discussion points, Decisions made, Problems mentioned, Next steps."
+        ? "The user is asking for a new or improved summary. Follow the requested length and style. If the user does not specify a format, return: Meeting overview, Key discussion points, Decisions made, Problems mentioned, Next steps."
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 

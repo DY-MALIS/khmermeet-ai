@@ -11,7 +11,10 @@ export default async function SummariesPage() {
   const user = await requireUser();
   const meetings = await prisma.meeting
     .findMany({
-      where: { createdById: user.id, summary: { not: null } },
+      where: {
+        createdById: user.id,
+        OR: [{ summary: { not: null } }, { transcript: { not: null } }]
+      },
       include: { tasks: true },
       orderBy: { updatedAt: "desc" },
       take: 20
@@ -29,7 +32,9 @@ export default async function SummariesPage() {
         meetings={meetings.map((meeting) => ({
           id: meeting.id,
           title: meeting.title,
-          updatedAt: meeting.updatedAt.toISOString()
+          updatedAt: meeting.updatedAt.toISOString(),
+          hasSummary: Boolean(meeting.summary),
+          hasTranscript: Boolean(meeting.transcript)
         }))}
       />
       {meetings.length ? (
@@ -56,7 +61,11 @@ export default async function SummariesPage() {
                     <Lightbulb className="h-4 w-4 text-saffron" />
                     សង្ខេបប្រជុំ និងចំណុចសំខាន់ៗ
                   </p>
-                  <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.summary}</div>
+                  {meeting.summary ? (
+                    <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.summary}</div>
+                  ) : (
+                    <p className="text-sm text-slate-500">មិនទាន់មាន summary។ ប្រើ Summary Agent ខាងលើ ដើម្បីបញ្ជាឲ្យសង្ខេបពី transcript។</p>
+                  )}
                 </div>
                 <div className="rounded-lg border border-slate-100 p-4">
                   <p className="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
