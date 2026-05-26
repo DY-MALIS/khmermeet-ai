@@ -2,7 +2,6 @@ import { Bot, CheckSquare, Lightbulb, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
-import { SummaryAgent } from "@/components/summary-agent";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,15 +27,6 @@ export default async function SummariesPage() {
         <h1 className="text-3xl font-bold text-ink">សង្ខេបដោយ AI</h1>
         <p className="mt-2 text-sm text-slate-500">សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត និងកិច្ចការដែលត្រូវធ្វើ។</p>
       </div>
-      <SummaryAgent
-        meetings={meetings.map((meeting) => ({
-          id: meeting.id,
-          title: meeting.title,
-          updatedAt: meeting.updatedAt.toISOString(),
-          hasSummary: Boolean(meeting.summary),
-          hasTranscript: Boolean(meeting.transcript)
-        }))}
-      />
       {meetings.length ? (
         <div className="space-y-4">
           {meetings.map((meeting) => (
