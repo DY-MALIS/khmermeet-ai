@@ -264,6 +264,7 @@ export function VideoCallRoom() {
   const selfId = useMemo(() => createClientId(), []);
   const [displayLanguage] = useDisplayLanguage();
   const [roomId, setRoomId] = useState(() => createRoomId());
+  const [meetingTitle, setMeetingTitle] = useState("");
   const [displayName, setDisplayName] = useState("Local User");
   const [joined, setJoined] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -1313,7 +1314,7 @@ export function VideoCallRoom() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: `Video call ${roomId}`,
+          title: meetingTitle.trim() || `Video call ${roomId}`,
           audioUrl: uploadJson.audioUrl,
           transcript,
           duration
@@ -1347,6 +1348,18 @@ export function VideoCallRoom() {
     <div className="space-y-5">
       <div className="kh-card grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 sm:col-span-2">
+            <span className="text-sm font-semibold text-slate-600">
+              {displayLanguage === "en" ? "Meeting title" : "ចំណងជើងប្រជុំ"}
+            </span>
+            <input
+              className="kh-input"
+              value={meetingTitle}
+              onChange={(event) => setMeetingTitle(event.target.value)}
+              placeholder={displayLanguage === "en" ? "Example: Q2 planning meeting" : "ឧទាហរណ៍៖ ប្រជុំផែនការ Q2"}
+              disabled={agentRecording || agentSaving}
+            />
+          </label>
           <label className="space-y-1">
             <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម</span>
             <input className="kh-input" value={displayName} onChange={(event) => setDisplayName(event.target.value)} disabled={joined} />
