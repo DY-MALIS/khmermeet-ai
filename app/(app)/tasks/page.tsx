@@ -1,7 +1,8 @@
-import { CalendarClock, Trash2, UserRound } from "lucide-react";
+import Link from "next/link";
+import { CalendarClock, Plus, Trash2, UserRound } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { deleteTask, updateTask } from "@/lib/actions";
+import { createTask, deleteTask, updateTask } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
 
@@ -27,6 +28,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     .then((tasks) => ({ tasks, dbUnavailable: false }))
     .catch(() => ({ tasks: [], dbUnavailable: true }));
   const { tasks, dbUnavailable } = data;
+  const meetings = await prisma.meeting
+    .findMany({
+      where: { createdById: user.id },
+      orderBy: { createdAt: "desc" },
+      take: 30
+    })
+    .catch(() => []);
+  const hasActiveFilters = Boolean(params.status || params.priority || params.overdue);
 
   return (
     <div className="space-y-6">
@@ -40,7 +49,48 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/update/delete tasks ត្រូវការ local database។
         </div>
       ) : null}
-      <form className="kh-card grid gap-3 p-4 md:grid-cols-4">
+      <section className="kh-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-leaf/10 text-leaf">
+            <Plus className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="font-bold text-ink">បង្កើតកិច្ចការថ្មី</h2>
+            <p className="text-xs text-slate-500">បើ AI មិនទាន់ដក task បាន អ្នកអាចបង្កើតដោយដៃនៅទីនេះ។</p>
+          </div>
+        </div>
+        {meetings.length ? (
+          <form action={createTask} className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_160px_160px_auto]">
+            <select className="kh-input" name="meetingId" required>
+              {meetings.map((meeting) => (
+                <option key={meeting.id} value={meeting.id}>
+                  {meeting.title}
+                </option>
+              ))}
+            </select>
+            <input className="kh-input" name="title" placeholder="ចំណងជើងកិច្ចការ" required />
+            <input className="kh-input" name="assigneeName" placeholder="អ្នកទទួលខុសត្រូវ" />
+            <input className="kh-input" name="deadline" type="date" />
+            <select className="kh-input" name="priority" defaultValue="medium">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <ActionButton className="kh-button-primary">
+              <Plus className="h-4 w-4" />
+              បង្កើត
+            </ActionButton>
+            <textarea className="kh-input min-h-20 lg:col-span-6" name="description" placeholder="ពិពណ៌នាកិច្ចការ..." />
+          </form>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 p-5 text-center">
+            <p className="font-semibold text-ink">មិនទាន់មាន meeting សម្រាប់ភ្ជាប់ task</p>
+            <p className="mt-1 text-sm text-slate-500">សូមថតប្រជុំ ឬបង្កើត meeting មុន បន្ទាប់មកត្រឡប់មកបង្កើត task។</p>
+            <Link className="kh-button-secondary mt-3" href="/meetings/new">បង្កើត meeting</Link>
+          </div>
+        )}
+      </section>
+      <form className="kh-card grid gap-3 p-4 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
         <select className="kh-input" name="status" defaultValue={params.status ?? ""}>
           <option value="">គ្រប់ស្ថានភាព</option>
           <option value="not_started">មិនទាន់ចាប់ផ្តើម</option>
@@ -58,6 +108,11 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           <option value="true">Overdue only</option>
         </select>
         <button className="kh-button-primary">Filter</button>
+        {hasActiveFilters ? (
+          <Link className="kh-button-secondary justify-center" href="/tasks">
+            Show all
+          </Link>
+        ) : null}
       </form>
       <section className="kh-card overflow-hidden">
         {tasks.length ? (
@@ -116,7 +171,25 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
               </tbody>
             </table>
           </div>
-        ) : <div className="p-5"><EmptyState title="រកមិនឃើញកិច្ចការ" description="កិច្ចការដែល AI ដកស្រង់នឹងបង្ហាញនៅទីនេះ។" /></div>}
+        ) : (
+          <div className="p-5">
+            <EmptyState
+              title={hasActiveFilters ? "រកមិនឃើញកិច្ចការតាម filter" : "មិនទាន់មានកិច្ចការ"}
+              description={
+                hasActiveFilters
+                  ? "សូមចុច Show all ឬប្ដូរ filter ដើម្បីមើលកិច្ចការផ្សេងៗ។"
+                  : "កិច្ចការដែល AI ដកស្រង់ ឬអ្នកបង្កើតដោយដៃ នឹងបង្ហាញនៅទីនេះ។"
+              }
+            />
+            {hasActiveFilters ? (
+              <div className="mt-4 text-center">
+                <Link className="kh-button-primary inline-flex" href="/tasks">
+                  Show all tasks
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        )}
       </section>
     </div>
   );
