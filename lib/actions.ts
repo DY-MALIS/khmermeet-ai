@@ -166,16 +166,20 @@ export async function extractTasks(formData: FormData) {
 export async function createTask(formData: FormData) {
   const user = await requireUser();
   const meetingId = formString(formData, "meetingId");
+  const title = formString(formData, "title");
+  const priority = formString(formData, "priority") || "medium";
   const meeting = await prisma.meeting.findFirst({ where: { id: meetingId, createdById: user.id } });
   if (!meeting) throw new Error("No meeting found.");
+  if (!title) throw new Error("Task title is required.");
+  if (!["low", "medium", "high"].includes(priority)) throw new Error("Invalid task priority.");
   await prisma.task.create({
     data: {
       meetingId,
-      title: formString(formData, "title"),
+      title,
       description: formString(formData, "description") || null,
       assigneeName: formString(formData, "assigneeName") || null,
       deadline: formString(formData, "deadline") ? new Date(formString(formData, "deadline")) : null,
-      priority: (formString(formData, "priority") || "medium") as TaskPriority
+      priority: priority as TaskPriority
     }
   });
   revalidateMeetingViews(meetingId);
@@ -187,6 +191,7 @@ export async function updateTask(formData: FormData) {
   const task = await prisma.task.findFirst({ where: { id, meeting: { createdById: user.id } } });
   if (!task) throw new Error("No task found.");
   const status = formString(formData, "status") as TaskStatus;
+  if (!["not_started", "in_progress", "completed"].includes(status)) throw new Error("Invalid task status.");
   const assigneeName = formString(formData, "assigneeName") || null;
   const deadlineText = formString(formData, "deadline");
   await prisma.task.update({

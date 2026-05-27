@@ -2,13 +2,14 @@ import { Bot, CheckSquare, Lightbulb, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
+import { SummaryDisplay } from "@/components/summary-display";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SummariesPage() {
   const user = await requireUser();
-  const meetings = await prisma.meeting
+  const data = await prisma.meeting
     .findMany({
       where: {
         createdById: user.id,
@@ -18,7 +19,9 @@ export default async function SummariesPage() {
       orderBy: { updatedAt: "desc" },
       take: 20
     })
-    .catch(() => []);
+    .then((meetings) => ({ meetings, dbUnavailable: false }))
+    .catch(() => ({ meetings: [], dbUnavailable: true }));
+  const { meetings, dbUnavailable } = data;
 
   return (
     <div className="space-y-6">
@@ -27,6 +30,11 @@ export default async function SummariesPage() {
         <h1 className="text-3xl font-bold text-ink">សង្ខេបដោយ AI</h1>
         <p className="mt-2 text-sm text-slate-500">សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត និងកិច្ចការដែលត្រូវធ្វើ។</p>
       </div>
+      {dbUnavailable ? (
+        <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះត្រូវការ PostgreSQL/Supabase/Neon DATABASE_URL ដើម្បីទាញ summary ពី meetings។
+        </div>
+      ) : null}
       {meetings.length ? (
         <div className="space-y-4">
           {meetings.map((meeting) => (
@@ -52,7 +60,7 @@ export default async function SummariesPage() {
                     សង្ខេបប្រជុំ និងចំណុចសំខាន់ៗ
                   </p>
                   {meeting.summary ? (
-                    <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.summary}</div>
+                    <SummaryDisplay summary={meeting.summary} />
                   ) : (
                     <p className="text-sm text-slate-500">មិនទាន់មាន summary។ ប្រើ Summary Agent ខាងលើ ដើម្បីបញ្ជាឲ្យសង្ខេបពី transcript។</p>
                   )}

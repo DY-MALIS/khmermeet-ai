@@ -8,13 +8,15 @@ export const revalidate = 0;
 
 export default async function TranscriptsPage() {
   const user = await requireUser();
-  const meetings = await prisma.meeting
+  const data = await prisma.meeting
     .findMany({
       where: { createdById: user.id, transcript: { not: null } },
       orderBy: { updatedAt: "desc" },
       take: 20
     })
-    .catch(() => []);
+    .then((meetings) => ({ meetings, dbUnavailable: false }))
+    .catch(() => ({ meetings: [], dbUnavailable: true }));
+  const { meetings, dbUnavailable } = data;
 
   return (
     <div className="space-y-6">
@@ -23,6 +25,11 @@ export default async function TranscriptsPage() {
         <h1 className="text-3xl font-bold text-ink">អត្ថបទប្រជុំ</h1>
         <p className="mt-2 text-sm text-slate-500">មើលអក្សរដែលបានបម្លែងពីសំឡេង ឬបានបញ្ចូលដោយ Meeting Agent។</p>
       </div>
+      {dbUnavailable ? (
+        <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
+          Database មិនទាន់ដំណើរការ។ ទំព័រនេះត្រូវការ PostgreSQL/Supabase/Neon DATABASE_URL ដើម្បីទាញ transcript ពី meetings។
+        </div>
+      ) : null}
       {meetings.length ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {meetings.map((meeting) => (
