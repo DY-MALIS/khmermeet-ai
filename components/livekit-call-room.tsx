@@ -50,6 +50,26 @@ function extractApiError(value: unknown) {
   return "Request failed.";
 }
 
+async function checkMediaDeviceSupport(wantsCamera: boolean) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("This browser does not support camera/microphone access. Use Chrome, Edge, Firefox, or Safari on HTTPS.");
+  }
+
+  if (!navigator.mediaDevices.enumerateDevices) {
+    return { hasCamera: wantsCamera };
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const hasMicrophone = devices.some((device) => device.kind === "audioinput");
+  const hasCamera = devices.some((device) => device.kind === "videoinput");
+
+  if (!hasMicrophone && devices.length) {
+    throw new Error("No microphone was found. Please connect a microphone or allow microphone permission.");
+  }
+
+  return { hasCamera: wantsCamera ? hasCamera || !devices.length : false };
+}
+
 export function LiveKitCallRoom() {
   const initialRoom = useMemo(() => {
     if (typeof window === "undefined") return createRoomCode();
@@ -62,6 +82,7 @@ export function LiveKitCallRoom() {
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!new URLSearchParams(window.location.search).get("room")) {
@@ -72,7 +93,14 @@ export function LiveKitCallRoom() {
   async function joinRoom() {
     setJoining(true);
     setError("");
+    setNotice("");
     try {
+      const media = await checkMediaDeviceSupport(cameraOn);
+      if (cameraOn && !media.hasCamera) {
+        setCameraOn(false);
+        setNotice("No camera was found on this device. Joining with microphone audio only.");
+      }
+
       const response = await fetch("/api/livekit-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,11 +135,20 @@ export function LiveKitCallRoom() {
           audio={audioConstraints}
           video={cameraOn ? { facingMode: "user", resolution: { width: 1280, height: 720 } } : false}
           onDisconnected={() => setTokenPayload(null)}
-          onError={(error) => setError(error.message)}
+          onError={(error) => {
+            const message = error.message || "Could not connect camera/microphone.";
+            if (/camera|video|device|permission/i.test(message) && cameraOn) {
+              setCameraOn(false);
+              setTokenPayload(null);
+              setError(`${message} Please join again with camera off for audio-only mode.`);
+              return;
+            }
+            setError(message);
+          }}
           className="kh-card overflow-hidden p-0"
           data-lk-theme="default"
         >
-          <div className="min-h-[72vh] bg-slate-950">
+          <div className="min-h-[70svh] bg-slate-950 md:min-h-[72vh]">
             <VideoConference />
           </div>
           <LiveKitMeetingAgent meetingTitle={title || `Video call ${tokenPayload.room}`} />
@@ -156,6 +193,7 @@ export function LiveKitCallRoom() {
         LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងសមស្របជាង WebRTC mesh សម្រាប់ 10-20 នាក់។
         ប្រសិនបើកុំព្យូទ័រមិនមាន camera អ្នកអាចបិទ “បើកកាមេរ៉ា” ហើយចូលនិយាយដោយ microphone បាន។
       </div>
+      {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
     </div>
   );
