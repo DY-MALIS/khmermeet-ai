@@ -8,7 +8,7 @@ import {
   useTracks
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Bot, Copy, Loader2, Phone, Save, Square } from "lucide-react";
+import { Bot, Copy, Loader2, Phone, Save, Share2, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
 
@@ -120,6 +120,20 @@ export function LiveKitCallRoom() {
   async function copyInvite() {
     const url = `${window.location.origin}/meetings/call?room=${room}`;
     await navigator.clipboard?.writeText(url).catch(() => undefined);
+    setNotice("Invite link copied. Send it to other participants so they can join this room.");
+  }
+
+  async function shareInvite() {
+    const url = `${window.location.origin}/meetings/call?room=${room}`;
+    if (navigator.share) {
+      await navigator.share({
+        title: title || "KhmerMeet AI meeting",
+        text: `Join KhmerMeet AI room ${room}`,
+        url
+      }).catch(() => undefined);
+      return;
+    }
+    await copyInvite();
   }
 
   if (tokenPayload) {
@@ -127,6 +141,24 @@ export function LiveKitCallRoom() {
       <div className="space-y-5">
         <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
           HD mode ប្រើ LiveKit SFU ដើម្បីឲ្យអ្នកចូលរួមមើលមុខគ្នា និងនិយាយលឺគ្នាជាច្រើននាក់។ Room: <b>{tokenPayload.room}</b>
+        </div>
+        <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-600">Invite participants</p>
+            <p className="text-sm text-slate-500">
+              Share this link so others can join the same room: <span className="font-semibold text-ink">{tokenPayload.room}</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="kh-button-secondary" type="button" onClick={copyInvite}>
+              <Copy className="h-4 w-4" />
+              Copy link
+            </button>
+            <button className="kh-button-primary" type="button" onClick={shareInvite}>
+              <Share2 className="h-4 w-4" />
+              Share invite
+            </button>
+          </div>
         </div>
         <LiveKitRoom
           token={tokenPayload.token}
