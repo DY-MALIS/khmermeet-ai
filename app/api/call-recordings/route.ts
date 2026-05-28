@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
+import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export const maxDuration = 60;
 
@@ -11,7 +12,8 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = await request.json();
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
-    const transcript = typeof body.transcript === "string" ? body.transcript.trim() : "";
+    const rawTranscript = typeof body.transcript === "string" ? body.transcript.trim() : "";
+    const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
     const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
 

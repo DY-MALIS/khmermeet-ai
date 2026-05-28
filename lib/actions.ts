@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
+import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -47,7 +48,8 @@ export async function createMeeting(formData: FormData) {
   });
   const title = formString(formData, "title") || "Untitled meeting";
   const audioUrl = formString(formData, "audioUrl") || null;
-  const transcript = formString(formData, "transcript");
+  const rawTranscript = formString(formData, "transcript");
+  const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
   const duration = Number(formData.get("duration") ?? 0);
   const meeting = await prisma.meeting.create({
     data: {
@@ -118,6 +120,7 @@ export async function updateTranscript(formData: FormData) {
   const id = formString(formData, "id");
   const transcript = formString(formData, "transcript");
   if (!transcript) throw new Error("Transcript is empty.");
+  if (!hasUsableTranscript(transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text.");
   const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
   if (!meeting) throw new Error("No meeting found.");
   await prisma.$transaction([
@@ -136,6 +139,7 @@ export async function generateSummary(formData: FormData) {
   const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
+  if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before summarizing.");
   const summary = await generateMeetingSummary(meeting.transcript);
   await prisma.meeting.update({ where: { id }, data: { summary, status: "summarized" } });
   revalidateMeetingViews(id);
@@ -147,6 +151,7 @@ export async function extractTasks(formData: FormData) {
   const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
+  if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before extracting tasks.");
   const tasks = await extractMeetingTasks(meeting.transcript);
   await prisma.task.createMany({
     data: tasks.map((task) => ({

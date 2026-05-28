@@ -3,6 +3,7 @@ import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { generateGeminiContent, transcriptionModel } from "@/lib/ai/gemini";
 import { prisma } from "@/lib/prisma";
+import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 const databaseAudioLimit = 12 * 1024 * 1024;
@@ -30,7 +31,9 @@ function cleanTranscriptionText(text: string) {
     .join("\n")
     .trim();
 
-  return noSpeechPatterns.some((pattern) => pattern.test(cleaned)) ? "" : cleaned;
+  if (noSpeechPatterns.some((pattern) => pattern.test(cleaned))) return "";
+  if (isTimestampOnlyTranscript(cleaned)) return "";
+  return cleaned;
 }
 
 export function getLocalAudioPath(name: string) {
