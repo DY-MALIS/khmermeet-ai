@@ -9,6 +9,7 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { Bot, Copy, Loader2, Phone, Save, Share2, Square } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
 
@@ -242,6 +243,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [savedMeetingId, setSavedMeetingId] = useState("");
+  const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -288,6 +290,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setError("");
     setNotice("");
     setSavedMeetingId("");
+    setSavedAudioUrl("");
     try {
       const mixedStream = buildMixedAudioStream();
       const mimeType = getRecorderMimeType();
@@ -320,6 +323,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setError("");
     setNotice("");
     setSavedMeetingId("");
+    setSavedAudioUrl("");
     try {
       const response = await fetch("/api/livekit-egress/start", {
         method: "POST",
@@ -368,6 +372,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const saveJson = await saveResponse.json();
       if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
       setSavedMeetingId(saveJson.meetingId);
+      setSavedAudioUrl(serverRecording.storageUrl);
       setNotice("Server recording stopped and saved to meeting history. Transcript still needs speech-to-text processing.");
       setServerRecording(null);
     } catch (error) {
@@ -391,12 +396,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
 
       const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript : "";
+      const audioUrl = typeof uploadJson.audioUrl === "string" ? uploadJson.audioUrl : "";
       const saveResponse = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: meetingTitle,
-          audioUrl: uploadJson.audioUrl,
+          audioUrl,
           transcript,
           duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
         })
@@ -404,6 +410,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const saveJson = await saveResponse.json();
       if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
       setSavedMeetingId(saveJson.meetingId);
+      setSavedAudioUrl(audioUrl);
       setNotice(transcript ? "បានរក្សាទុក audio, transcript, summary/tasks ទៅក្នុងប្រព័ន្ធ។" : "បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Transcript ត្រូវការ Gemini quota/key ដំណើរការ។");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save meeting recording.");
@@ -453,11 +460,34 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               Stop Server Rec
             </button>
           )}
-          {savedMeetingId ? <a className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</a> : null}
+          {savedMeetingId ? <Link className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</Link> : null}
         </div>
       </div>
       {notice ? <div className="mt-4 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {savedMeetingId ? (
+        <div className="mt-4 rounded-xl border border-leaf/20 bg-leaf/5 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="font-semibold text-ink">Recording saved successfully</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Your audio is saved in the meeting record. You can also find it from Recorder and Meeting History.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link className="kh-button-primary" href={`/meetings/${savedMeetingId}`}>Open saved meeting</Link>
+              <Link className="kh-button-secondary" href="/meetings/new">Saved recordings</Link>
+              <Link className="kh-button-secondary" href="/meetings">History</Link>
+            </div>
+          </div>
+          {savedAudioUrl ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+              <p className="mb-2 text-sm font-semibold text-slate-700">Recorded audio preview</p>
+              <audio className="w-full" controls src={savedAudioUrl} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
