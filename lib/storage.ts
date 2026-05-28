@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { createClient } from "@supabase/supabase-js";
 import { generateGeminiContent, transcriptionModel } from "@/lib/ai/gemini";
 import { prisma } from "@/lib/prisma";
 
@@ -41,6 +42,9 @@ export async function saveLocalAudio(file: File) {
   const name = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
   const bytes = Buffer.from(await file.arrayBuffer());
 
+  const supabaseUrl = await saveSupabaseAudio(name, file.type || "audio/webm", bytes);
+  if (supabaseUrl) return supabaseUrl;
+
   if (process.env.VERCEL) {
     if (bytes.length > databaseAudioLimit) {
       throw new Error("Audio file is too large for MVP database storage. Please record a shorter clip or connect Supabase Storage/S3.");
@@ -52,8 +56,63 @@ export async function saveLocalAudio(file: File) {
   await mkdir(uploadRoot, { recursive: true });
   const fullPath = getLocalAudioPath(name);
   await writeFile(fullPath, bytes);
-  // TODO: Cloud storage - replace this adapter with S3 or Supabase Storage.
   return `/api/uploads/${name}`;
+}
+
+function supabaseStorageConfig() {
+  const url = process.env.SUPABASE_URL?.trim();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "meeting-recordings";
+  if (!url || !serviceRoleKey || !bucket) return null;
+  return { url, serviceRoleKey, bucket };
+}
+
+function supabaseStorageClient() {
+  const config = supabaseStorageConfig();
+  if (!config) return null;
+
+  return {
+    bucket: config.bucket,
+    client: createClient(config.url, config.serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    })
+  };
+}
+
+async function saveSupabaseAudio(filename: string, mimeType: string, data: Buffer) {
+  const storage = supabaseStorageClient();
+  if (!storage) return "";
+
+  const objectPath = `audio/${new Date().toISOString().slice(0, 10)}/${filename}`;
+  const { error } = await storage.client.storage
+    .from(storage.bucket)
+    .upload(objectPath, data, {
+      contentType: mimeType,
+      upsert: false
+    });
+
+  if (error) throw new Error(`Supabase Storage upload failed: ${error.message}`);
+  return `/api/storage/${objectPath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+export async function downloadSupabaseAudio(objectPath: string) {
+  const storage = supabaseStorageClient();
+  if (!storage) throw new Error("Supabase Storage is not configured.");
+
+  const { data, error } = await storage.client.storage.from(storage.bucket).download(objectPath);
+  if (error || !data) throw new Error(error?.message || "Storage file not found.");
+
+  const arrayBuffer = await data.arrayBuffer();
+  return {
+    data: Buffer.from(arrayBuffer),
+    mimeType: data.type || contentTypeFromPath(objectPath)
+  };
+}
+
+function contentTypeFromPath(objectPath: string) {
+  if (objectPath.endsWith(".mp4") || objectPath.endsWith(".m4a")) return "audio/mp4";
+  if (objectPath.endsWith(".webm")) return "audio/webm";
+  return "application/octet-stream";
 }
 
 async function createAudioFileRecord(filename: string, mimeType: string, data: Buffer) {

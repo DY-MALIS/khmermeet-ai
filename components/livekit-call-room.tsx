@@ -172,9 +172,11 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [savedMeetingId, setSavedMeetingId] = useState("");
+  const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
+  const serverStartedAtRef = useRef(0);
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -243,6 +245,68 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setRecording(false);
   }
 
+  async function startServerRecording() {
+    setSaving(true);
+    setError("");
+    setNotice("");
+    setSavedMeetingId("");
+    try {
+      const response = await fetch("/api/livekit-egress/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          room: room.name,
+          title: meetingTitle
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? data.hint ?? "Server recording failed.");
+      setServerRecording({ egressId: data.egressId, storageUrl: data.storageUrl });
+      serverStartedAtRef.current = Date.now();
+      setNotice("Server recording started. LiveKit Egress is recording the whole room to storage.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not start server recording.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function stopServerRecording() {
+    if (!serverRecording) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch("/api/livekit-egress/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ egressId: serverRecording.egressId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Could not stop server recording.");
+
+      const duration = Math.max(1, Math.round((Date.now() - serverStartedAtRef.current) / 1000));
+      const saveResponse = await fetch("/api/call-recordings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: meetingTitle,
+          audioUrl: serverRecording.storageUrl,
+          transcript: "",
+          duration
+        })
+      });
+      const saveJson = await saveResponse.json();
+      if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
+      setSavedMeetingId(saveJson.meetingId);
+      setNotice("Server recording stopped and saved to meeting history. Transcript still needs speech-to-text processing.");
+      setServerRecording(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not save server recording.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveRecording(mimeType: string) {
     setSaving(true);
     setError("");
@@ -306,6 +370,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopRecording}>
               <Square className="h-4 w-4" />
               Stop & Save
+            </button>
+          )}
+          {!serverRecording ? (
+            <button className="kh-button-secondary" type="button" onClick={startServerRecording} disabled={saving || recording}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Server Rec
+            </button>
+          ) : (
+            <button className="kh-button-secondary text-red-600" type="button" onClick={stopServerRecording} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+              Stop Server Rec
             </button>
           )}
           {savedMeetingId ? <a className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</a> : null}
