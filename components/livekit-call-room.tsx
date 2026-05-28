@@ -51,24 +51,23 @@ function extractApiError(value: unknown) {
   return "Request failed.";
 }
 
-async function checkMediaDeviceSupport(wantsCamera: boolean) {
+async function checkMediaDeviceSupport(wantsCamera: boolean, wantsMicrophone: boolean) {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error("This browser does not support camera/microphone access. Use Chrome, Edge, Firefox, or Safari on HTTPS.");
   }
 
   if (!navigator.mediaDevices.enumerateDevices) {
-    return { hasCamera: wantsCamera };
+    return { hasCamera: wantsCamera, hasMicrophone: wantsMicrophone };
   }
 
   const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
   const hasMicrophone = devices.some((device) => device.kind === "audioinput");
   const hasCamera = devices.some((device) => device.kind === "videoinput");
 
-  if (!hasMicrophone && devices.length) {
-    throw new Error("No microphone was found. Please connect a microphone or allow microphone permission.");
-  }
-
-  return { hasCamera: wantsCamera ? hasCamera || !devices.length : false };
+  return {
+    hasCamera: wantsCamera ? hasCamera || !devices.length : false,
+    hasMicrophone: wantsMicrophone ? hasMicrophone || !devices.length : false
+  };
 }
 
 export function LiveKitCallRoom() {
@@ -80,6 +79,8 @@ export function LiveKitCallRoom() {
   const [name, setName] = useState("Local User");
   const [title, setTitle] = useState("");
   const [cameraOn, setCameraOn] = useState(true);
+  const [microphoneOn, setMicrophoneOn] = useState(true);
+  const [callMedia, setCallMedia] = useState({ audio: true, video: true });
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
@@ -96,10 +97,16 @@ export function LiveKitCallRoom() {
     setError("");
     setNotice("");
     try {
-      const media = await checkMediaDeviceSupport(cameraOn);
+      const media = await checkMediaDeviceSupport(cameraOn, microphoneOn);
+      const nextCameraOn = cameraOn && media.hasCamera;
+      const nextMicrophoneOn = microphoneOn && media.hasMicrophone;
+      const notices: string[] = [];
+
       if (cameraOn && !media.hasCamera) {
-        setCameraOn(false);
-        setNotice("No camera was found on this device. Joining with microphone audio only.");
+        notices.push("No camera was found. Joining without camera.");
+      }
+      if (microphoneOn && !media.hasMicrophone) {
+        notices.push("No microphone was found. Joining listen-only. Connect/allow a microphone if you want to speak.");
       }
 
       const response = await fetch("/api/livekit-token", {
@@ -109,7 +116,11 @@ export function LiveKitCallRoom() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(extractApiError(data));
+      setCameraOn(nextCameraOn);
+      setMicrophoneOn(nextMicrophoneOn);
+      setCallMedia({ audio: nextMicrophoneOn, video: nextCameraOn });
       setTokenPayload(data);
+      if (notices.length) setNotice(notices.join(" "));
       window.history.replaceState(null, "", `/meetings/call?room=${data.room}`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចូល HD video call បានទេ។");
@@ -143,6 +154,7 @@ export function LiveKitCallRoom() {
         <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
           HD mode ប្រើ LiveKit SFU ដើម្បីឲ្យអ្នកចូលរួមមើលមុខគ្នា និងនិយាយលឺគ្នាជាច្រើននាក់។ Room: <b>{tokenPayload.room}</b>
         </div>
+        {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
         <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-600">Invite participants</p>
@@ -165,15 +177,23 @@ export function LiveKitCallRoom() {
           token={tokenPayload.token}
           serverUrl={tokenPayload.livekitUrl}
           connect
-          audio={audioConstraints}
-          video={cameraOn ? { facingMode: "user", resolution: { width: 1280, height: 720 } } : false}
+          audio={callMedia.audio ? audioConstraints : false}
+          video={callMedia.video ? { facingMode: "user", resolution: { width: 1280, height: 720 } } : false}
           onDisconnected={() => setTokenPayload(null)}
           onError={(error) => {
             const message = error.message || "Could not connect camera/microphone.";
-            if (/camera|video|device|permission/i.test(message) && cameraOn) {
+            if (/camera|video|device|permission/i.test(message) && callMedia.video) {
               setCameraOn(false);
+              setCallMedia((current) => ({ ...current, video: false }));
               setTokenPayload(null);
               setError(`${message} Please join again with camera off for audio-only mode.`);
+              return;
+            }
+            if (/microphone|audio|device|permission/i.test(message) && callMedia.audio) {
+              setMicrophoneOn(false);
+              setCallMedia((current) => ({ ...current, audio: false }));
+              setTokenPayload(null);
+              setError(`${message} Please join again with microphone off for listen-only mode, or allow microphone permission to speak.`);
               return;
             }
             setError(message);
@@ -215,6 +235,10 @@ export function LiveKitCallRoom() {
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={cameraOn} onChange={(event) => setCameraOn(event.target.checked)} type="checkbox" />
             បើកកាមេរ៉ាពេលចូល
+          </label>
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+            <input checked={microphoneOn} onChange={(event) => setMicrophoneOn(event.target.checked)} type="checkbox" />
+            បើក microphone ពេលចូល
           </label>
         </div>
         <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining}>
