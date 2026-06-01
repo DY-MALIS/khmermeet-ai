@@ -1,7 +1,9 @@
-import { FileText } from "lucide-react";
+import { FileText, Volume2 } from "lucide-react";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
+import { formatMeetingDuration } from "@/lib/time-format";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,7 +12,7 @@ export default async function TranscriptsPage() {
   const user = await requireUser();
   const data = await prisma.meeting
     .findMany({
-      where: { createdById: user.id, transcript: { not: null } },
+      where: { createdById: user.id },
       orderBy: { updatedAt: "desc" },
       take: 20
     })
@@ -36,21 +38,41 @@ export default async function TranscriptsPage() {
             <article className="kh-card p-5" key={meeting.id}>
               <div className="mb-4 flex items-start gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-leaf/10 text-leaf">
-                  <FileText className="h-5 w-5" />
+                  {meeting.transcript ? <FileText className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                 </span>
-                <div>
-                  <a href={`/meetings/${meeting.id}`} className="text-lg font-bold text-ink hover:text-leaf">
+                <div className="min-w-0 flex-1">
+                  <Link href={`/meetings/${meeting.id}`} className="text-lg font-bold text-ink hover:text-leaf">
                     {meeting.title}
-                  </a>
-                  <p className="text-sm text-slate-500">{meeting.updatedAt.toLocaleString()}</p>
+                  </Link>
+                  <p className="text-sm text-slate-500">
+                    {meeting.updatedAt.toLocaleString()} · {formatMeetingDuration(meeting.duration)}
+                  </p>
                 </div>
               </div>
-              <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
+              {meeting.audioUrl ? (
+                <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recorded audio</p>
+                  <audio className="w-full" controls src={meeting.audioUrl} />
+                </div>
+              ) : null}
+              {meeting.transcript ? (
+                <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-600">
+                  <p className="font-semibold text-ink">មិនទាន់មាន transcript</p>
+                  <p className="mt-1">
+                    Audio ត្រូវបានរក្សាទុក ប៉ុន្តែមិនទាន់មានអត្ថបទពីសំឡេង។ បើក meeting detail ដើម្បីបញ្ចូល transcript ដោយដៃ ឬ regenerate ពេល API transcribe ដំណើរការ។
+                  </p>
+                  <Link className="kh-button-secondary mt-3 inline-flex" href={`/meetings/${meeting.id}`}>
+                    Open meeting
+                  </Link>
+                </div>
+              )}
             </article>
           ))}
         </div>
       ) : (
-        <EmptyState title="មិនទាន់មានអត្ថបទប្រជុំ" description="ថតប្រជុំ ឬប្រើ Meeting Agent ដើម្បីបង្កើត transcript។" />
+        <EmptyState title="មិនទាន់មានអត្ថបទប្រជុំ" description="ថតប្រជុំ ឬប្រើ Meeting Agent ដើម្បីបង្កើត transcript។ ប្រសិនបើមានតែ audio វានឹងបង្ហាញនៅទីនេះដែរ។" />
       )}
     </div>
   );
