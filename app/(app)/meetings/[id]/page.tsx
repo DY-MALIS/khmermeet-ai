@@ -7,11 +7,15 @@ import { SummaryDisplay } from "@/components/summary-display";
 import { extractTasks, generateSummary, updateTranscript } from "@/lib/actions";
 import { getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
+import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const meeting = await getMeetingById(id);
   if (!meeting) notFound();
+  const transcriptIsUsable = hasUsableTranscript(meeting.transcript ?? "");
+  const transcriptText = transcriptIsUsable ? meeting.transcript ?? "" : "";
+  const summaryText = transcriptIsUsable ? meeting.summary : null;
 
   return (
     <div className="space-y-6">
@@ -22,7 +26,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           <p className="mt-2 text-sm text-slate-500">{meeting.createdAt.toLocaleString()} · {formatMeetingDuration(meeting.duration)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ExportButton title={meeting.title} transcript={meeting.transcript} summary={meeting.summary} />
+          <ExportButton title={meeting.title} transcript={transcriptText} summary={summaryText} />
           <form action={generateSummary}><input type="hidden" name="id" value={meeting.id} /><ActionButton>Regenerate summary</ActionButton></form>
           <form action={extractTasks}><input type="hidden" name="id" value={meeting.id} /><ActionButton className="kh-button-secondary">Extract tasks again</ActionButton></form>
         </div>
@@ -35,20 +39,25 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <section className="kh-card p-5">
           <h2 className="mb-4 text-lg font-bold">Transcript</h2>
+          {!transcriptIsUsable && meeting.transcript ? (
+            <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
+              Transcript ចាស់មានតែលេខ timestamp ឬគ្មានពាក្យនិយាយច្បាស់ ដូច្នេះ app មិនបង្ហាញវាជា transcript ពិតទៀតទេ។ សូម paste អត្ថបទប្រជុំពិតនៅខាងក្រោម រួចរក្សាទុក។
+            </div>
+          ) : null}
           <form action={updateTranscript} className="space-y-3">
             <input type="hidden" name="id" value={meeting.id} />
-            <textarea className="kh-input min-h-72" name="transcript" defaultValue={meeting.transcript ?? ""} placeholder="បិទភ្ជាប់ transcript នៅទីនេះ..." />
+            <textarea className="kh-input min-h-72" name="transcript" defaultValue={transcriptText} placeholder="បិទភ្ជាប់ transcript នៅទីនេះ..." />
             <ActionButton>រក្សាទុក transcript</ActionButton>
           </form>
         </section>
         <section className="kh-card p-5">
           <h2 className="mb-4 text-lg font-bold">AI Summary</h2>
-          {meeting.summary ? (
-            <SummaryDisplay summary={meeting.summary} />
+          {summaryText ? (
+            <SummaryDisplay summary={summaryText} />
           ) : (
             <EmptyState title="មិនទាន់មាន summary" description="បញ្ចូល transcript រួចប្រើ Summary Agent ឬចុច Generate AI Summary។" />
           )}
-          <MeetingSummaryAgent meetingId={meeting.id} hasTranscript={Boolean(meeting.transcript?.trim())} />
+          <MeetingSummaryAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
         </section>
       </div>
       <section className="kh-card overflow-hidden">
