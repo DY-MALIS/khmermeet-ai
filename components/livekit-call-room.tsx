@@ -8,7 +8,7 @@ import {
   useTracks
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Bot, Copy, Loader2, Phone, Save, Share2, Square } from "lucide-react";
+import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
@@ -234,10 +234,12 @@ export function LiveKitCallRoom() {
           </label>
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={cameraOn} onChange={(event) => setCameraOn(event.target.checked)} type="checkbox" />
+            <Camera className="h-4 w-4 text-slate-500" />
             បើកកាមេរ៉ាពេលចូល
           </label>
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={microphoneOn} onChange={(event) => setMicrophoneOn(event.target.checked)} type="checkbox" />
+            <Mic className="h-4 w-4 text-slate-500" />
             បើក microphone ពេលចូល
           </label>
         </div>
@@ -249,6 +251,7 @@ export function LiveKitCallRoom() {
       <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm leading-7 text-ink">
         LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងសមស្របជាង WebRTC mesh សម្រាប់ 10-20 នាក់។
         ប្រសិនបើកុំព្យូទ័រមិនមាន camera អ្នកអាចបិទ “បើកកាមេរ៉ា” ហើយចូលនិយាយដោយ microphone បាន។
+        បើអ្នកចូលរួមបើកកាមេរ៉ាមិនបាន សូមចុច icon camera ក្នុង toolbar ខាងក្រោម call ហើយជ្រើស Allow នៅ browser permission។
       </div>
       {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
@@ -268,6 +271,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [error, setError] = useState("");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
+  const [localBackupUrl, setLocalBackupUrl] = useState("");
   const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -282,6 +286,19 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }, 250);
     return () => window.clearInterval(timer);
   }, [recording]);
+
+  useEffect(() => {
+    return () => {
+      if (localBackupUrl) URL.revokeObjectURL(localBackupUrl);
+    };
+  }, [localBackupUrl]);
+
+  function setLocalBackup(blob: Blob) {
+    if (localBackupUrl) URL.revokeObjectURL(localBackupUrl);
+    const url = URL.createObjectURL(blob);
+    setLocalBackupUrl(url);
+    return url;
+  }
 
   function buildMixedAudioStream() {
     const audioContext = new AudioContext();
@@ -315,6 +332,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setNotice("");
     setSavedMeetingId("");
     setSavedAudioUrl("");
+    setLocalBackupUrl("");
     try {
       const mixedStream = buildMixedAudioStream();
       const mimeType = getRecorderMimeType();
@@ -412,6 +430,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     try {
       const blob = new Blob(chunksRef.current, { type: mimeType });
       if (!blob.size) throw new Error("No audio was recorded.");
+      setLocalBackup(blob);
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
       uploadData.append("speakers", JSON.stringify([...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)));
@@ -489,6 +508,21 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       </div>
       {notice ? <div className="mt-4 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
+      {localBackupUrl && !savedMeetingId ? (
+        <div className="mt-4 rounded-xl border border-saffron/30 bg-saffron/10 p-4">
+          <p className="font-semibold text-ink">Local recording backup</p>
+          <p className="mt-1 text-sm text-slate-600">
+            The audio was captured in this browser. If server save fails, download this backup before refreshing or closing the page.
+          </p>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <audio className="w-full" controls src={localBackupUrl} />
+          </div>
+          <a className="kh-button-secondary mt-3 inline-flex" download={`khmermeet-${room.name || "meeting"}.webm`} href={localBackupUrl}>
+            <Download className="h-4 w-4" />
+            Download backup audio
+          </a>
+        </div>
+      ) : null}
       {savedMeetingId ? (
         <div className="mt-4 rounded-xl border border-leaf/20 bg-leaf/5 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
