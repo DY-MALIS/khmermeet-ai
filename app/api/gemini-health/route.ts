@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { generateGeminiContent } from "@/lib/ai/gemini";
+import { generateGeminiContent, textModel, transcriptionModel } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -48,7 +48,10 @@ function getDiagnostics() {
   return {
     hasKey: Boolean(key),
     keyFingerprint: key ? createHash("sha256").update(key).digest("hex").slice(0, 10) : null,
+    keyEnding: key ? `...${key.slice(-4)}` : null,
     keyLength: key.length || 0,
+    textModel: textModel(),
+    transcriptionModel: transcriptionModel(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
     environment: process.env.VERCEL_ENV ?? "local"
   };
