@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
-import { generateGeminiContent, textModel, transcriptionModel } from "@/lib/ai/gemini";
+import { GeminiApiError, generateGeminiContent, textModel, transcriptionModel } from "@/lib/ai/gemini";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -36,7 +36,8 @@ export async function GET() {
         ok: false,
         status: "failed",
         message: error instanceof Error ? sanitizeError(error.message) : "Gemini test failed.",
-        diagnostics
+        diagnostics,
+        geminiError: getSafeGeminiError(error)
       },
       { status: 500 }
     );
@@ -62,4 +63,15 @@ function sanitizeError(message: string) {
     .replace(/key=AIza[0-9A-Za-z_-]+/g, "key=[hidden]")
     .replace(/AIza[0-9A-Za-z_-]+/g, "[hidden-api-key]")
     .slice(0, 500);
+}
+
+function getSafeGeminiError(error: unknown) {
+  if (!(error instanceof GeminiApiError)) return null;
+  return {
+    httpStatus: error.status,
+    googleStatus: error.googleStatus ?? null,
+    googleReason: error.googleReason ?? null,
+    retryDelay: error.retryDelay ?? null,
+    safeDetail: sanitizeError(error.safeDetail)
+  };
 }

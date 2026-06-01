@@ -11,6 +11,32 @@ type GeminiWirePart =
   | { inlineData: { mimeType: string; data: string } }
   | { inline_data: { mime_type: string; data: string } };
 
+export class GeminiApiError extends Error {
+  status: number;
+  safeDetail: string;
+  googleStatus?: string;
+  googleReason?: string;
+  retryDelay?: string;
+
+  constructor(message: string, context: GeminiApiErrorContext) {
+    super(message);
+    this.name = "GeminiApiError";
+    this.status = context.status;
+    this.safeDetail = context.safeDetail;
+    this.googleStatus = context.googleStatus;
+    this.googleReason = context.googleReason;
+    this.retryDelay = context.retryDelay;
+  }
+}
+
+type GeminiApiErrorContext = {
+  status: number;
+  safeDetail: string;
+  googleStatus?: string;
+  googleReason?: string;
+  retryDelay?: string;
+};
+
 const taskSchema = z.object({
   tasks: z.array(
     z.object({
@@ -79,6 +105,44 @@ function toGeminiErrorMessage(status: number, detail: string) {
   return `Gemini API error ${status}`;
 }
 
+function sanitizeGeminiDetail(detail: string) {
+  return detail
+    .replace(/key=AIza[0-9A-Za-z_-]+/g, "key=[hidden]")
+    .replace(/AIza[0-9A-Za-z_-]+/g, "[hidden-api-key]")
+    .slice(0, 1200);
+}
+
+function getGeminiErrorContext(status: number, detail: string): GeminiApiErrorContext {
+  const safeDetail = sanitizeGeminiDetail(detail);
+  let googleStatus: string | undefined;
+  let googleReason: string | undefined;
+  let retryDelay: string | undefined;
+
+  try {
+    const parsed = JSON.parse(detail) as {
+      error?: {
+        status?: string;
+        details?: Array<{
+          reason?: string;
+          retryDelay?: string;
+          violations?: Array<{ quotaMetric?: string; quotaId?: string }>;
+        }>;
+      };
+    };
+    googleStatus = parsed.error?.status;
+    const detailItems = parsed.error?.details ?? [];
+    googleReason =
+      detailItems.find((item) => item.reason)?.reason ??
+      detailItems.flatMap((item) => item.violations ?? []).find((item) => item.quotaMetric)?.quotaMetric ??
+      undefined;
+    retryDelay = detailItems.find((item) => item.retryDelay)?.retryDelay;
+  } catch {
+    // Google sometimes returns plain text. The sanitized detail is still useful.
+  }
+
+  return { status, safeDetail, googleStatus, googleReason, retryDelay };
+}
+
 async function requestGeminiContent(
   parts: GeminiWirePart[],
   options: { model?: string; json?: boolean; temperature?: number } = {}
@@ -102,7 +166,7 @@ async function requestGeminiContent(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(toGeminiErrorMessage(response.status, detail));
+    throw new GeminiApiError(toGeminiErrorMessage(response.status, detail), getGeminiErrorContext(response.status, detail));
   }
 
   const payload = (await response.json()) as {
