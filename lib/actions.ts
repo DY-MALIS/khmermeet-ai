@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -130,6 +131,31 @@ export async function updateTranscript(formData: FormData) {
       data: { transcript, summary: null, status: "transcribed" }
     })
   ]);
+  revalidateMeetingViews(id);
+}
+
+export async function transcribeMeetingAudio(formData: FormData) {
+  const user = await requireUser();
+  const id = formString(formData, "id");
+  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  if (!meeting) throw new Error("No meeting found.");
+  if (!meeting.audioUrl) throw new Error("No audio file found for this meeting.");
+
+  const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
+  const transcript = await transcribeAudio(audioFile);
+  if (!hasUsableTranscript(transcript)) {
+    throw new Error("No clear speech text was detected. Please check the audio, microphone, or Gemini quota/key.");
+  }
+
+  await prisma.meeting.update({
+    where: { id },
+    data: {
+      transcript,
+      summary: null,
+      language: "km-en",
+      status: "transcribed"
+    }
+  });
   revalidateMeetingViews(id);
 }
 

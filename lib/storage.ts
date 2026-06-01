@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { generateGeminiContent, transcriptionModel } from "@/lib/ai/gemini";
@@ -38,6 +38,42 @@ function cleanTranscriptionText(text: string) {
 
 export function getLocalAudioPath(name: string) {
   return path.join(uploadRoot, path.basename(name));
+}
+
+export async function loadStoredAudioAsFile(audioUrl: string) {
+  const normalizedUrl = audioUrl.trim();
+  if (!normalizedUrl) throw new Error("Missing audio URL.");
+
+  if (normalizedUrl.startsWith("/api/uploads/")) {
+    const idOrName = path.basename(decodeURIComponent(normalizedUrl.split("?")[0]));
+    const dbAudio = await prisma.audioFile.findUnique({ where: { id: idOrName } }).catch(() => null);
+    if (dbAudio) {
+      return new File([Buffer.from(dbAudio.data)], dbAudio.filename, { type: dbAudio.mimeType });
+    }
+
+    const data = await readFile(getLocalAudioPath(idOrName));
+    return new File([data], idOrName, { type: contentTypeFromPath(idOrName) });
+  }
+
+  if (normalizedUrl.startsWith("/api/storage/")) {
+    const objectPath = normalizedUrl
+      .replace(/^\/api\/storage\//, "")
+      .split("/")
+      .map(decodeURIComponent)
+      .join("/");
+    const file = await downloadSupabaseAudio(objectPath);
+    return new File([file.data], path.basename(objectPath), { type: file.mimeType });
+  }
+
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    const response = await fetch(normalizedUrl);
+    if (!response.ok) throw new Error("Could not download audio for transcription.");
+    const data = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") || contentTypeFromPath(normalizedUrl);
+    return new File([data], path.basename(new URL(normalizedUrl).pathname) || "meeting-audio", { type: contentType });
+  }
+
+  throw new Error("Unsupported audio storage path.");
 }
 
 export async function saveLocalAudio(file: File) {

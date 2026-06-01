@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
-import { extractTasks, generateSummary, updateTranscript } from "@/lib/actions";
+import { extractTasks, generateSummary, transcribeMeetingAudio, updateTranscript } from "@/lib/actions";
 import { getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -43,6 +43,12 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
               Transcript ចាស់មានតែលេខ timestamp ឬគ្មានពាក្យនិយាយច្បាស់ ដូច្នេះ app មិនបង្ហាញវាជា transcript ពិតទៀតទេ។ សូម paste អត្ថបទប្រជុំពិតនៅខាងក្រោម រួចរក្សាទុក។
             </div>
+          ) : null}
+          {!transcriptIsUsable && meeting.audioUrl ? (
+            <form action={transcribeMeetingAudio} className="mb-4">
+              <input type="hidden" name="id" value={meeting.id} />
+              <ActionButton>Transcribe saved audio</ActionButton>
+            </form>
           ) : null}
           <form action={updateTranscript} className="space-y-3">
             <input type="hidden" name="id" value={meeting.id} />
