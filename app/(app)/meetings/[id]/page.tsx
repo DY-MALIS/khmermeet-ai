@@ -4,7 +4,8 @@ import { EmptyState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
-import { extractTasks, generateSummary, transcribeMeetingAudio, updateTranscript } from "@/lib/actions";
+import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
+import { extractTasks, generateSummary, updateTranscript } from "@/lib/actions";
 import { getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -45,10 +46,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </div>
           ) : null}
           {!transcriptIsUsable && meeting.audioUrl ? (
-            <form action={transcribeMeetingAudio} className="mb-4">
-              <input type="hidden" name="id" value={meeting.id} />
-              <ActionButton>Transcribe saved audio</ActionButton>
-            </form>
+            <div className="mb-4">
+              <TranscribeAudioButton meetingId={meeting.id} />
+            </div>
           ) : null}
           <form action={updateTranscript} className="space-y-3">
             <input type="hidden" name="id" value={meeting.id} />

@@ -5,8 +5,7 @@ import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { transcribeMeetingAudio } from "@/lib/actions";
-import { ActionButton } from "@/components/action-button";
+import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -71,10 +70,7 @@ export default async function TranscriptsPage() {
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {meeting.audioUrl ? (
-                      <form action={transcribeMeetingAudio}>
-                        <input type="hidden" name="id" value={meeting.id} />
-                        <ActionButton>Transcribe audio</ActionButton>
-                      </form>
+                      <TranscribeAudioButton meetingId={meeting.id} />
                     ) : null}
                     <Link className="kh-button-secondary inline-flex" href={`/meetings/${meeting.id}`}>
                       Open meeting
