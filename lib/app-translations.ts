@@ -202,7 +202,35 @@ Object.assign(kmToEnText, {
   "សម្អាតតម្រង": "Clear filters",
   "គ្មានកិច្ចការតាមតម្រង": "No tasks match the current filters",
   "មិនមាន transcript ច្បាស់": "No clear transcript yet",
-  "សូមបម្លែងសំឡេង ឬបញ្ចូល transcript ជាមុន": "Please transcribe audio or enter a transcript first"
+  "សូមបម្លែងសំឡេង ឬបញ្ចូល transcript ជាមុន": "Please transcribe audio or enter a transcript first",
+  "Room code ត្រូវបានភ្ជាប់ក្នុង invite link រួចហើយ។ សូមវាយតែឈ្មោះរបស់អ្នក បន្ទាប់មកចុច Join HD Video Call។":
+    "Room code is already included in the invite link. Enter only your name, then click Join HD Video Call.",
+  "Host បំពេញចំណងជើង និង room code មុន។ Invite link នឹងផ្ញើចំណងជើង/room code ជាស្រេច។":
+    "The host fills in the meeting title and room code first. The invite link already includes both.",
+  "LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងសមស្របជាង WebRTC mesh សម្រាប់ 10-20 នាក់។ ប្រសិនបើអ្នកមិនមាន camera អ្នកអាចបិទវាបាន ហើយនៅតែនិយាយនិងស្តាប់តាម microphone បាន។ ប្រើ participantsបើកការអនុញ្ញាត, ចុចប៊ូតុង icon camera ក្នុង toolbar ខាងក្រោម call ហើយជ្រើស Allow នៅ browser permission។":
+    "LiveKit mode supports team audio/video, grid view, screen share, chat, speaker output, and works better than WebRTC mesh for 10-20 people. If you do not have a camera, you can turn it off and still talk and listen through the microphone. Participants should allow permissions, use the camera icon in the lower toolbar, and choose Allow in the browser permission dialog.",
+  "មិនទាន់មាន transcript ពិត": "No real transcript yet",
+  "Audio ត្រូវបានsave ប៉ុន្តែមិនទាន់បម្លែងជាអក្សរច្បាស់។ ប្រាសិនបើមានលេខ timestampៗ បើក meeting detail ដើម្បីបម្លែង transcript ពិត។":
+    "Audio is saved, but it has not been converted into clear text yet. If you only see timestamp-like text, open the meeting detail and transcribe the audio.",
+  "បង្កើតកិច្ចការថ្មី": "Add new task",
+  "ប្រើ AI មិនចាំបាច់ក៏បាន ប៉ុន្តែអ្នកអាចបង្កើតដោយដៃនៅទីនេះ។":
+    "AI is optional. You can also create tasks manually here.",
+  "ចំណងជើងកិច្ចការ": "Task title",
+  "ពិពណ៌នាកិច្ចការ...": "Task description...",
+  "រកមិនឃើញកិច្ចការតាម filter": "No tasks match the current filter",
+  "សូមចុច Show all ឬប្ដូរ filter ដើម្បីមើលកិច្ចការផ្សេងៗ។":
+    "Click Show all or change the filter to see other tasks.",
+  "កិច្ចការដែល AI ដកស្រង់ ឬអ្នកបង្កើតដោយដៃ នឹងបង្ហាញនៅទីនេះ។":
+    "Tasks extracted by AI or created manually will appear here.",
+  "មិនទាន់មានកិច្ចការ": "No tasks yet",
+  "ចុចប៊ូតុងខាងក្រោម ដើម្បីឲ្យ AI ទាញកិច្ចការពី transcript។":
+    "Click the button below to let AI extract tasks from the transcript.",
+  "ត្រូវមាន transcript ពិតជាមុនសិន ទើប AI អាចទាញកិច្ចការបាន។":
+    "A real transcript is required before AI can extract tasks.",
+  "សង្ខេបប្រជុំ": "Meeting summary",
+  "ចំណុចសំខាន់ៗ": "Key points",
+  "ការសម្រេចចិត្ត": "Decisions",
+  "កិច្ចការដែលត្រូវធ្វើ": "Action items"
 });
 
 export const enToKmText = Object.fromEntries(Object.entries(kmToEnText).map(([km, en]) => [en, km])) as Record<string, string>;

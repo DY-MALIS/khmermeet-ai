@@ -27,8 +27,7 @@ function translateValue(value: string, language: AppLanguage) {
   if (translated) return preserveWhitespace(value, translated);
 
   const phraseKeys = language === "en" ? phraseTranslationKeys : phraseTranslationKeys.map((key) => kmToEnText[key]).filter(Boolean);
-  const replacementKeys = Array.from(new Set([...phraseKeys, ...Object.keys(dictionary).filter((key) => key.length >= 3)]))
-    .sort((a, b) => b.length - a.length);
+  const replacementKeys = Array.from(new Set(phraseKeys.filter((key) => key.length >= 12))).sort((a, b) => b.length - a.length);
   const replaced = replacementKeys.reduce((current, key) => {
     const next = dictionary[key];
     return next ? current.split(key).join(next) : current;
