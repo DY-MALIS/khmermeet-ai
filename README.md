@@ -41,8 +41,8 @@ cp .env.example .env
 ```env
 DATABASE_URL="file:./dev.db"
 GEMINI_API_KEY="..."
-GEMINI_TEXT_MODEL=gemini-2.5-flash
-GEMINI_TRANSCRIBE_MODEL=gemini-2.5-flash
+GEMINI_TEXT_MODEL=gemini-1.5-flash
+GEMINI_TRANSCRIBE_MODEL=gemini-1.5-flash
 GEMINI_TRANSCRIBE_TIMEOUT_MS=45000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
