@@ -27,7 +27,9 @@ function translateValue(value: string, language: AppLanguage) {
   if (translated) return preserveWhitespace(value, translated);
 
   const phraseKeys = language === "en" ? phraseTranslationKeys : phraseTranslationKeys.map((key) => kmToEnText[key]).filter(Boolean);
-  const replaced = phraseKeys.reduce((current, key) => {
+  const replacementKeys = Array.from(new Set([...phraseKeys, ...Object.keys(dictionary).filter((key) => key.length >= 3)]))
+    .sort((a, b) => b.length - a.length);
+  const replaced = replacementKeys.reduce((current, key) => {
     const next = dictionary[key];
     return next ? current.split(key).join(next) : current;
   }, value);
@@ -96,11 +98,17 @@ export function AppTextTranslator() {
     applySoon();
 
     const observer = new MutationObserver((mutations) => {
-      if (mutations.some((mutation) => mutation.type === "childList" || mutation.type === "characterData")) applySoon();
+      if (mutations.some((mutation) => mutation.type === "childList" || mutation.type === "characterData" || mutation.type === "attributes")) applySoon();
     });
-    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    observer.observe(document.body, {
+      attributeFilter: [...translatedAttributes],
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
 
-    const onLanguageChange = () => apply();
+    const onLanguageChange = () => applySoon();
     const onStorage = (event: StorageEvent) => {
       if (event.key === languageStorageKey) apply();
     };
