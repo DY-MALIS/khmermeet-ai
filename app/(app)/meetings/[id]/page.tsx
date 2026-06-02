@@ -38,7 +38,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         </div>
       ) : null}
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
-        <section className="kh-card p-5">
+        <section className="kh-card p-5" id="transcript">
           <h2 className="mb-4 text-lg font-bold">Transcript</h2>
           {!transcriptIsUsable && meeting.transcript ? (
             <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
@@ -98,7 +98,34 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
               </tbody>
             </table>
           </div>
-        ) : <div className="p-5"><EmptyState title="មិនទាន់មានកិច្ចការ" description="ចុច Extract Action Tasks ដើម្បីបង្កើតកិច្ចការពី transcript។" /></div>}
+        ) : (
+          <div className="p-5">
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+              <EmptyState
+                title="មិនទាន់មានកិច្ចការ"
+                description={
+                  transcriptIsUsable
+                    ? "ចុចប៊ូតុងខាងក្រោម ដើម្បីឲ្យ AI ទាញកិច្ចការពី transcript។"
+                    : "ត្រូវមាន transcript ពិតជាមុនសិន ទើប AI អាចទាញកិច្ចការបាន។"
+                }
+              />
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {transcriptIsUsable ? (
+                  <form action={extractTasks}>
+                    <input type="hidden" name="id" value={meeting.id} />
+                    <ActionButton className="kh-button-primary">Extract Action Tasks</ActionButton>
+                  </form>
+                ) : meeting.audioUrl ? (
+                  <TranscribeAudioButton meetingId={meeting.id} />
+                ) : (
+                  <a className="kh-button-secondary" href="#transcript">
+                    បញ្ចូល transcript ជាមុន
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

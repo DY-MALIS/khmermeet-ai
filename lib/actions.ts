@@ -179,18 +179,25 @@ export async function extractTasks(formData: FormData) {
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before extracting tasks.");
   const tasks = await extractMeetingTasks(meeting.transcript);
-  await prisma.task.createMany({
-    data: tasks.map((task) => ({
-      meetingId: id,
-      title: task.title,
-      description: task.description ?? null,
-      assigneeName: task.assigneeName ?? null,
-      deadline: task.deadline ? new Date(task.deadline) : null,
-      priority: task.priority,
-      status: task.status,
-      sourceText: task.sourceText ?? null
-    }))
-  });
+  await prisma.$transaction([
+    prisma.task.deleteMany({ where: { meetingId: id } }),
+    ...(tasks.length
+      ? [
+          prisma.task.createMany({
+            data: tasks.map((task) => ({
+              meetingId: id,
+              title: task.title,
+              description: task.description ?? null,
+              assigneeName: task.assigneeName ?? null,
+              deadline: task.deadline ? new Date(task.deadline) : null,
+              priority: task.priority,
+              status: task.status,
+              sourceText: task.sourceText ?? null
+            }))
+          })
+        ]
+      : [])
+  ]);
   revalidateMeetingViews(id);
 }
 
