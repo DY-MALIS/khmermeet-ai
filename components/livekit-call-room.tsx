@@ -33,6 +33,21 @@ function createRoomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
+function readMeetingParams() {
+  if (typeof window === "undefined") {
+    return { hasInviteRoom: false, room: createRoomCode(), title: "" };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const inviteRoom = params.get("room")?.trim().toUpperCase() ?? "";
+  const inviteTitle = params.get("title")?.trim() ?? "";
+  return {
+    hasInviteRoom: Boolean(inviteRoom),
+    room: inviteRoom || createRoomCode(),
+    title: inviteTitle
+  };
+}
+
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = Math.floor(seconds % 60).toString().padStart(2, "0");
@@ -71,13 +86,11 @@ async function checkMediaDeviceSupport(wantsCamera: boolean, wantsMicrophone: bo
 }
 
 export function LiveKitCallRoom() {
-  const initialRoom = useMemo(() => {
-    if (typeof window === "undefined") return createRoomCode();
-    return new URLSearchParams(window.location.search).get("room") || createRoomCode();
-  }, []);
-  const [room, setRoom] = useState(initialRoom);
+  const initialMeeting = useMemo(() => readMeetingParams(), []);
+  const [room, setRoom] = useState(initialMeeting.room);
   const [name, setName] = useState("Local User");
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(initialMeeting.title);
+  const [isInviteGuest] = useState(initialMeeting.hasInviteRoom);
   const [cameraOn, setCameraOn] = useState(true);
   const [microphoneOn, setMicrophoneOn] = useState(true);
   const [callMedia, setCallMedia] = useState({ audio: true, video: true });
@@ -91,6 +104,17 @@ export function LiveKitCallRoom() {
       window.history.replaceState(null, "", `/meetings/call?room=${room}`);
     }
   }, [room]);
+
+  function meetingTitle() {
+    return title.trim() || `Video call ${room}`;
+  }
+
+  function inviteLink(nextRoom = room) {
+    const url = new URL(`${window.location.origin}/meetings/call`);
+    url.searchParams.set("room", nextRoom);
+    if (title.trim()) url.searchParams.set("title", title.trim());
+    return url.toString();
+  }
 
   async function joinRoom() {
     setJoining(true);
@@ -121,7 +145,7 @@ export function LiveKitCallRoom() {
       setCallMedia({ audio: nextMicrophoneOn, video: nextCameraOn });
       setTokenPayload(data);
       if (notices.length) setNotice(notices.join(" "));
-      window.history.replaceState(null, "", `/meetings/call?room=${data.room}`);
+      window.history.replaceState(null, "", inviteLink(data.room));
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចូល HD video call បានទេ។");
     } finally {
@@ -130,17 +154,17 @@ export function LiveKitCallRoom() {
   }
 
   async function copyInvite() {
-    const url = `${window.location.origin}/meetings/call?room=${room}`;
+    const url = inviteLink();
     await navigator.clipboard?.writeText(url).catch(() => undefined);
-    setNotice("Invite link copied. Send it to other participants so they can join this room.");
+    setNotice("Invite link copied. Participants only need to enter their name, then join.");
   }
 
   async function shareInvite() {
-    const url = `${window.location.origin}/meetings/call?room=${room}`;
+    const url = inviteLink();
     if (navigator.share) {
       await navigator.share({
-        title: title || "KhmerMeet AI meeting",
-        text: `Join KhmerMeet AI room ${room}`,
+        title: meetingTitle(),
+        text: `Join KhmerMeet AI meeting: ${meetingTitle()}`,
         url
       }).catch(() => undefined);
       return;
@@ -152,14 +176,14 @@ export function LiveKitCallRoom() {
     return (
       <div className="space-y-5">
         <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
-          HD mode ប្រើ LiveKit SFU ដើម្បីឲ្យអ្នកចូលរួមមើលមុខគ្នា និងនិយាយលឺគ្នាជាច្រើននាក់។ Room: <b>{tokenPayload.room}</b>
+          HD mode ប្រើ LiveKit SFU ដើម្បីឲ្យអ្នកចូលរួមមើលមុខគ្នា និងនិយាយលឺគ្នាជាច្រើននាក់។ Meeting: <b>{meetingTitle()}</b> · Room: <b>{tokenPayload.room}</b>
         </div>
         {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
         <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-600">Invite participants</p>
             <p className="text-sm text-slate-500">
-              Share this link so others can join the same room: <span className="font-semibold text-ink">{tokenPayload.room}</span>
+              Share this link so others can join <span className="font-semibold text-ink">{meetingTitle()}</span>. They only enter their name.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -204,7 +228,7 @@ export function LiveKitCallRoom() {
           <div className="min-h-[70svh] bg-slate-950 md:min-h-[72vh]">
             <VideoConference />
           </div>
-          <LiveKitMeetingAgent meetingTitle={title || `Video call ${tokenPayload.room}`} />
+          <LiveKitMeetingAgent meetingTitle={meetingTitle()} />
         </LiveKitRoom>
         {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       </div>
@@ -215,23 +239,39 @@ export function LiveKitCallRoom() {
     <div className="space-y-5">
       <div className="kh-card grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="space-y-1 md:col-span-2">
-            <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ</span>
-            <input className="kh-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="ឧ. ប្រជុំផែនការ Q2" />
-          </label>
+          {isInviteGuest ? (
+            <div className="space-y-2 rounded-xl border border-leaf/20 bg-leaf/5 p-4 md:col-span-2">
+              <p className="text-sm font-semibold text-leaf">អ្នកត្រូវបានអញ្ជើញចូលប្រជុំ</p>
+              <h2 className="text-xl font-bold text-ink">{meetingTitle()}</h2>
+              <p className="text-sm text-slate-500">Room code ត្រូវបានភ្ជាប់ក្នុង invite link រួចហើយ។ សូមវាយតែឈ្មោះរបស់អ្នក បន្ទាប់មកចុច Join HD Video Call។</p>
+            </div>
+          ) : (
+            <label className="space-y-1 md:col-span-2">
+              <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ</span>
+              <input className="kh-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="ឧ. ប្រជុំផែនការ Q2" />
+            </label>
+          )}
           <label className="space-y-1">
             <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម</span>
             <input className="kh-input" value={name} onChange={(event) => setName(event.target.value)} />
           </label>
-          <label className="space-y-1">
-            <span className="text-sm font-semibold text-slate-600">Room code</span>
-            <div className="flex gap-2">
-              <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
-              <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="Copy invite">
-                <Copy className="h-4 w-4" />
-              </button>
+          {isInviteGuest ? (
+            <div className="space-y-1">
+              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{room}</div>
             </div>
-          </label>
+          ) : (
+            <label className="space-y-1">
+              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <div className="flex gap-2">
+                <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
+                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="Copy invite">
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">Host បំពេញចំណងជើង និង room code មុន។ Invite link នឹងផ្ញើចំណងជើង/room code ជាស្រេច។</p>
+            </label>
+          )}
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={cameraOn} onChange={(event) => setCameraOn(event.target.checked)} type="checkbox" />
             <Camera className="h-4 w-4 text-slate-500" />
