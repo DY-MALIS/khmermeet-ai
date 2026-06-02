@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
+import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     const { id } = await params;
@@ -23,7 +23,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-    const transcript = await transcribeAudio(audioFile);
+    const languageMode = await readLanguageMode(request, meeting.language);
+    const transcript = await transcribeAudio(audioFile, [], languageMode);
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json(
@@ -57,4 +58,14 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       { status: 500 }
     );
   }
+}
+
+async function readLanguageMode(request: Request, fallback: string | null) {
+  if (request.headers.get("content-type")?.includes("application/json")) {
+    const body = await request.json().catch(() => ({}));
+    return normalizeTranscriptionLanguageMode(
+      body && typeof body === "object" && "languageMode" in body ? body.languageMode : fallback
+    );
+  }
+  return normalizeTranscriptionLanguageMode(fallback);
 }

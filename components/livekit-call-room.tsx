@@ -309,6 +309,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"mixed" | "km" | "en">("mixed");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [localBackupUrl, setLocalBackupUrl] = useState("");
@@ -474,6 +475,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
       uploadData.append("speakers", JSON.stringify([...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)));
+      uploadData.append("languageMode", transcriptionLanguage);
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
@@ -518,6 +520,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="kh-input h-10 w-auto min-w-36 py-1 text-sm"
+            value={transcriptionLanguage}
+            onChange={(event) => setTranscriptionLanguage(event.target.value as "mixed" | "km" | "en")}
+            disabled={recording || saving}
+            title="Choose how Gemini should transcribe the saved meeting audio."
+          >
+            <option value="mixed">Mixed KH/EN</option>
+            <option value="km">Khmer only</option>
+            <option value="en">English only</option>
+          </select>
           <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording ? `Recording ${formatTime(seconds)}` : "Ready"}
           </span>

@@ -39,6 +39,7 @@ export function RecordingPanel() {
   const [uploading, setUploading] = useState(false);
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"mixed" | "km" | "en">("mixed");
 
   useEffect(() => {
     setSupported(
@@ -116,6 +117,7 @@ export function RecordingPanel() {
         setUploading(true);
         const formData = new FormData();
         formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
+        formData.append("languageMode", transcriptionLanguage);
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
           const data = await response.json();
@@ -190,6 +192,19 @@ export function RecordingPanel() {
         </div>
       ) : null}
       {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      <label className="mb-4 block max-w-xs space-y-1">
+        <span className="text-sm font-semibold text-slate-600">Transcript language</span>
+        <select
+          className="kh-input"
+          value={transcriptionLanguage}
+          onChange={(event) => setTranscriptionLanguage(event.target.value as "mixed" | "km" | "en")}
+          disabled={state === "recording" || state === "paused" || uploading}
+        >
+          <option value="mixed">Mixed Khmer / English</option>
+          <option value="km">Khmer only</option>
+          <option value="en">English only</option>
+        </select>
+      </label>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>

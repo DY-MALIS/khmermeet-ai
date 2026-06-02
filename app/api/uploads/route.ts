@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveLocalAudio, transcribeAudio } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export const maxDuration = 60;
@@ -17,13 +17,14 @@ export async function POST(request: Request) {
     typeof speakersField === "string"
       ? parseSpeakerNames(speakersField)
       : [];
+  const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
   const audioUrl = await saveLocalAudio(file);
   try {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);
     const speakerAudioNamesField = formData.get("speakerAudioNames");
     const speakerAudioNames = typeof speakerAudioNamesField === "string" ? parseSpeakerNames(speakerAudioNamesField) : [];
-    const speakerTranscript = await withTimeout(transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames), transcriptionTimeoutMs);
-    const transcript = speakerTranscript || (await withTimeout(transcribeAudio(file, speakerNames), transcriptionTimeoutMs));
+    const speakerTranscript = await withTimeout(transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames, languageMode), transcriptionTimeoutMs);
+    const transcript = speakerTranscript || (await withTimeout(transcribeAudio(file, speakerNames, languageMode), transcriptionTimeoutMs));
     return NextResponse.json({ audioUrl, transcript });
   } catch (error) {
     return NextResponse.json({
@@ -43,12 +44,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   ]);
 }
 
-async function transcribeSpeakerAudio(files: File[], names: string[]) {
+async function transcribeSpeakerAudio(files: File[], names: string[], languageMode: TranscriptionLanguageMode) {
   if (!files.length) return "";
   const parts = await Promise.all(
     files.map(async (file, index) => {
       const speakerName = names[index] || `Speaker ${index + 1}`;
-      const text = await transcribeAudio(file, [speakerName]);
+      const text = await transcribeAudio(file, [speakerName], languageMode);
       return ensureSpeakerLabel(text, speakerName);
     })
   );

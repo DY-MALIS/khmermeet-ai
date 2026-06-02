@@ -8,6 +8,15 @@ import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 const databaseAudioLimit = 12 * 1024 * 1024;
 
+export type TranscriptionLanguageMode = "km" | "en" | "mixed";
+
+export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
+  if (value === "km" || value === "km-KH" || value === "khmer") return "km";
+  if (value === "en" || value === "en-US" || value === "english") return "en";
+  if (value === "mixed" || value === "km-en" || value === "en-km") return "mixed";
+  return "mixed";
+}
+
 function cleanTranscriptionText(text: string) {
   const noSpeechPatterns = [
     /no clear speech detected/i,
@@ -197,7 +206,43 @@ async function ensureAudioFileTable() {
   `);
 }
 
-export async function transcribeAudio(audioFile: File, speakerNames: string[] = []) {
+function languageModePrompt(languageMode: TranscriptionLanguageMode) {
+  if (languageMode === "km") {
+    return [
+      "The selected transcript language is Khmer.",
+      "This is transcription, not translation.",
+      "Write Khmer speech in Khmer script.",
+      "Do not translate Khmer into English.",
+      "Do not add English words unless the speaker clearly says an English product name, acronym, URL, number, person name, brand, or technical term.",
+      "If the speaker says English words inside a Khmer sentence, keep those exact English words only."
+    ];
+  }
+
+  if (languageMode === "en") {
+    return [
+      "The selected transcript language is English.",
+      "This is transcription, not translation.",
+      "Write English speech in English only.",
+      "Do not translate English into Khmer.",
+      "Do not add Khmer words unless the speaker clearly says a Khmer person name, place name, organization name, or Khmer term.",
+      "If the speaker says Khmer words inside an English sentence, keep those exact Khmer words only."
+    ];
+  }
+
+  return [
+    "The selected transcript language is mixed Khmer and English.",
+    "This is transcription, not translation.",
+    "Detect Khmer and English automatically in the same audio.",
+    "If a person speaks Khmer, write Khmer script. If a person speaks English, write English. If they truly mix Khmer and English, keep the mixed language exactly.",
+    "Do not force everything into one language."
+  ];
+}
+
+export async function transcribeAudio(
+  audioFile: File,
+  speakerNames: string[] = [],
+  languageMode: TranscriptionLanguageMode = "mixed"
+) {
   // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
   if (!process.env.GEMINI_API_KEY) return "";
@@ -205,19 +250,18 @@ export async function transcribeAudio(audioFile: File, speakerNames: string[] = 
     throw new Error("Audio is larger than the 20 MB Gemini inline transcription limit.");
   }
 
+  const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
   const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
   const prompt = [
-    "This is a Cambodian team meeting with Khmer and English speakers. The meeting may switch between Khmer and English at any time.",
-    "Detect Khmer and English automatically in the same audio. Do not force everything into one language.",
-    "Do not translate between languages. If a person speaks Khmer, write Khmer script. If a person speaks English, write English. If they mix Khmer and English, keep the mixed language exactly.",
+    "This is a Cambodian team meeting audio transcription task.",
+    ...languageModePrompt(normalizedLanguageMode),
     "This audio may be one live meeting chunk, so it may start or end in the middle of a sentence.",
     "For short chunks, return any audible words even if the sentence is incomplete.",
     "Transcribe the full audio as completely as possible.",
-    "Transcribe verbatim. Do not summarize, translate, rewrite, or skip repeated words.",
+    "Transcribe verbatim. Do not summarize, translate, rewrite, paraphrase, or skip repeated words.",
     "Return only transcript text. Do not include explanations, analysis, confidence notes, or phrases like 'No clear speech detected'.",
     "If there is truly no speech, return an empty string.",
     "Do not invent speakers, names, or dialogue. Only write words actually heard in this audio.",
-    "Keep Khmer words in Khmer script and English words in English.",
     "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
     "If the audio contains pauses, continue transcribing after every pause.",
     "If a word is unclear, write the most likely heard word, but never invent a full sentence.",

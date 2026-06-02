@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { transcribeAudio } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export const maxDuration = 60;
@@ -14,9 +14,10 @@ export async function POST(request: Request) {
 
   const speakersField = formData.get("speakers");
   const speakerNames = typeof speakersField === "string" ? parseSpeakerNames(speakersField) : [];
+  const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
 
   try {
-    const transcript = await transcribeAudio(file, speakerNames);
+    const transcript = await transcribeAudio(file, speakerNames, languageMode);
     return NextResponse.json({ transcript });
   } catch (error) {
     const message = error instanceof Error ? sanitizeError(error.message) : "Could not transcribe live audio.";
