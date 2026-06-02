@@ -58,7 +58,7 @@ function getGeminiKey() {
 }
 
 export function textModel() {
-  return process.env.GEMINI_TEXT_MODEL ?? "gemini-1.5-flash";
+  return process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash-lite";
 }
 
 export function transcriptionModel() {
