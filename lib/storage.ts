@@ -37,6 +37,7 @@ function cleanTranscriptionText(text: string) {
     .filter(Boolean)
     .filter((line) => !noSpeechPatterns.some((pattern) => pattern.test(line)))
     .filter((line) => !/^speaker\s*\d+\s*:\s*$/i.test(line))
+    .filter((line) => !isTimestampOnlyTranscript(line))
     .join("\n")
     .trim();
 
@@ -212,6 +213,7 @@ function languageModePrompt(languageMode: TranscriptionLanguageMode) {
       "The selected transcript language is Khmer.",
       "This is transcription, not translation.",
       "Write Khmer speech in Khmer script.",
+      "Do not romanize Khmer. Do not write Khmer pronunciation in English letters.",
       "Do not translate Khmer into English.",
       "Do not add English words unless the speaker clearly says an English product name, acronym, URL, number, person name, brand, or technical term.",
       "If the speaker says English words inside a Khmer sentence, keep those exact English words only."
@@ -234,6 +236,7 @@ function languageModePrompt(languageMode: TranscriptionLanguageMode) {
     "This is transcription, not translation.",
     "Detect Khmer and English automatically in the same audio.",
     "If a person speaks Khmer, write Khmer script. If a person speaks English, write English. If they truly mix Khmer and English, keep the mixed language exactly.",
+    "Do not romanize Khmer. Do not translate English to Khmer. Do not translate Khmer to English.",
     "Do not force everything into one language."
   ];
 }
@@ -259,9 +262,12 @@ export async function transcribeAudio(
     "For short chunks, return any audible words even if the sentence is incomplete.",
     "Transcribe the full audio as completely as possible.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, paraphrase, or skip repeated words.",
+    "Write only the actual words spoken by participants.",
+    "Never output timestamps, second counters, timecodes, beat markers, or placeholder text such as 00:01 00:02 00:03.",
     "Return only transcript text. Do not include explanations, analysis, confidence notes, or phrases like 'No clear speech detected'.",
-    "If there is truly no speech, return an empty string.",
+    "If there is truly no audible speech, return an empty string instead of timestamps or guesses.",
     "Do not invent speakers, names, or dialogue. Only write words actually heard in this audio.",
+    "Do not split one speaker into multiple Speaker 1/Speaker 2 labels unless different voices are clearly audible.",
     "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
     "If the audio contains pauses, continue transcribing after every pause.",
     "If a word is unclear, write the most likely heard word, but never invent a full sentence.",

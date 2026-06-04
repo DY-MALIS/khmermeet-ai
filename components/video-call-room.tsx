@@ -922,7 +922,7 @@ export function VideoCallRoom() {
       const formData = new FormData();
       formData.append("audio", blob, mimeType.includes("mp4") ? "live-chunk.m4a" : "live-chunk.webm");
       formData.append("speakers", JSON.stringify(getParticipantNames()));
-      formData.append("languageMode", speechLanguage === "en-US" ? "en" : "km");
+      formData.append("languageMode", "mixed");
       const response = await fetch("/api/live-transcript", { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Live transcript failed");

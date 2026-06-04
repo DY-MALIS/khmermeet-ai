@@ -1,5 +1,8 @@
 export function isTimestampOnlyTranscript(text: string) {
-  const compact = text.replace(/\s+/g, " ").trim();
+  const compact = text
+    .replace(/\b(?:speaker|អ្នកនិយាយ)\s*\d*\s*:/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!compact) return true;
 
   const withoutTimestamps = compact
