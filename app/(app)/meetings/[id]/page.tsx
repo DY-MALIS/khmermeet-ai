@@ -5,6 +5,7 @@ import { ExportButton } from "@/components/export-button";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
+import { TranscriptTranslationAgent } from "@/components/transcript-translation-agent";
 import { extractTasks, generateSummary, updateTranscript } from "@/lib/actions";
 import { getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
@@ -68,10 +69,15 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       </div>
       <section className="kh-card overflow-hidden">
         <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold">Extracted tasks</h2>
+          <h2 className="text-lg font-bold">Transcript Translation Agent</h2>
         </div>
-        {meeting.tasks.length ? (
-          <div className="overflow-x-auto">
+        <div className="space-y-5 p-5">
+          <TranscriptTranslationAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
+          {meeting.tasks.length ? (
+            <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
+              <div className="border-b border-slate-100 px-4 py-3">
+                <h3 className="font-bold text-ink">Action tasks</h3>
+              </div>
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -97,23 +103,18 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                 ))}
               </tbody>
             </table>
-          </div>
-        ) : (
-          <div className="p-5">
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-              <EmptyState
-                title="មិនទាន់មានកិច្ចការ"
-                description={
-                  transcriptIsUsable
-                    ? "ចុចប៊ូតុងខាងក្រោម ដើម្បីឲ្យ AI ទាញកិច្ចការពី transcript។"
-                    : "ត្រូវមាន transcript ពិតជាមុនសិន ទើប AI អាចទាញកិច្ចការបាន។"
-                }
-              />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 p-5 text-center">
+              <p className="font-semibold text-ink">មិនទាន់មាន action tasks</p>
+              <p className="mt-2 text-sm text-slate-500">
+                បើអ្នកនៅត្រូវការ task tracker អាចចុច Extract Action Tasks បន្ទាប់ពីមាន transcript ពិត។
+              </p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {transcriptIsUsable ? (
                   <form action={extractTasks}>
                     <input type="hidden" name="id" value={meeting.id} />
-                    <ActionButton className="kh-button-primary">Extract Action Tasks</ActionButton>
+                    <ActionButton className="kh-button-secondary">Extract Action Tasks</ActionButton>
                   </form>
                 ) : meeting.audioUrl ? (
                   <TranscribeAudioButton meetingId={meeting.id} />
@@ -124,8 +125,8 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                 )}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </section>
     </div>
   );

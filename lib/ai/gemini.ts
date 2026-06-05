@@ -65,6 +65,8 @@ export function transcriptionModel() {
   return process.env.GEMINI_TRANSCRIBE_MODEL ?? textModel();
 }
 
+export type TranscriptTranslationTarget = "km" | "en";
+
 export async function generateGeminiContent(
   parts: GeminiPart[],
   options: { model?: string; json?: boolean; temperature?: number } = {}
@@ -231,4 +233,51 @@ export async function extractMeetingTasks(transcript: string) {
     temperature: 0.1
   });
   return taskSchema.parse(parseJsonObject(raw)).tasks;
+}
+
+function cleanTranslatedText(raw: string) {
+  return raw
+    .replace(/^```(?:text)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+}
+
+export async function translateMeetingTranscript(transcript: string, targetLanguage: TranscriptTranslationTarget) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is missing.");
+
+  const targetInstruction =
+    targetLanguage === "km"
+      ? [
+          "Translate the whole transcript into natural Khmer only.",
+          "If the source mixes Khmer and English, convert the English parts into Khmer.",
+          "Keep product names, people names, company names, acronyms, URLs, and exact numbers unchanged when translating them would be confusing.",
+          "Use Khmer script for normal words."
+        ]
+      : [
+          "Translate the whole transcript into natural English only.",
+          "If the source mixes Khmer and English, convert the Khmer parts into English.",
+          "Keep product names, people names, company names, acronyms, URLs, and exact numbers unchanged when translating them would be confusing.",
+          "Use clear professional English."
+        ];
+
+  const prompt = [
+    "You are a transcript translation agent for KhmerMeet AI.",
+    "This is translation, not summarization.",
+    "Translate all spoken content into one consistent target language.",
+    "Do not add new facts, explanations, headings, markdown, notes, or confidence comments.",
+    "Preserve speaker labels and line breaks when possible.",
+    "If a sentence is unclear, translate only the clear parts and keep unclear names/terms as-is.",
+    ...targetInstruction,
+    "",
+    "Transcript:",
+    transcript
+  ].join("\n");
+
+  const translated = await generateGeminiContent([{ text: prompt }], {
+    model: textModel(),
+    temperature: 0.1
+  });
+
+  return cleanTranslatedText(translated);
 }
