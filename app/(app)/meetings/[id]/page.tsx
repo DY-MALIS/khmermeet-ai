@@ -69,7 +69,8 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       </div>
       <section className="kh-card overflow-hidden">
         <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold">Transcript Translation Agent</h2>
+          <h2 className="text-lg font-bold">Transcript tools</h2>
+          <p className="mt-1 text-sm text-slate-500">Translate the transcript first, then create action tasks from a clean transcript.</p>
         </div>
         <div className="space-y-5 p-5">
           <TranscriptTranslationAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
@@ -105,24 +106,24 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </table>
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white/80 p-5 text-center">
-              <p className="font-semibold text-ink">មិនទាន់មាន action tasks</p>
+            <div className="rounded-xl border border-slate-200 bg-white p-6">
+              <div className="mx-auto max-w-2xl text-center">
+                <p className="text-lg font-bold text-ink">មិនទាន់មាន action tasks</p>
               <p className="mt-2 text-sm text-slate-500">
-                បើអ្នកនៅត្រូវការ task tracker អាចចុច Extract Action Tasks បន្ទាប់ពីមាន transcript ពិត។
+                Action tasks នឹងបង្ហាញនៅទីនេះ បន្ទាប់ពីអ្នកមាន transcript ពិត ហើយចុច Extract Action Tasks។
               </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
                 {transcriptIsUsable ? (
                   <form action={extractTasks}>
                     <input type="hidden" name="id" value={meeting.id} />
                     <ActionButton className="kh-button-secondary">Extract Action Tasks</ActionButton>
                   </form>
-                ) : meeting.audioUrl ? (
-                  <TranscribeAudioButton meetingId={meeting.id} />
                 ) : (
                   <a className="kh-button-secondary" href="#transcript">
-                    បញ្ចូល transcript ជាមុន
+                    Go to transcript
                   </a>
                 )}
+              </div>
               </div>
             </div>
           )}

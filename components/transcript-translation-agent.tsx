@@ -1,11 +1,24 @@
 "use client";
 
-import { Copy, Languages, Loader2, Save, Wand2 } from "lucide-react";
+import { CheckCircle2, Copy, Languages, Loader2, Save, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/components/ui";
 
 type TargetLanguage = "km" | "en";
+
+const targetOptions: Array<{ value: TargetLanguage; label: string; helper: string }> = [
+  {
+    value: "km",
+    label: "ខ្មែរ សុទ្ធ",
+    helper: "បម្លែង transcript លាយភាសា ឲ្យទៅជាអត្ថបទខ្មែរ ស្អាត និងអានងាយ។"
+  },
+  {
+    value: "en",
+    label: "English only",
+    helper: "Convert the whole transcript into clear English only."
+  }
+];
 
 export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meetingId: string; hasTranscript: boolean }) {
   const router = useRouter();
@@ -15,6 +28,8 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const selectedTarget = targetOptions.find((option) => option.value === targetLanguage) ?? targetOptions[0];
 
   async function translate(nextTarget = targetLanguage) {
     setTargetLanguage(nextTarget);
@@ -30,7 +45,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not translate transcript.");
       setTranslatedText(typeof data.translatedText === "string" ? data.translatedText : "");
-      setMessage(nextTarget === "km" ? "បានបកប្រែទៅខ្មែរសុទ្ធ។" : "Translated to English only.");
+      setMessage(nextTarget === "km" ? "បានបម្លែងទៅជាខ្មែរ សុទ្ធ។" : "Translated to English only.");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not translate transcript.");
     } finally {
@@ -51,7 +66,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not save translated transcript.");
-      setMessage("បានរក្សាទុកលទ្ធផលបកប្រែជា transcript ថ្មី។ Summary និង tasks នឹងត្រូវបង្កើតឡើងវិញពី transcript ថ្មី។");
+      setMessage("បានរក្សាទុកលទ្ធផលបកប្រែជា transcript ថ្មី។ Summary និង tasks អាចបង្កើតឡើងវិញពី transcript ថ្មីនេះបាន។");
       router.refresh();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save translated transcript.");
@@ -67,58 +82,70 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
           <p className="flex items-center gap-2 text-sm font-semibold text-leaf">
             <Languages className="h-4 w-4" />
             Translation Agent
           </p>
-          <h3 className="mt-1 text-lg font-bold text-ink">បកប្រែ និងបម្លែង transcript</h3>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            ទាញយក transcript ពីការប្រជុំ ហើយបម្លែងអត្ថបទខ្មែរ/English លាយគ្នាទៅជាខ្មែរសុទ្ធ ឬ English only។
+          <h3 className="mt-1 text-xl font-bold text-ink">បកប្រែអត្ថបទប្រជុំ</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            យក transcript ដែលមានស្រាប់ ហើយបម្លែងទៅជាភាសាតែមួយ ដើម្បីឲ្យអានងាយ និងមិនលាយខ្មែរ/អង់គ្លេសច្របូកច្របល់។
           </p>
         </div>
-        <span className={cn("kh-badge", hasTranscript ? "bg-leaf/10 text-leaf" : "bg-saffron/15 text-saffron")}>
+        <span className={cn("kh-badge shrink-0", hasTranscript ? "bg-leaf/10 text-leaf" : "bg-saffron/15 text-saffron")}>
           {hasTranscript ? "Transcript ready" : "Need transcript"}
         </span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-        <select
-          className="kh-input"
-          value={targetLanguage}
-          onChange={(event) => setTargetLanguage(event.target.value as TargetLanguage)}
-          disabled={!hasTranscript || pending || saving}
-        >
-          <option value="km">បម្លែងទៅខ្មែរសុទ្ធ</option>
-          <option value="en">Convert to English only</option>
-        </select>
-        <button className="kh-button-primary" type="button" disabled={!hasTranscript || pending || saving} onClick={() => translate()}>
+      <div className="mt-5 grid gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
+        <label className="space-y-2">
+          <span className="text-sm font-semibold text-slate-700">ជ្រើសរើសលទ្ធផលដែលចង់បាន</span>
+          <select
+            className="kh-input bg-white"
+            value={targetLanguage}
+            onChange={(event) => setTargetLanguage(event.target.value as TargetLanguage)}
+            disabled={!hasTranscript || pending || saving}
+          >
+            {targetOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs leading-5 text-slate-500">{selectedTarget.helper}</p>
+        </label>
+        <button className="kh-button-primary h-11 px-5" type="button" disabled={!hasTranscript || pending || saving} onClick={() => translate()}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           បកប្រែ transcript
         </button>
-        <button className="kh-button-secondary" type="button" disabled={!hasTranscript || pending || saving} onClick={() => translate(targetLanguage === "km" ? "en" : "km")}>
-          <Languages className="h-4 w-4" />
-          ប្ដូរទៅភាសាផ្សេង
-        </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button className="kh-button-secondary" type="button" disabled={!hasTranscript || pending || saving} onClick={() => translate("km")}>
-          ខ្មែរសុទ្ធ
-        </button>
-        <button className="kh-button-secondary" type="button" disabled={!hasTranscript || pending || saving} onClick={() => translate("en")}>
-          English only
-        </button>
-      </div>
+      {!hasTranscript ? (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center">
+          <p className="font-semibold text-ink">មិនទាន់មាន transcript សម្រាប់បកប្រែ</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            សូមបញ្ចូល transcript នៅខាងលើ ឬចុច Transcribe audio ជាមុន បន្ទាប់មកត្រឡប់មកប្រើ Translation Agent។
+          </p>
+        </div>
+      ) : null}
 
-      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-      {message ? <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{message}</p> : null}
+      {error ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {message ? (
+        <p className="mt-4 flex items-start gap-2 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          {message}
+        </p>
+      ) : null}
 
       {translatedText ? (
-        <div className="space-y-3">
-          <textarea className="kh-input min-h-56" value={translatedText} onChange={(event) => setTranslatedText(event.target.value)} />
+        <div className="mt-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-700">លទ្ធផលបកប្រែ</p>
+            <span className="kh-badge bg-sky/10 text-sky">{selectedTarget.label}</span>
+          </div>
+          <textarea className="kh-input min-h-72 bg-white leading-7" value={translatedText} onChange={(event) => setTranslatedText(event.target.value)} />
           <div className="flex flex-wrap gap-2">
             <button className="kh-button-secondary" type="button" onClick={copyResult} disabled={saving}>
               <Copy className="h-4 w-4" />
@@ -130,11 +157,11 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
             </button>
           </div>
         </div>
-      ) : (
-        <div className="rounded-lg border border-white bg-white/80 p-4 text-center text-sm text-slate-500">
-          {hasTranscript ? "ជ្រើសភាសា រួចចុចបកប្រែ ដើម្បីបង្ហាញលទ្ធផលនៅទីនេះ។" : "ត្រូវមាន transcript ជាមុនសិន ទើប Translation Agent អាចបកប្រែបាន។"}
+      ) : hasTranscript ? (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center text-sm text-slate-500">
+          ជ្រើសភាសា រួចចុច “បកប្រែ transcript” ដើម្បីបង្ហាញលទ្ធផលនៅទីនេះ។
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
