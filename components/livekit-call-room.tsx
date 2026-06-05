@@ -2,8 +2,11 @@
 
 import "@livekit/components-styles";
 import {
+  ControlBar,
+  GridLayout,
   LiveKitRoom,
-  VideoConference,
+  ParticipantTile,
+  RoomAudioRenderer,
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
@@ -82,6 +85,16 @@ async function checkMediaDeviceSupport(wantsCamera: boolean, wantsMicrophone: bo
   return {
     hasCamera: wantsCamera ? hasCamera || !devices.length : false,
     hasMicrophone: wantsMicrophone ? hasMicrophone || !devices.length : false
+  };
+}
+
+function getCallGridMetrics(trackCount: number) {
+  const count = Math.max(1, trackCount);
+  const columns = count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : count <= 16 ? 4 : 5;
+
+  return {
+    columns,
+    rows: Math.ceil(count / columns)
   };
 }
 
@@ -225,9 +238,7 @@ export function LiveKitCallRoom() {
           className="kh-card overflow-hidden p-0"
           data-lk-theme="default"
         >
-          <div className="min-h-[70svh] bg-slate-950 md:min-h-[72vh]">
-            <VideoConference />
-          </div>
+          <LiveKitOneScreenConference />
           <LiveKitMeetingAgent meetingTitle={meetingTitle()} />
         </LiveKitRoom>
         {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
@@ -296,6 +307,45 @@ export function LiveKitCallRoom() {
       {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
     </div>
+  );
+}
+
+function LiveKitOneScreenConference() {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false }
+    ],
+    { onlySubscribed: false }
+  );
+  const visibleTracks = tracks.slice(0, 20);
+  const grid = getCallGridMetrics(visibleTracks.length);
+
+  return (
+    <section className="bg-slate-950">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
+        <span>{visibleTracks.length}/20 participants</span>
+        <span>One-screen grid view</span>
+      </div>
+      <div className="kh-livekit-stage h-[52svh] min-h-[300px] max-h-[680px] p-2 md:h-[calc(100svh-22rem)] md:min-h-[380px]">
+        <GridLayout
+          tracks={visibleTracks}
+          className="kh-livekit-grid h-full gap-2"
+          style={{
+            gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
+          }}
+        >
+          <ParticipantTile className="kh-livekit-tile" />
+        </GridLayout>
+      </div>
+      <RoomAudioRenderer />
+      <ControlBar
+        className="border-t border-white/10 bg-slate-950 px-2 py-3"
+        controls={{ microphone: true, camera: true, screenShare: true, chat: false, leave: true, settings: true }}
+        variation="verbose"
+      />
+    </section>
   );
 }
 

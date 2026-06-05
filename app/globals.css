@@ -55,3 +55,31 @@ select {
 .kh-badge {
   @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
 }
+
+.kh-livekit-stage .lk-grid-layout {
+  display: grid !important;
+  height: 100% !important;
+  align-content: stretch !important;
+}
+
+.kh-livekit-stage .lk-participant-tile,
+.kh-livekit-stage .kh-livekit-tile {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border-radius: 0.75rem !important;
+  background: #020617 !important;
+}
+
+.kh-livekit-stage video,
+.kh-livekit-stage .lk-participant-media-video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.kh-livekit-stage .lk-participant-placeholder {
+  min-height: 0 !important;
+}
