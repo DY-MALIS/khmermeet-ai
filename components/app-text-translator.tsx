@@ -72,6 +72,7 @@ function translateAttributes(root: ParentNode, language: AppLanguage) {
 }
 
 function translateApp(language: AppLanguage) {
+  if (typeof document === "undefined" || !document.body) return;
   document.documentElement.lang = language;
   translateTextNodes(document.body, language);
   translateAttributes(document.body, language);
@@ -86,7 +87,13 @@ export function AppTextTranslator() {
 
     const apply = () => {
       window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => translateApp(readDisplayLanguage()));
+      frame = window.requestAnimationFrame(() => {
+        try {
+          translateApp(readDisplayLanguage());
+        } catch (error) {
+          console.warn("App text translation skipped because it failed.", error);
+        }
+      });
     };
 
     const applySoon = () => {
@@ -99,13 +106,15 @@ export function AppTextTranslator() {
     const observer = new MutationObserver((mutations) => {
       if (mutations.some((mutation) => mutation.type === "childList" || mutation.type === "characterData" || mutation.type === "attributes")) applySoon();
     });
-    observer.observe(document.body, {
-      attributeFilter: [...translatedAttributes],
-      attributes: true,
-      childList: true,
-      characterData: true,
-      subtree: true
-    });
+    if (document.body) {
+      observer.observe(document.body, {
+        attributeFilter: [...translatedAttributes],
+        attributes: true,
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+    }
 
     const onLanguageChange = () => applySoon();
     const onStorage = (event: StorageEvent) => {
