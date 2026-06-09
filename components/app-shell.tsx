@@ -1,5 +1,6 @@
 import { SidebarNav } from "@/components/sidebar-nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ShellStatusCard } from "@/components/shell-status-card";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -19,10 +20,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <LanguageSwitcher compact />
         </div>
         <div className="mt-auto hidden border-t border-slate-200 p-4 lg:block">
-          <div className="mb-3 rounded-lg bg-slate-50 p-3">
-            <p className="text-sm font-semibold text-ink">No-login MVP</p>
-            <p className="truncate text-xs text-slate-500">Local dashboard mode</p>
-          </div>
+          <ShellStatusCard />
         </div>
       </aside>
       <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
