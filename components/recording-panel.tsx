@@ -3,6 +3,7 @@
 import { Mic, Pause, Play, RotateCcw, Save, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createMeeting } from "@/lib/actions";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: true,
@@ -120,8 +121,9 @@ export function RecordingPanel() {
         formData.append("languageMode", transcriptionLanguage);
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
-          const data = await response.json();
+          const data = await readJsonResponse<{ audioUrl?: string; transcript?: string; error?: string }>(response);
           if (response.ok) {
+            if (!data.audioUrl) throw new Error("Audio upload did not return a saved file URL.");
             setAudioUrl(data.audioUrl);
             setTranscript(typeof data.transcript === "string" ? data.transcript : "");
             setDbUnavailable(false);

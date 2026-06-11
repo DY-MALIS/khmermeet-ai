@@ -15,6 +15,7 @@ import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/components/ui";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 type TokenPayload = {
   token: string;
@@ -151,7 +152,7 @@ export function LiveKitCallRoom() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ room, name })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<TokenPayload & { error?: string }>(response);
       if (!response.ok) throw new Error(extractApiError(data));
       setCameraOn(nextCameraOn);
       setMicrophoneOn(nextMicrophoneOn);
@@ -466,8 +467,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           title: meetingTitle
         })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ egressId?: string; storageUrl?: string; error?: string; hint?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? data.hint ?? "Server recording failed.");
+      if (!data.egressId || !data.storageUrl) throw new Error("Server recording did not return a recording id.");
       setServerRecording({ egressId: data.egressId, storageUrl: data.storageUrl });
       serverStartedAtRef.current = Date.now();
       setNotice("Server recording started. LiveKit Egress is recording the whole room to storage.");
@@ -488,7 +490,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ egressId: serverRecording.egressId })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not stop server recording.");
 
       const duration = Math.max(1, Math.round((Date.now() - serverStartedAtRef.current) / 1000));
@@ -502,8 +504,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           duration
         })
       });
-      const saveJson = await saveResponse.json();
+      const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);
       if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
+      if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(serverRecording.storageUrl);
       setNotice("Server recording stopped and saved to meeting history. Transcript still needs speech-to-text processing.");
@@ -527,7 +530,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       uploadData.append("speakers", JSON.stringify([...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)));
       uploadData.append("languageMode", transcriptionLanguage);
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
-      const uploadJson = await uploadResponse.json();
+      const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; error?: string }>(uploadResponse);
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
 
       const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript : "";
@@ -542,8 +545,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
         })
       });
-      const saveJson = await saveResponse.json();
+      const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);
       if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
+      if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(audioUrl);
       setNotice(transcript ? "បានរក្សាទុក audio, transcript, summary/tasks ទៅក្នុងប្រព័ន្ធ។" : "បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Transcript ត្រូវការ Gemini quota/key ដំណើរការ។");

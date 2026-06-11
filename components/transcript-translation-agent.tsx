@@ -4,6 +4,7 @@ import { CheckCircle2, Copy, Languages, Loader2, Save, Wand2 } from "lucide-reac
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/components/ui";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 type TargetLanguage = "km" | "en";
 
@@ -42,7 +43,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLanguage: nextTarget })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ translatedText?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not translate transcript.");
       setTranslatedText(typeof data.translatedText === "string" ? data.translatedText : "");
       setMessage(nextTarget === "km" ? "បានបម្លែងទៅជាខ្មែរ សុទ្ធ។" : "Translated to English only.");
@@ -64,7 +65,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetLanguage, translatedText, save: true })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not save translated transcript.");
       setMessage("បានរក្សាទុកលទ្ធផលបកប្រែជា transcript ថ្មី។ Summary និង tasks អាចបង្កើតឡើងវិញពី transcript ថ្មីនេះបាន។");
       router.refresh();

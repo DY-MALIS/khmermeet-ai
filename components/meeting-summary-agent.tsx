@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: string; hasTranscript: boolean }) {
   const router = useRouter();
@@ -24,7 +25,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ meetingId, command: cleanCommand })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ answer?: string; updatedSummary?: boolean; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Summary Agent failed.");
       setAnswer(data.answer ?? "");
       if (data.updatedSummary) router.refresh();

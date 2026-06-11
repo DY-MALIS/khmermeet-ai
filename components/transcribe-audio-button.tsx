@@ -3,6 +3,7 @@
 import { Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
   const router = useRouter();
@@ -21,7 +22,7 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ languageMode })
       });
-      const data = await response.json();
+      const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
       setMessage("Transcription saved. Refreshing transcript...");
       router.refresh();
