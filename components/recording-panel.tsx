@@ -38,6 +38,8 @@ export function RecordingPanel() {
   const [transcript, setTranscript] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"mixed" | "km" | "en">("mixed");
@@ -119,20 +121,15 @@ export function RecordingPanel() {
         const formData = new FormData();
         formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
         formData.append("languageMode", transcriptionLanguage);
-        chunks.current
-          .filter((chunk) => chunk.size > 1000)
-          .slice(0, 40)
-          .forEach((chunk, index) => {
-            formData.append("audioChunk", chunk, `meeting-part-${index + 1}.webm`);
-          });
+        formData.append("skipTranscription", "true");
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
           const data = await readJsonResponse<{ audioUrl?: string; transcript?: string; error?: string }>(response);
           if (response.ok) {
             if (!data.audioUrl) throw new Error("Audio upload did not return a saved file URL.");
             setAudioUrl(data.audioUrl);
-            setTranscript(typeof data.transcript === "string" ? data.transcript : "");
             setDbUnavailable(false);
+            void transcribeLocalChunks(blobType);
           }
           else setError(data.error ?? "មិនអាចរក្សាទុកសំឡេងបានទេ។");
         } catch {
@@ -151,6 +148,41 @@ export function RecordingPanel() {
     } catch {
       setError(recordingPermissionHelp());
     }
+  }
+
+  async function transcribeLocalChunks(blobType: string) {
+    const audioChunks = chunks.current.filter((chunk) => chunk.size > 1000);
+    if (!audioChunks.length) return;
+
+    setTranscribing(true);
+    setTranscriptionProgress(`Transcribing 0/${audioChunks.length} audio chunks...`);
+    const transcriptParts: string[] = [];
+
+    for (let index = 0; index < audioChunks.length; index += 1) {
+      const chunk = audioChunks[index];
+      const formData = new FormData();
+      formData.append("audio", chunk, `meeting-part-${index + 1}.${blobType.includes("mp4") ? "m4a" : "webm"}`);
+      formData.append("languageMode", transcriptionLanguage);
+      setTranscriptionProgress(`Transcribing ${index + 1}/${audioChunks.length} audio chunks...`);
+
+      try {
+        const response = await fetch("/api/live-transcript", { method: "POST", body: formData });
+        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
+          transcriptParts.push(data.transcript.trim());
+          setTranscript(transcriptParts.join("\n"));
+        }
+      } catch {
+        // Keep processing the next chunk so one weak audio section does not block a long meeting.
+      }
+    }
+
+    setTranscriptionProgress(
+      transcriptParts.length
+        ? `Transcription complete: ${transcriptParts.length}/${audioChunks.length} chunks produced text.`
+        : "Audio saved, but no clear speech text was detected in the chunks."
+    );
+    setTranscribing(false);
   }
 
   function pause() {
@@ -243,9 +275,9 @@ export function RecordingPanel() {
             <input type="hidden" name="audioUrl" value={audioUrl} />
             <input type="hidden" name="transcript" value={transcript} />
             <input type="hidden" name="duration" value={seconds} />
-            <button className="kh-button-primary" disabled={uploading || !audioUrl}>
+            <button className="kh-button-primary" disabled={uploading || transcribing || !audioUrl}>
               <Save className="h-4 w-4" />
-              {uploading ? "កំពុង upload..." : "រក្សាទុកប្រជុំ"}
+              {uploading ? "កំពុង upload..." : transcribing ? "កំពុងបម្លែងសំឡេង..." : "រក្សាទុកប្រជុំ"}
             </button>
             <button className="kh-button-secondary" onClick={discard} type="button">
               <Trash2 className="h-4 w-4" />
@@ -259,6 +291,7 @@ export function RecordingPanel() {
           ) : uploading ? (
             <p className="text-sm text-slate-500">កំពុង upload សំឡេងទៅ local storage...</p>
           ) : null}
+          {transcriptionProgress ? <p className="text-sm text-slate-500">{transcriptionProgress}</p> : null}
           <button className="kh-button-secondary" onClick={start} type="button">
             <RotateCcw className="h-4 w-4" />
             ថតម្តងទៀត

@@ -363,6 +363,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"mixed" | "km" | "en">("mixed");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
+  const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [localBackupUrl, setLocalBackupUrl] = useState("");
   const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -527,17 +528,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       setLocalBackup(blob);
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
-      uploadData.append("speakers", JSON.stringify([
+      const speakers = [
         room.localParticipant.name || room.localParticipant.identity,
         ...[...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)
-      ].filter(Boolean)));
+      ].filter(Boolean);
+      uploadData.append("speakers", JSON.stringify(speakers));
       uploadData.append("languageMode", transcriptionLanguage);
-      chunksRef.current
-        .filter((chunk) => chunk.size > 1000)
-        .slice(0, 40)
-        .forEach((chunk, index) => {
-          uploadData.append("audioChunk", chunk, `livekit-call-part-${index + 1}.webm`);
-        });
+      uploadData.append("skipTranscription", "true");
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; error?: string }>(uploadResponse);
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
@@ -559,7 +556,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(audioUrl);
-      setNotice(transcript ? "បានរក្សាទុក audio, transcript, summary/tasks ទៅក្នុងប្រព័ន្ធ។" : "បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Transcript ត្រូវការ Gemini quota/key ដំណើរការ។");
+      setNotice("បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Meeting Agent កំពុងបម្លែងសំឡេងជា transcript ជា chunks។");
+      await transcribeSavedChunks(saveJson.meetingId, mimeType, speakers);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save meeting recording.");
     } finally {
@@ -567,6 +565,41 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       cleanupRef.current = null;
       setSaving(false);
     }
+  }
+
+  async function transcribeSavedChunks(meetingId: string, mimeType: string, speakers: string[]) {
+    const audioChunks = chunksRef.current.filter((chunk) => chunk.size > 1000);
+    if (!audioChunks.length) return;
+
+    let successfulChunks = 0;
+    setTranscriptionProgress(`Transcribing 0/${audioChunks.length} audio chunks...`);
+
+    for (let index = 0; index < audioChunks.length; index += 1) {
+      const chunk = audioChunks[index];
+      const formData = new FormData();
+      formData.append("audio", chunk, `livekit-call-part-${index + 1}.${mimeType.includes("mp4") ? "m4a" : "webm"}`);
+      formData.append("languageMode", transcriptionLanguage);
+      formData.append("speakers", JSON.stringify(speakers));
+      formData.append("index", String(index + 1));
+      setTranscriptionProgress(`Transcribing ${index + 1}/${audioChunks.length} audio chunks...`);
+
+      try {
+        const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
+        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
+          successfulChunks += 1;
+        }
+      } catch {
+        // Continue with the next chunk so one timeout/noisy section does not stop a long recording.
+      }
+    }
+
+    setTranscriptionProgress(
+      successfulChunks
+        ? `Transcription complete: ${successfulChunks}/${audioChunks.length} chunks produced text. Open the meeting to review transcript.`
+        : "Audio saved, but no clear speech text was detected. Please check microphone quality or Gemini quota."
+    );
+    setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");
   }
 
   return (
@@ -581,6 +614,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           <p className="mt-1 text-sm text-slate-500">
             ថត mixed audio ពី LiveKit room រួច upload, transcribe, summarize និងបង្កើត tasks/history។
           </p>
+          {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select

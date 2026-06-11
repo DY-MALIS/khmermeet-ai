@@ -17,7 +17,11 @@ export async function POST(request: Request) {
       ? parseSpeakerNames(speakersField)
       : [];
   const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
+  const skipTranscription = formData.get("skipTranscription") === "true";
   const audioUrl = await saveLocalAudio(file);
+  if (skipTranscription) {
+    return NextResponse.json({ audioUrl, transcript: "" });
+  }
   try {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);
     const audioChunks = formData.getAll("audioChunk").filter((item): item is File => item instanceof File && item.size > 0);
