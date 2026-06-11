@@ -24,7 +24,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
     const languageMode = await readLanguageMode(request, meeting.language);
-    const transcript = await transcribeAudio(audioFile, [], languageMode);
+    const transcript = await transcribeAudio(audioFile, [], languageMode, {
+      timeoutMs: Number(process.env.GEMINI_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
+    });
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json(
