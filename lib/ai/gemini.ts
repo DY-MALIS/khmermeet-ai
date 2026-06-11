@@ -62,7 +62,7 @@ export function textModel() {
 }
 
 export function transcriptionModel() {
-  return process.env.GEMINI_TRANSCRIBE_MODEL ?? textModel();
+  return process.env.GEMINI_TRANSCRIBE_MODEL ?? "gemini-2.5-flash";
 }
 
 export type TranscriptTranslationTarget = "km" | "en";

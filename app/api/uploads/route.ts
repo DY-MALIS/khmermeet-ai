@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, type TranscriptionLanguageMode } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
 export const maxDuration = 300;
-const transcriptionTimeoutMs = Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
 export async function POST(request: Request) {
   await requireUser();
@@ -21,10 +20,12 @@ export async function POST(request: Request) {
   const audioUrl = await saveLocalAudio(file);
   try {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);
+    const audioChunks = formData.getAll("audioChunk").filter((item): item is File => item instanceof File && item.size > 0);
     const speakerAudioNamesField = formData.get("speakerAudioNames");
     const speakerAudioNames = typeof speakerAudioNamesField === "string" ? parseSpeakerNames(speakerAudioNamesField) : [];
-    const speakerTranscript = await withTimeout(transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames, languageMode), transcriptionTimeoutMs);
-    const transcript = speakerTranscript || (await withTimeout(transcribeAudio(file, speakerNames, languageMode), transcriptionTimeoutMs));
+    const speakerTranscript = await transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames, languageMode);
+    const chunkTranscript = speakerTranscript ? "" : await transcribeAudioChunks(audioChunks, speakerNames, languageMode);
+    const transcript = speakerTranscript || chunkTranscript || (await transcribeAudio(file, speakerNames, languageMode));
     return NextResponse.json({ audioUrl, transcript });
   } catch (error) {
     return NextResponse.json({
@@ -33,15 +34,6 @@ export async function POST(request: Request) {
       transcriptionError: error instanceof Error ? error.message : "Could not transcribe audio."
     });
   }
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("Transcription timed out, but the audio was uploaded.")), timeoutMs)
-    )
-  ]);
 }
 
 async function transcribeSpeakerAudio(files: File[], names: string[], languageMode: TranscriptionLanguageMode) {

@@ -9,6 +9,10 @@ const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") :
 const databaseAudioLimit = 12 * 1024 * 1024;
 
 export type TranscriptionLanguageMode = "km" | "en" | "mixed";
+type TranscriptionOptions = {
+  timeoutMs?: number;
+  mode?: "final" | "live";
+};
 
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
   if (value === "km" || value === "km-KH" || value === "khmer") return "km";
@@ -244,7 +248,8 @@ function languageModePrompt(languageMode: TranscriptionLanguageMode) {
 export async function transcribeAudio(
   audioFile: File,
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "mixed"
+  languageMode: TranscriptionLanguageMode = "mixed",
+  options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
@@ -254,13 +259,25 @@ export async function transcribeAudio(
   }
 
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  const knownSpeakers = speakerNames.length ? ` Known participant names: ${speakerNames.join(", ")}.` : "";
+  const knownSpeakers = speakerNames.length
+    ? [
+        `Known participant names: ${speakerNames.join(", ")}.`,
+        "Use a known participant name only when the voice is clearly that person.",
+        'If the speaker is unclear, use "Speaker:" instead of guessing a name.'
+      ]
+    : [
+        "Do not add speaker labels unless there are clearly different voices.",
+        'If one person is speaking and the name is unknown, return only the spoken words without "Speaker:" labels.'
+      ];
   const prompt = [
-    "This is a Cambodian team meeting audio transcription task.",
+    "You are a careful speech-to-text engine for Cambodian team meetings.",
+    "Your job is to transcribe speech from audio into text. This is not translation and not summarization.",
     ...languageModePrompt(normalizedLanguageMode),
-    "This audio may be one live meeting chunk, so it may start or end in the middle of a sentence.",
-    "For short chunks, return any audible words even if the sentence is incomplete.",
-    "Transcribe the full audio as completely as possible.",
+    options.mode === "live"
+      ? "This is a short live audio chunk. It may start or end in the middle of a sentence."
+      : "This may be a saved meeting recording. Transcribe the whole audio from start to end.",
+    "Return every clearly audible word. Include words after pauses and do not stop early.",
+    "For short chunks, return audible words even when the sentence is incomplete.",
     "Transcribe verbatim. Do not summarize, translate, rewrite, paraphrase, or skip repeated words.",
     "Write only the actual words spoken by participants.",
     "Never output timestamps, second counters, timecodes, beat markers, or placeholder text such as 00:01 00:02 00:03.",
@@ -272,8 +289,10 @@ export async function transcribeAudio(
     "If the audio contains pauses, continue transcribing after every pause.",
     "If a word is unclear, write the most likely heard word, but never invent a full sentence.",
     "Add punctuation only when it helps readability.",
-    knownSpeakers,
-    'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript". If unclear, use "Speaker: transcript".'
+    ...knownSpeakers,
+    speakerNames.length
+      ? 'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript".'
+      : "Do not invent Speaker 1, Speaker 2, or Speaker 3 labels."
   ].filter(Boolean).join(" ");
   const audioBase64 = Buffer.from(await audioFile.arrayBuffer()).toString("base64");
 
@@ -290,8 +309,28 @@ export async function transcribeAudio(
     {
       model: transcriptionModel(),
       temperature: 0,
-      timeoutMs: Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000)
+      timeoutMs: options.timeoutMs ?? Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000)
     }
   );
   return cleanTranscriptionText(transcript);
+}
+
+export async function transcribeAudioChunks(
+  audioChunks: File[],
+  speakerNames: string[] = [],
+  languageMode: TranscriptionLanguageMode = "mixed"
+) {
+  const usableChunks = audioChunks.filter((chunk) => chunk.size > 0).slice(0, 40);
+  if (!usableChunks.length) return "";
+
+  const transcripts: string[] = [];
+  for (const chunk of usableChunks) {
+    const text = await transcribeAudio(chunk, speakerNames, languageMode, {
+      mode: "live",
+      timeoutMs: Math.min(Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000), 35000)
+    });
+    if (text && !isTimestampOnlyTranscript(text)) transcripts.push(text);
+  }
+
+  return cleanTranscriptionText(transcripts.join("\n"));
 }

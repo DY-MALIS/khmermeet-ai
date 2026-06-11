@@ -72,7 +72,7 @@ export function RecordingPanel() {
   }
 
   function getRecorderOptions(mimeType: string) {
-    return mimeType ? { mimeType, audioBitsPerSecond: 192000 } : { audioBitsPerSecond: 192000 };
+    return mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 };
   }
 
   function cleanupRecording() {
@@ -119,6 +119,12 @@ export function RecordingPanel() {
         const formData = new FormData();
         formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
         formData.append("languageMode", transcriptionLanguage);
+        chunks.current
+          .filter((chunk) => chunk.size > 1000)
+          .slice(0, 40)
+          .forEach((chunk, index) => {
+            formData.append("audioChunk", chunk, `meeting-part-${index + 1}.webm`);
+          });
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
           const data = await readJsonResponse<{ audioUrl?: string; transcript?: string; error?: string }>(response);
@@ -137,7 +143,7 @@ export function RecordingPanel() {
         }
       };
       recorder.current = media;
-      media.start(1000);
+      media.start(15000);
       startedAtRef.current = Date.now();
       accumulatedMsRef.current = 0;
       setSeconds(0);

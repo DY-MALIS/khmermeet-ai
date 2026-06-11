@@ -428,13 +428,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     try {
       const mixedStream = buildMixedAudioStream();
       const mimeType = getRecorderMimeType();
-      const recorder = new MediaRecorder(mixedStream, mimeType ? { mimeType, audioBitsPerSecond: 192000 } : { audioBitsPerSecond: 192000 });
+      const recorder = new MediaRecorder(mixedStream, mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 });
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => void saveRecording(mimeType || recorder.mimeType || "audio/webm");
-      recorder.start(1000);
+      recorder.start(15000);
       recorderRef.current = recorder;
       startedAtRef.current = Date.now();
       setSeconds(0);
@@ -527,8 +527,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       setLocalBackup(blob);
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
-      uploadData.append("speakers", JSON.stringify([...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)));
+      uploadData.append("speakers", JSON.stringify([
+        room.localParticipant.name || room.localParticipant.identity,
+        ...[...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)
+      ].filter(Boolean)));
       uploadData.append("languageMode", transcriptionLanguage);
+      chunksRef.current
+        .filter((chunk) => chunk.size > 1000)
+        .slice(0, 40)
+        .forEach((chunk, index) => {
+          uploadData.append("audioChunk", chunk, `livekit-call-part-${index + 1}.webm`);
+        });
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; error?: string }>(uploadResponse);
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");

@@ -17,7 +17,10 @@ export async function POST(request: Request) {
   const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
 
   try {
-    const transcript = await transcribeAudio(file, speakerNames, languageMode);
+    const transcript = await transcribeAudio(file, speakerNames, languageMode, {
+      mode: "live",
+      timeoutMs: 25000
+    });
     return NextResponse.json({ transcript });
   } catch (error) {
     const message = error instanceof Error ? sanitizeError(error.message) : "Could not transcribe live audio.";
