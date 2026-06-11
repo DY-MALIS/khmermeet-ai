@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
-export const maxDuration = 60;
-const transcriptionTimeoutMs = Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 45000);
+export const maxDuration = 300;
+const transcriptionTimeoutMs = Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
 export async function POST(request: Request) {
   await requireUser();

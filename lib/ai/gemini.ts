@@ -69,7 +69,7 @@ export type TranscriptTranslationTarget = "km" | "en";
 
 export async function generateGeminiContent(
   parts: GeminiPart[],
-  options: { model?: string; json?: boolean; temperature?: number } = {}
+  options: { model?: string; json?: boolean; temperature?: number; timeoutMs?: number } = {}
 ) {
   try {
     return await requestGeminiContent(parts, options);
@@ -147,24 +147,39 @@ function getGeminiErrorContext(status: number, detail: string): GeminiApiErrorCo
 
 async function requestGeminiContent(
   parts: GeminiWirePart[],
-  options: { model?: string; json?: boolean; temperature?: number } = {}
+  options: { model?: string; json?: boolean; temperature?: number; timeoutMs?: number } = {}
 ) {
   const apiKey = getGeminiKey();
   const model = options.model ?? textModel();
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          temperature: options.temperature ?? (options.json ? 0.1 : 0.2),
-          ...(options.json ? { responseMimeType: "application/json" } : {})
-        }
-      })
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1000, options.timeoutMs ?? 55000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            temperature: options.temperature ?? (options.json ? 0.1 : 0.2),
+            ...(options.json ? { responseMimeType: "application/json" } : {})
+          }
+        })
+      }
+    );
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Gemini request timed out. The audio may be too long for the current Vercel function. Please try a shorter recording or increase Vercel function duration.");
     }
-  );
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");

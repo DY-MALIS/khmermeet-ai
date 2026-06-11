@@ -6,7 +6,7 @@ import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAu
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

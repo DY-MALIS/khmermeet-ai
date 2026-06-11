@@ -287,7 +287,11 @@ export async function transcribeAudio(
         }
       }
     ],
-    { model: transcriptionModel(), temperature: 0 }
+    {
+      model: transcriptionModel(),
+      temperature: 0,
+      timeoutMs: Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000)
+    }
   );
   return cleanTranscriptionText(transcript);
 }
