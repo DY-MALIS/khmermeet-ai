@@ -368,6 +368,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
+  const segmentsRef = useRef<Blob[]>([]);
+  const segmentingRef = useRef(false);
   const startedAtRef = useRef(0);
   const serverStartedAtRef = useRef(0);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -420,6 +423,45 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     return destination.stream;
   }
 
+  function startSegmentRecorder(stream: MediaStream, mimeType: string) {
+    const segmentMs = 30000;
+    segmentingRef.current = true;
+    segmentsRef.current = [];
+
+    const recordNextSegment = () => {
+      if (!segmentingRef.current) return;
+      const media = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
+      );
+      const parts: Blob[] = [];
+      segmentRecorderRef.current = media;
+
+      media.ondataavailable = (event) => {
+        if (event.data.size > 0) parts.push(event.data);
+      };
+      media.onstop = () => {
+        const segmentType = media.mimeType || mimeType || "audio/webm";
+        const segment = new Blob(parts, { type: segmentType });
+        if (segment.size > 1000) segmentsRef.current.push(segment);
+        if (segmentingRef.current) window.setTimeout(recordNextSegment, 0);
+      };
+
+      media.start();
+      window.setTimeout(() => {
+        if (media.state !== "inactive") media.stop();
+      }, segmentMs);
+    };
+
+    recordNextSegment();
+  }
+
+  function stopSegmentRecorder() {
+    segmentingRef.current = false;
+    const media = segmentRecorderRef.current;
+    if (media && media.state !== "inactive") media.stop();
+  }
+
   function startRecording() {
     setError("");
     setNotice("");
@@ -431,11 +473,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const mimeType = getRecorderMimeType();
       const recorder = new MediaRecorder(mixedStream, mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 });
       chunksRef.current = [];
+      segmentsRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => void saveRecording(mimeType || recorder.mimeType || "audio/webm");
-      recorder.start(15000);
+      startSegmentRecorder(mixedStream, mimeType);
+      recorder.start(5000);
       recorderRef.current = recorder;
       startedAtRef.current = Date.now();
       setSeconds(0);
@@ -447,6 +491,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   }
 
   function stopRecording() {
+    stopSegmentRecorder();
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       recorderRef.current.stop();
     }
@@ -523,6 +568,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setSaving(true);
     setError("");
     try {
+      await new Promise((resolve) => window.setTimeout(resolve, 350));
       const blob = new Blob(chunksRef.current, { type: mimeType });
       if (!blob.size) throw new Error("No audio was recorded.");
       setLocalBackup(blob);
@@ -557,7 +603,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(audioUrl);
       setNotice("បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Meeting Agent កំពុងបម្លែងសំឡេងជា transcript ជា chunks។");
-      await transcribeSavedChunks(saveJson.meetingId, mimeType, speakers);
+      await transcribeSavedSegments(saveJson.meetingId, mimeType, speakers);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save meeting recording.");
     } finally {
@@ -567,21 +613,22 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }
   }
 
-  async function transcribeSavedChunks(meetingId: string, mimeType: string, speakers: string[]) {
-    const audioChunks = chunksRef.current.filter((chunk) => chunk.size > 1000);
-    if (!audioChunks.length) return;
+  async function transcribeSavedSegments(meetingId: string, mimeType: string, speakers: string[]) {
+    const audioSegments = segmentsRef.current.filter((chunk) => chunk.size > 1000);
+    if (!audioSegments.length) return;
 
     let successfulChunks = 0;
-    setTranscriptionProgress(`Transcribing 0/${audioChunks.length} audio chunks...`);
+    setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
 
-    for (let index = 0; index < audioChunks.length; index += 1) {
-      const chunk = audioChunks[index];
+    for (let index = 0; index < audioSegments.length; index += 1) {
+      const chunk = audioSegments[index];
       const formData = new FormData();
-      formData.append("audio", chunk, `livekit-call-part-${index + 1}.${mimeType.includes("mp4") ? "m4a" : "webm"}`);
+      const chunkType = chunk.type || mimeType;
+      formData.append("audio", chunk, `livekit-call-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
       formData.append("languageMode", transcriptionLanguage);
       formData.append("speakers", JSON.stringify(speakers));
       formData.append("index", String(index + 1));
-      setTranscriptionProgress(`Transcribing ${index + 1}/${audioChunks.length} audio chunks...`);
+      setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
 
       try {
         const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
@@ -596,7 +643,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
     setTranscriptionProgress(
       successfulChunks
-        ? `Transcription complete: ${successfulChunks}/${audioChunks.length} chunks produced text. Open the meeting to review transcript.`
+        ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review transcript.`
         : "Audio saved, but no clear speech text was detected. Please check microphone quality or Gemini quota."
     );
     setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");

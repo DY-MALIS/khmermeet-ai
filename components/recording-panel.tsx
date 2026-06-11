@@ -31,6 +31,9 @@ export function RecordingPanel() {
   const startedAtRef = useRef(0);
   const accumulatedMsRef = useRef(0);
   const chunks = useRef<Blob[]>([]);
+  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
+  const segmentsRef = useRef<Blob[]>([]);
+  const segmentingRef = useRef(false);
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
@@ -55,6 +58,8 @@ export function RecordingPanel() {
       .catch(() => setDbUnavailable(true));
 
     return () => cleanupRecording();
+    // cleanupRecording only touches refs and should run once on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -78,12 +83,49 @@ export function RecordingPanel() {
   }
 
   function cleanupRecording() {
+    stopSegmentRecorder();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
+  }
+
+  function startSegmentRecorder(stream: MediaStream, mimeType: string) {
+    const segmentMs = 30000;
+    segmentingRef.current = true;
+    segmentsRef.current = [];
+
+    const recordNextSegment = () => {
+      if (!segmentingRef.current) return;
+      const media = new MediaRecorder(stream, getRecorderOptions(mimeType));
+      const parts: Blob[] = [];
+      segmentRecorderRef.current = media;
+
+      media.ondataavailable = (event) => {
+        if (event.data.size > 0) parts.push(event.data);
+      };
+      media.onstop = () => {
+        const segmentType = media.mimeType || mimeType || "audio/webm";
+        const segment = new Blob(parts, { type: segmentType });
+        if (segment.size > 1000) segmentsRef.current.push(segment);
+        if (segmentingRef.current) window.setTimeout(recordNextSegment, 0);
+      };
+
+      media.start();
+      window.setTimeout(() => {
+        if (media.state !== "inactive") media.stop();
+      }, segmentMs);
+    };
+
+    recordNextSegment();
+  }
+
+  function stopSegmentRecorder() {
+    segmentingRef.current = false;
+    const media = segmentRecorderRef.current;
+    if (media && media.state !== "inactive") media.stop();
   }
 
   async function start() {
@@ -108,10 +150,12 @@ export function RecordingPanel() {
       const media = new MediaRecorder(stream, getRecorderOptions(mimeType));
       streamRef.current = stream;
       chunks.current = [];
+      segmentsRef.current = [];
       media.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.current.push(event.data);
       };
       media.onstop = async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
         const blobType = media.mimeType || "audio/webm";
         const blob = new Blob(chunks.current, { type: blobType });
         const localPreview = URL.createObjectURL(blob);
@@ -129,7 +173,7 @@ export function RecordingPanel() {
             if (!data.audioUrl) throw new Error("Audio upload did not return a saved file URL.");
             setAudioUrl(data.audioUrl);
             setDbUnavailable(false);
-            void transcribeLocalChunks(blobType);
+            void transcribeLocalSegments(blobType);
           }
           else setError(data.error ?? "មិនអាចរក្សាទុកសំឡេងបានទេ។");
         } catch {
@@ -140,7 +184,8 @@ export function RecordingPanel() {
         }
       };
       recorder.current = media;
-      media.start(15000);
+      startSegmentRecorder(stream, mimeType);
+      media.start(5000);
       startedAtRef.current = Date.now();
       accumulatedMsRef.current = 0;
       setSeconds(0);
@@ -150,20 +195,21 @@ export function RecordingPanel() {
     }
   }
 
-  async function transcribeLocalChunks(blobType: string) {
-    const audioChunks = chunks.current.filter((chunk) => chunk.size > 1000);
-    if (!audioChunks.length) return;
+  async function transcribeLocalSegments(blobType: string) {
+    const audioSegments = segmentsRef.current.filter((chunk) => chunk.size > 1000);
+    if (!audioSegments.length) return;
 
     setTranscribing(true);
-    setTranscriptionProgress(`Transcribing 0/${audioChunks.length} audio chunks...`);
+    setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
     const transcriptParts: string[] = [];
 
-    for (let index = 0; index < audioChunks.length; index += 1) {
-      const chunk = audioChunks[index];
+    for (let index = 0; index < audioSegments.length; index += 1) {
+      const chunk = audioSegments[index];
       const formData = new FormData();
-      formData.append("audio", chunk, `meeting-part-${index + 1}.${blobType.includes("mp4") ? "m4a" : "webm"}`);
+      const chunkType = chunk.type || blobType;
+      formData.append("audio", chunk, `meeting-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
       formData.append("languageMode", transcriptionLanguage);
-      setTranscriptionProgress(`Transcribing ${index + 1}/${audioChunks.length} audio chunks...`);
+      setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
 
       try {
         const response = await fetch("/api/live-transcript", { method: "POST", body: formData });
@@ -179,14 +225,15 @@ export function RecordingPanel() {
 
     setTranscriptionProgress(
       transcriptParts.length
-        ? `Transcription complete: ${transcriptParts.length}/${audioChunks.length} chunks produced text.`
-        : "Audio saved, but no clear speech text was detected in the chunks."
+        ? `Transcription complete: ${transcriptParts.length}/${audioSegments.length} segments produced text.`
+        : "Audio saved, but no clear speech text was detected in the audio segments."
     );
     setTranscribing(false);
   }
 
   function pause() {
     recorder.current?.pause();
+    if (segmentRecorderRef.current?.state === "recording") segmentRecorderRef.current.pause();
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
@@ -195,6 +242,7 @@ export function RecordingPanel() {
 
   function resume() {
     recorder.current?.resume();
+    if (segmentRecorderRef.current?.state === "paused") segmentRecorderRef.current.resume();
     startedAtRef.current = Date.now();
     setState("recording");
   }
@@ -203,6 +251,7 @@ export function RecordingPanel() {
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
+    stopSegmentRecorder();
     recorder.current?.stop();
     setState("stopped");
   }
@@ -210,6 +259,7 @@ export function RecordingPanel() {
   function discard() {
     recorder.current = null;
     chunks.current = [];
+    segmentsRef.current = [];
     cleanupRecording();
     setAudioUrl("");
     setTranscript("");
