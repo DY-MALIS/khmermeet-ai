@@ -93,7 +93,7 @@ export function RecordingPanel() {
   }
 
   function startSegmentRecorder(stream: MediaStream, mimeType: string) {
-    const segmentMs = 30000;
+    const segmentMs = 10000;
     segmentingRef.current = true;
     segmentsRef.current = [];
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   await requireUser();
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   try {
     const transcript = await transcribeAudio(file, speakerNames, languageMode, {
       mode: "live",
-      timeoutMs: 25000
+      timeoutMs: 45000
     });
     return NextResponse.json({ transcript });
   } catch (error) {

@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const index = Number(formData.get("index") ?? 0);
     const transcript = await transcribeAudio(file, speakerNames, languageMode, {
       mode: "live",
-      timeoutMs: 25000
+      timeoutMs: 45000
     });
 
     if (!hasUsableTranscript(transcript)) {
