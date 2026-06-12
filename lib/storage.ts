@@ -3,6 +3,7 @@ import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import {
   deleteGeminiFile,
+  GeminiApiError,
   generateGeminiContent,
   transcriptionModel,
   uploadGeminiFile,
@@ -13,6 +14,7 @@ import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 const databaseAudioLimit = 12 * 1024 * 1024;
+const geminiInlineAudioLimit = 20 * 1024 * 1024;
 
 export type TranscriptionLanguageMode = "km" | "en" | "mixed";
 type TranscriptionOptions = {
@@ -261,7 +263,7 @@ export async function transcribeAudio(
   // TODO: Speaker detection.
   if (!process.env.GEMINI_API_KEY) return "";
   const useGeminiFileApi = options.mode !== "live";
-  if (!useGeminiFileApi && audioFile.size > 20 * 1024 * 1024) {
+  if (!useGeminiFileApi && audioFile.size > geminiInlineAudioLimit) {
     throw new Error("Audio is larger than the 20 MB Gemini inline transcription limit.");
   }
 
@@ -306,21 +308,25 @@ export async function transcribeAudio(
   const timeoutMs = options.timeoutMs ?? Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000);
   let uploadedFileName = "";
 
-  try {
-    const audioPart = useGeminiFileApi
-      ? await (async () => {
-          const uploaded = await uploadGeminiFile(audioBuffer, mimeType, audioFile.name || "meeting-audio");
-          uploadedFileName = uploaded.name;
-          const active = await waitForGeminiFileActive(uploaded, Math.min(timeoutMs, 60000));
-          return { fileData: { mimeType: active.mimeType, fileUri: active.uri } };
-        })()
-      : {
-          inlineData: {
-            mimeType,
-            data: audioBuffer.toString("base64")
-          }
-        };
+  type AudioPart =
+    | { inlineData: { mimeType: string; data: string } }
+    | { fileData: { mimeType: string; fileUri: string } };
 
+  const inlineAudioPart = (): AudioPart => ({
+    inlineData: {
+      mimeType,
+      data: audioBuffer.toString("base64")
+    }
+  });
+
+  const geminiFileAudioPart = async (): Promise<AudioPart> => {
+    const uploaded = await uploadGeminiFile(audioBuffer, mimeType, audioFile.name || "meeting-audio");
+    uploadedFileName = uploaded.name;
+    const active = await waitForGeminiFileActive(uploaded, Math.min(timeoutMs, 60000));
+    return { fileData: { mimeType: active.mimeType, fileUri: active.uri } };
+  };
+
+  const runTranscript = async (audioPart: AudioPart) => {
     const transcript = await generateGeminiContent(
       [
         { text: prompt },
@@ -354,6 +360,26 @@ export async function transcribeAudio(
       }
     );
     return cleanTranscriptionText(retryTranscript);
+  };
+
+  const canFallbackInline = audioBuffer.length <= geminiInlineAudioLimit;
+  const isFilesPermissionError = (error: unknown) =>
+    error instanceof GeminiApiError && error.status === 403;
+
+  try {
+    if (!useGeminiFileApi) return runTranscript(inlineAudioPart());
+
+    try {
+      return await runTranscript(await geminiFileAudioPart());
+    } catch (error) {
+      if (!isFilesPermissionError(error)) throw error;
+      if (!canFallbackInline) {
+        throw new Error(
+          "Gemini Files API permission denied. For saved audio larger than 20 MB, enable Gemini Files API access for GEMINI_API_KEY or use a key without API restrictions."
+        );
+      }
+      return runTranscript(inlineAudioPart());
+    }
   } finally {
     if (uploadedFileName) {
       await deleteGeminiFile(uploadedFileName);
