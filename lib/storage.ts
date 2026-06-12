@@ -1,7 +1,13 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
-import { generateGeminiContent, transcriptionModel } from "@/lib/ai/gemini";
+import {
+  deleteGeminiFile,
+  generateGeminiContent,
+  transcriptionModel,
+  uploadGeminiFile,
+  waitForGeminiFileActive
+} from "@/lib/ai/gemini";
 import { prisma } from "@/lib/prisma";
 import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
@@ -254,7 +260,8 @@ export async function transcribeAudio(
   // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
   if (!process.env.GEMINI_API_KEY) return "";
-  if (audioFile.size > 20 * 1024 * 1024) {
+  const useGeminiFileApi = options.mode !== "live";
+  if (!useGeminiFileApi && audioFile.size > 20 * 1024 * 1024) {
     throw new Error("Audio is larger than the 20 MB Gemini inline transcription limit.");
   }
 
@@ -294,25 +301,64 @@ export async function transcribeAudio(
       ? 'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript".'
       : "Do not invent Speaker 1, Speaker 2, or Speaker 3 labels."
   ].filter(Boolean).join(" ");
-  const audioBase64 = Buffer.from(await audioFile.arrayBuffer()).toString("base64");
+  const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+  const mimeType = audioFile.type || "audio/webm";
+  const timeoutMs = options.timeoutMs ?? Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000);
+  let uploadedFileName = "";
 
-  const transcript = await generateGeminiContent(
-    [
-      { text: prompt },
+  try {
+    const audioPart = useGeminiFileApi
+      ? await (async () => {
+          const uploaded = await uploadGeminiFile(audioBuffer, mimeType, audioFile.name || "meeting-audio");
+          uploadedFileName = uploaded.name;
+          const active = await waitForGeminiFileActive(uploaded, Math.min(timeoutMs, 60000));
+          return { fileData: { mimeType: active.mimeType, fileUri: active.uri } };
+        })()
+      : {
+          inlineData: {
+            mimeType,
+            data: audioBuffer.toString("base64")
+          }
+        };
+
+    const transcript = await generateGeminiContent(
+      [
+        { text: prompt },
+        audioPart
+      ],
       {
-        inlineData: {
-          mimeType: audioFile.type || "audio/webm",
-          data: audioBase64
-        }
+        model: transcriptionModel(),
+        temperature: 0,
+        timeoutMs
       }
-    ],
-    {
-      model: transcriptionModel(),
-      temperature: 0,
-      timeoutMs: options.timeoutMs ?? Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000)
+    );
+    const cleaned = cleanTranscriptionText(transcript);
+    if (cleaned || options.mode === "live") return cleaned;
+
+    const retryTranscript = await generateGeminiContent(
+      [
+        {
+          text: [
+            prompt,
+            "Retry carefully. The previous attempt did not produce usable spoken words.",
+            "Ignore silence, music, room noise, and timer-like sounds.",
+            "Listen for Khmer and English speech and return only the words that are clearly spoken."
+          ].join(" ")
+        },
+        audioPart
+      ],
+      {
+        model: transcriptionModel(),
+        temperature: 0,
+        timeoutMs
+      }
+    );
+    return cleanTranscriptionText(retryTranscript);
+  } finally {
+    if (uploadedFileName) {
+      await deleteGeminiFile(uploadedFileName);
     }
-  );
-  return cleanTranscriptionText(transcript);
+  }
 }
 
 export async function transcribeAudioChunks(

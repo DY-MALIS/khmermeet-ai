@@ -4,12 +4,15 @@ import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt
 
 type GeminiPart =
   | { text: string }
-  | { inlineData: { mimeType: string; data: string } };
+  | { inlineData: { mimeType: string; data: string } }
+  | { fileData: { mimeType: string; fileUri: string } };
 
 type GeminiWirePart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } }
-  | { inline_data: { mime_type: string; data: string } };
+  | { inline_data: { mime_type: string; data: string } }
+  | { fileData: { mimeType: string; fileUri: string } }
+  | { file_data: { mime_type: string; file_uri: string } };
 
 export class GeminiApiError extends Error {
   status: number;
@@ -55,6 +58,107 @@ function getGeminiKey() {
   const apiKey = process.env.GEMINI_API_KEY?.trim().replace(/^["']|["']$/g, "");
   if (!apiKey) throw new Error("GEMINI_API_KEY is missing.");
   return apiKey;
+}
+
+export type GeminiUploadedFile = {
+  name: string;
+  uri: string;
+  mimeType: string;
+  state?: string;
+};
+
+function parseGeminiFile(payload: unknown, fallbackMimeType: string): GeminiUploadedFile {
+  const root = payload as {
+    file?: { name?: string; uri?: string; mimeType?: string; mime_type?: string; state?: string };
+    name?: string;
+    uri?: string;
+    mimeType?: string;
+    mime_type?: string;
+    state?: string;
+  };
+  const file = root.file ?? root;
+  const name = file?.name;
+  const uri = file?.uri;
+  if (!name || !uri) throw new Error("Gemini file upload did not return a usable file URI.");
+  return {
+    name,
+    uri,
+    mimeType: file.mimeType ?? file.mime_type ?? fallbackMimeType,
+    state: file.state
+  };
+}
+
+export async function uploadGeminiFile(data: Buffer, mimeType: string, displayName: string) {
+  const apiKey = getGeminiKey();
+  const safeMimeType = mimeType || "audio/webm";
+  const startResponse = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files", {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(data.length),
+      "X-Goog-Upload-Header-Content-Type": safeMimeType,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ file: { display_name: displayName || "meeting-audio" } })
+  });
+
+  if (!startResponse.ok) {
+    const detail = await startResponse.text().catch(() => "");
+    throw new GeminiApiError(toGeminiErrorMessage(startResponse.status, detail), getGeminiErrorContext(startResponse.status, detail));
+  }
+
+  const uploadUrl = startResponse.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error("Gemini did not return an upload URL for the audio file.");
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Length": String(data.length),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize"
+    },
+    body: new Uint8Array(data)
+  });
+
+  if (!uploadResponse.ok) {
+    const detail = await uploadResponse.text().catch(() => "");
+    throw new GeminiApiError(toGeminiErrorMessage(uploadResponse.status, detail), getGeminiErrorContext(uploadResponse.status, detail));
+  }
+
+  return parseGeminiFile(await uploadResponse.json(), safeMimeType);
+}
+
+export async function waitForGeminiFileActive(file: GeminiUploadedFile, timeoutMs = 30000) {
+  if (!file.state || file.state === "ACTIVE") return file;
+  const apiKey = getGeminiKey();
+  const startedAt = Date.now();
+  let current = file;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/${current.name}`, {
+      headers: { "x-goog-api-key": apiKey }
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new GeminiApiError(toGeminiErrorMessage(response.status, detail), getGeminiErrorContext(response.status, detail));
+    }
+    current = parseGeminiFile(await response.json(), current.mimeType);
+    if (!current.state || current.state === "ACTIVE") return current;
+    if (current.state === "FAILED") throw new Error("Gemini failed to process the uploaded audio file.");
+  }
+
+  throw new Error("Gemini audio file processing timed out. Please try again with a shorter recording.");
+}
+
+export async function deleteGeminiFile(name: string) {
+  const apiKey = getGeminiKey();
+  await fetch(`https://generativelanguage.googleapis.com/v1beta/${name}`, {
+    method: "DELETE",
+    headers: { "x-goog-api-key": apiKey }
+  }).catch(() => undefined);
 }
 
 export function textModel() {
@@ -151,6 +255,12 @@ async function requestGeminiContent(
 ) {
   const apiKey = getGeminiKey();
   const model = options.model ?? textModel();
+  const wireParts = parts.map((part) => {
+    if ("fileData" in part) {
+      return { file_data: { mime_type: part.fileData.mimeType, file_uri: part.fileData.fileUri } };
+    }
+    return part;
+  });
   const controller = new AbortController();
   const timeoutMs = Math.max(1000, options.timeoutMs ?? 55000);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -164,7 +274,7 @@ async function requestGeminiContent(
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          contents: [{ role: "user", parts }],
+          contents: [{ role: "user", parts: wireParts }],
           generationConfig: {
             temperature: options.temperature ?? (options.json ? 0.1 : 0.2),
             ...(options.json ? { responseMimeType: "application/json" } : {})
