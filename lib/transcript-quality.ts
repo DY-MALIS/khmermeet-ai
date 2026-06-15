@@ -7,7 +7,7 @@ export function isTimestampOnlyTranscript(text: string) {
 
   const withoutTimestamps = compact
     .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, "")
-    .replace(/[.,;:()[\]\-–—_/\\|]+/g, "")
+    .replace(/[.,;:()[\]\-_/\\|]+/g, "")
     .trim();
 
   const letterMatches = compact.match(/\p{L}/gu) ?? [];

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
@@ -23,19 +24,12 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ transcript });
   } catch (error) {
-    const message = error instanceof Error ? sanitizeError(error.message) : "Could not transcribe live audio.";
+    const publicError = publicGeminiTranscriptionError(error);
     return NextResponse.json(
-      { error: message },
-      { status: 500 }
+      { error: publicError.message },
+      { status: publicError.status }
     );
   }
-}
-
-function sanitizeError(message: string) {
-  return message
-    .replace(/key=AIza[0-9A-Za-z_-]+/g, "key=[hidden]")
-    .replace(/AIza[0-9A-Za-z_-]+/g, "[hidden-api-key]")
-    .slice(0, 500);
 }
 
 function parseSpeakerNames(value: string) {

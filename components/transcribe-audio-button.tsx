@@ -1,16 +1,18 @@
 "use client";
 
-import { Loader2, Wand2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
+
+type LanguageMode = "mixed" | "km" | "en";
 
 export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [languageMode, setLanguageMode] = useState<"mixed" | "km" | "en">("mixed");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("mixed");
 
   async function transcribe() {
     setPending(true);
@@ -34,23 +36,44 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
   }
 
   return (
-    <div className="space-y-2">
-      <select
-        className="kh-input max-w-xs"
-        value={languageMode}
-        onChange={(event) => setLanguageMode(event.target.value as "mixed" | "km" | "en")}
-        disabled={pending}
-      >
-        <option value="mixed">Mixed Khmer / English</option>
-        <option value="km">Khmer only</option>
-        <option value="en">English only</option>
-      </select>
-      <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-        {pending ? "កំពុងបម្លែងសំឡេង..." : "Transcribe audio"}
-      </button>
-      {message ? <p className="rounded-lg bg-leaf/10 p-2 text-sm text-leaf">{message}</p> : null}
-      {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</p> : null}
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <div>
+        <p className="font-semibold text-ink">Transcribe recorded audio</p>
+        <p className="mt-1 text-sm leading-6 text-slate-600">
+          Choose the spoken language, then let AI convert the saved recording into meeting text. If Gemini access is blocked,
+          the audio stays saved and you can paste the transcript manually.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <select
+          className="kh-input max-w-xs"
+          value={languageMode}
+          onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
+          disabled={pending}
+        >
+          <option value="mixed">Mixed Khmer / English</option>
+          <option value="km">Khmer only</option>
+          <option value="en">English only</option>
+        </select>
+        <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          {pending ? "Transcribing audio..." : "Transcribe audio"}
+        </button>
+      </div>
+
+      {message ? (
+        <p className="flex items-start gap-2 rounded-lg bg-leaf/10 p-3 text-sm leading-6 text-leaf">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{message}</span>
+        </p>
+      ) : null}
+      {error ? (
+        <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </p>
+      ) : null}
     </div>
   );
 }

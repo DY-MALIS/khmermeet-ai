@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { GeminiApiError, generateGeminiContent, textModel, transcriptionModel } from "@/lib/ai/gemini";
+import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -31,11 +32,12 @@ export async function GET() {
       sample: text.slice(0, 40)
     });
   } catch (error) {
+    const publicError = publicGeminiTranscriptionError(error);
     return NextResponse.json(
       {
         ok: false,
         status: "failed",
-        message: error instanceof Error ? sanitizeError(error.message) : "Gemini test failed.",
+        message: publicError.message,
         diagnostics,
         geminiError: getSafeGeminiError(error)
       },

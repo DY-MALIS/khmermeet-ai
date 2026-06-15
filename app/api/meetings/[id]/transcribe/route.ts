@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -55,9 +56,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ transcript });
   } catch (error) {
+    const publicError = publicGeminiTranscriptionError(error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not transcribe saved audio." },
-      { status: 500 }
+      { error: publicError.message },
+      { status: publicError.status }
     );
   }
 }
