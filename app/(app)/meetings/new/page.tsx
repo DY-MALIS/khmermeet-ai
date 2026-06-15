@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-html-link-for-pages */
 import { Trash2 } from "lucide-react";
+import { ExternalMediaUploadPanel } from "@/components/external-media-upload-panel";
 import { RecordingPanel } from "@/components/recording-panel";
 import { deleteMeeting } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
@@ -28,6 +29,7 @@ export default async function NewMeetingPage() {
         <a className="kh-button-secondary mt-4" href="/meetings/call">បើកប្រជុំវីដេអូ</a>
       </div>
       <RecordingPanel />
+      <ExternalMediaUploadPanel />
       <section className="kh-card p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>

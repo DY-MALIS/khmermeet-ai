@@ -99,7 +99,15 @@ export async function loadStoredAudioAsFile(audioUrl: string) {
 }
 
 export async function saveLocalAudio(file: File) {
-  const ext = file.type.includes("mp4") ? "m4a" : file.type.includes("webm") ? "webm" : "audio";
+  const ext = file.type.includes("video/mp4")
+    ? "mp4"
+    : file.type.includes("mp4")
+      ? "m4a"
+      : file.type.includes("webm")
+        ? "webm"
+        : file.type.includes("mpeg")
+          ? "mp3"
+          : "audio";
   const name = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
   const bytes = Buffer.from(await file.arrayBuffer());
 
@@ -171,7 +179,9 @@ export async function downloadSupabaseAudio(objectPath: string) {
 }
 
 function contentTypeFromPath(objectPath: string) {
-  if (objectPath.endsWith(".mp4") || objectPath.endsWith(".m4a")) return "audio/mp4";
+  if (objectPath.endsWith(".mp4")) return "video/mp4";
+  if (objectPath.endsWith(".m4a")) return "audio/mp4";
+  if (objectPath.endsWith(".mp3")) return "audio/mpeg";
   if (objectPath.endsWith(".webm")) return "audio/webm";
   return "application/octet-stream";
 }
