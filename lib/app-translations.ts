@@ -153,6 +153,13 @@ export const kmToEnText: Record<string, string> = {
 };
 
 Object.assign(kmToEnText, {
+  "បកប្រែអត្ថបទប្រជុំ": "Translate meeting transcript",
+  "បកប្រែ transcript ប្រជុំទៅជា Khmer ឬ English។": "Translate the meeting transcript into Khmer or English.",
+  "ជ្រើសរើសភាសា": "Choose language",
+  "បកប្រែ transcript ទៅជា Khmer។": "Translate the transcript into Khmer.",
+  "បកប្រែ transcript ទៅជា English។": "Translate the transcript into English.",
+  "បានបកប្រែទៅជា Khmer។": "Translated to Khmer.",
+  "បានបកប្រែទៅជា English។": "Translated to English.",
   "ចម្លង link": "Copy link",
   "ចែករំលែក invite": "Share invite",
   "ចម្លង invite": "Copy invite",

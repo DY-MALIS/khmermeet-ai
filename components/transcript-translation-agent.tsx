@@ -11,13 +11,13 @@ type TargetLanguage = "km" | "en";
 const targetOptions: Array<{ value: TargetLanguage; label: string; helper: string }> = [
   {
     value: "km",
-    label: "ខ្មែរ សុទ្ធ",
-    helper: "បម្លែង transcript លាយភាសា ឲ្យទៅជាអត្ថបទខ្មែរ ស្អាត និងអានងាយ។"
+    label: "Khmer",
+    helper: "Translate the transcript into Khmer."
   },
   {
     value: "en",
-    label: "English only",
-    helper: "Convert the whole transcript into clear English only."
+    label: "English",
+    helper: "Translate the transcript into English."
   }
 ];
 
@@ -46,7 +46,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
       const data = await readJsonResponse<{ translatedText?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not translate transcript.");
       setTranslatedText(typeof data.translatedText === "string" ? data.translatedText : "");
-      setMessage(nextTarget === "km" ? "បានបម្លែងទៅជាខ្មែរ សុទ្ធ។" : "Translated to English only.");
+      setMessage(nextTarget === "km" ? "Translated to Khmer." : "Translated to English.");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not translate transcript.");
     } finally {
@@ -92,7 +92,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
           </p>
           <h3 className="mt-1 text-xl font-bold text-ink">បកប្រែអត្ថបទប្រជុំ</h3>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            យក transcript ដែលមានស្រាប់ ហើយបម្លែងទៅជាភាសាតែមួយ ដើម្បីឲ្យអានងាយ និងមិនលាយខ្មែរ/អង់គ្លេសច្របូកច្របល់។
+            Translate the meeting transcript into Khmer or English.
           </p>
         </div>
         <span className={cn("kh-badge shrink-0", hasTranscript ? "bg-leaf/10 text-leaf" : "bg-saffron/15 text-saffron")}>
@@ -102,7 +102,7 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
 
       <div className="mt-5 grid gap-4 rounded-xl border border-slate-100 bg-slate-50 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
         <label className="space-y-2">
-          <span className="text-sm font-semibold text-slate-700">ជ្រើសរើសលទ្ធផលដែលចង់បាន</span>
+          <span className="text-sm font-semibold text-slate-700">Choose language</span>
           <select
             className="kh-input bg-white"
             value={targetLanguage}
