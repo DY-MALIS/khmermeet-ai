@@ -20,6 +20,7 @@ function formString(formData: FormData, key: string) {
 function revalidateMeetingViews(meetingId?: string) {
   revalidatePath("/dashboard");
   revalidatePath("/meetings");
+  revalidatePath("/meetings/new");
   revalidatePath("/transcripts");
   revalidatePath("/summaries");
   revalidatePath("/tasks");
@@ -255,6 +256,8 @@ export async function deleteTask(formData: FormData) {
 export async function deleteMeeting(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  await prisma.meeting.delete({ where: { id, createdById: user.id } });
-  revalidateMeetingViews();
+  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  if (!meeting) throw new Error("No meeting found.");
+  await prisma.meeting.delete({ where: { id } });
+  revalidateMeetingViews(id);
 }
