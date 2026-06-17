@@ -19,7 +19,7 @@ export default function AppError({ error, reset }: AppErrorProps) {
         <p className="text-sm font-semibold text-red-600">Application error</p>
         <h1 className="mt-2 text-2xl font-bold text-ink">មានបញ្ហាក្នុងការបើកទំព័រ</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          សូមសាកល្បងម្តងទៀត។ ប្រសិនបើនៅតែមានបញ្ហា សូមពិនិត្យ Vercel Runtime Logs ឬបើក Dashboard ម្តងទៀត។
+          សូមសាកល្បងម្តងទៀត។ បើនៅតែមានបញ្ហា សូមពិនិត្យ Vercel Runtime Logs ឬត្រឡប់ទៅ Dashboard។
         </p>
         {error.digest ? <p className="mt-3 text-xs text-slate-400">Digest: {error.digest}</p> : null}
         <div className="mt-6 flex flex-wrap justify-center gap-3">

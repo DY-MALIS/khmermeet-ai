@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
+import { deleteStoredAudio, loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -259,5 +259,6 @@ export async function deleteMeeting(formData: FormData) {
   const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
   if (!meeting) throw new Error("No meeting found.");
   await prisma.meeting.delete({ where: { id } });
+  await deleteStoredAudio(meeting.audioUrl).catch(() => undefined);
   revalidateMeetingViews(id);
 }

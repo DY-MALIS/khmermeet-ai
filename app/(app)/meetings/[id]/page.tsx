@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionButton } from "@/components/action-button";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, ErrorState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
@@ -12,7 +13,38 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const meeting = await getMeetingById(id);
+  const meetingResult = await getMeetingById(id)
+    .then((meeting) => ({ meeting, error: "" }))
+    .catch(() => ({
+      meeting: null,
+      error:
+        "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again."
+    }));
+  const { meeting, error } = meetingResult;
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-5">
+        <div>
+          <p className="text-sm font-semibold text-leaf">Meeting detail</p>
+          <h1 className="text-3xl font-bold text-ink">Cannot open meeting</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            The app is still running, but the meeting record could not be loaded from the database.
+          </p>
+        </div>
+        <ErrorState message={error} />
+        <div className="flex flex-wrap gap-2">
+          <Link className="kh-button-primary" href="/meetings">
+            Back to history
+          </Link>
+          <Link className="kh-button-secondary" href="/dashboard">
+            Back to dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!meeting) notFound();
 
   const transcriptIsUsable = hasUsableTranscript(meeting.transcript ?? "");
