@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-type LanguageMode = "mixed" | "km" | "en";
+type LanguageMode = "km" | "en";
 
 export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("mixed");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
 
   async function transcribe() {
     setPending(true);
@@ -52,9 +52,8 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="mixed">Mixed Khmer / English</option>
-          <option value="km">Khmer only</option>
-          <option value="en">English only</option>
+          <option value="km">Khmer</option>
+          <option value="en">English</option>
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

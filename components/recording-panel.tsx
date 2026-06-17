@@ -45,7 +45,7 @@ export function RecordingPanel() {
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"mixed" | "km" | "en">("mixed");
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en">("km");
 
   useEffect(() => {
     setSupported(
@@ -287,12 +287,11 @@ export function RecordingPanel() {
         <select
           className="kh-input"
           value={transcriptionLanguage}
-          onChange={(event) => setTranscriptionLanguage(event.target.value as "mixed" | "km" | "en")}
+          onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en")}
           disabled={state === "recording" || state === "paused" || uploading}
         >
-          <option value="mixed">Mixed Khmer / English</option>
-          <option value="km">Khmer only</option>
-          <option value="en">English only</option>
+          <option value="km">Khmer</option>
+          <option value="en">English</option>
         </select>
       </label>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
+import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -16,7 +17,7 @@ const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") :
 const databaseAudioLimit = 12 * 1024 * 1024;
 const geminiInlineAudioLimit = 20 * 1024 * 1024;
 
-export type TranscriptionLanguageMode = "km" | "en" | "mixed";
+export type TranscriptionLanguageMode = "km" | "en";
 type TranscriptionOptions = {
   timeoutMs?: number;
   mode?: "final" | "live";
@@ -25,8 +26,7 @@ type TranscriptionOptions = {
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
   if (value === "km" || value === "km-KH" || value === "khmer") return "km";
   if (value === "en" || value === "en-US" || value === "english") return "en";
-  if (value === "mixed" || value === "km-en" || value === "en-km") return "mixed";
-  return "mixed";
+  return "km";
 }
 
 function cleanTranscriptionText(text: string) {
@@ -96,6 +96,30 @@ export async function loadStoredAudioAsFile(audioUrl: string) {
   }
 
   throw new Error("Unsupported audio storage path.");
+}
+
+export async function deleteStoredAudio(audioUrl: string | null | undefined) {
+  const normalizedUrl = audioUrl?.trim();
+  if (!normalizedUrl) return;
+
+  if (normalizedUrl.startsWith("/api/uploads/")) {
+    const idOrName = path.basename(decodeURIComponent(normalizedUrl.split("?")[0]));
+    const dbAudio = await prisma.audioFile.delete({ where: { id: idOrName } }).catch(() => null);
+    if (dbAudio) return;
+    await unlink(getLocalAudioPath(idOrName)).catch(() => undefined);
+    return;
+  }
+
+  if (normalizedUrl.startsWith("/api/storage/")) {
+    const storage = supabaseStorageClient();
+    if (!storage) return;
+    const objectPath = normalizedUrl
+      .replace(/^\/api\/storage\//, "")
+      .split("/")
+      .map(decodeURIComponent)
+      .join("/");
+    await storage.client.storage.from(storage.bucket).remove([objectPath]);
+  }
 }
 
 export async function saveLocalAudio(file: File) {
@@ -253,20 +277,13 @@ function languageModePrompt(languageMode: TranscriptionLanguageMode) {
     ];
   }
 
-  return [
-    "The selected transcript language is mixed Khmer and English.",
-    "This is transcription, not translation.",
-    "Detect Khmer and English automatically in the same audio.",
-    "If a person speaks Khmer, write Khmer script. If a person speaks English, write English. If they truly mix Khmer and English, keep the mixed language exactly.",
-    "Do not romanize Khmer. Do not translate English to Khmer. Do not translate Khmer to English.",
-    "Do not force everything into one language."
-  ];
+  return [];
 }
 
 export async function transcribeAudio(
   audioFile: File,
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "mixed",
+  languageMode: TranscriptionLanguageMode = "km",
   options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
@@ -400,7 +417,7 @@ export async function transcribeAudio(
 export async function transcribeAudioChunks(
   audioChunks: File[],
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "mixed"
+  languageMode: TranscriptionLanguageMode = "km"
 ) {
   const usableChunks = audioChunks.filter((chunk) => chunk.size > 0).slice(0, 40);
   if (!usableChunks.length) return "";

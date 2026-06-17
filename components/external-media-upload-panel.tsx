@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-type LanguageMode = "mixed" | "km" | "en";
+type LanguageMode = "km" | "en";
 
 function titleFromFile(file: File | null) {
   if (!file) return "";
@@ -39,7 +39,7 @@ export function ExternalMediaUploadPanel() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("mixed");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
   const [status, setStatus] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
@@ -130,7 +130,7 @@ export function ExternalMediaUploadPanel() {
           <h2 className="text-xl font-bold text-ink">Transcribe an external recording</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             Upload MP3, M4A, WebM, MP4, or another browser-supported media file. The app saves the file, tries to
-            transcribe Khmer and English speech, then creates a meeting record automatically.
+            transcribe Khmer or English speech, then creates a meeting record automatically.
           </p>
         </div>
       </div>
@@ -157,9 +157,8 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="mixed">Mixed Khmer / English</option>
-          <option value="km">Khmer only</option>
-          <option value="en">English only</option>
+          <option value="km">Khmer</option>
+          <option value="en">English</option>
         </select>
       </div>
 
