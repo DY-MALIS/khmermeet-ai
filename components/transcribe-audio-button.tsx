@@ -40,7 +40,7 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
       <div>
         <p className="font-semibold text-ink">Transcribe recorded audio</p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          Choose the spoken language, then let AI convert the saved recording into meeting text. If Gemini access is blocked,
+          Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked,
           the audio stays saved and you can paste the transcript manually.
         </p>
       </div>

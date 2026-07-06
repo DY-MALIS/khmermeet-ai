@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
+import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
         data: { summary, status: "summarized" }
       });
     } catch {
-      // Keep the uploaded meeting saved even if Gemini is unavailable.
+      // Keep the uploaded meeting saved even if the AI provider is unavailable.
     }
 
     try {

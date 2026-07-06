@@ -7,9 +7,9 @@ KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, 
 - Email/password auth with protected dashboard
 - Browser audio recording with local file storage
 - Browser WebRTC video meetings for local MVP testing
-- Gemini transcription for Khmer and English meeting audio
-- Gemini meeting summaries in Khmer by default
-- Gemini JSON action task extraction
+- OpenRouter transcription for Khmer and English meeting audio
+- OpenRouter meeting summaries in Khmer by default
+- OpenRouter JSON action task extraction
 - Meeting history, meeting detail, task management, settings
 - Responsive SaaS dashboard UI with Khmer-friendly typography
 - Text export for transcript and summary
@@ -19,7 +19,7 @@ KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, 
 - Next.js App Router, TypeScript, Tailwind CSS
 - Prisma ORM with `DATABASE_URL`
 - NextAuth credentials auth
-- Gemini API
+- OpenRouter API
 - Local file storage for MVP
 
 ## Setup
@@ -40,10 +40,10 @@ cp .env.example .env
 
 ```env
 DATABASE_URL="file:./dev.db"
-GEMINI_API_KEY="..."
-GEMINI_TEXT_MODEL=gemini-2.5-flash-lite
-GEMINI_TRANSCRIBE_MODEL=gemini-2.5-flash-lite
-GEMINI_TRANSCRIBE_TIMEOUT_MS=45000
+OPEN_ROUTER_API_KEY="..."
+OPEN_ROUTER_TEXT_MODEL=openai/gpt-4o-mini
+OPEN_ROUTER_TRANSCRIBE_MODEL=openai/whisper-large-v3
+OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS=55000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
 ```
@@ -79,7 +79,7 @@ NEXT_PUBLIC_TURN_USERNAME="..."
 NEXT_PUBLIC_TURN_CREDENTIAL="..."
 ```
 
-Gemini powers transcription, summary generation, and task extraction. Gemini is not a media server; video/audio transport is handled by WebRTC.
+OpenRouter powers transcription, summary generation, and task extraction. OpenRouter is not a media server; video/audio transport is handled by WebRTC.
 
 ## Future Improvements
 

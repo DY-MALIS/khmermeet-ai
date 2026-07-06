@@ -827,7 +827,7 @@ export function VideoCallRoom() {
     interimTranscriptRef.current = "";
   }
 
-  function resetLiveGeminiTranscript() {
+  function resetLiveOpenRouterTranscript() {
     if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
     liveTranscriptRestartTimerRef.current = null;
     liveTranscriptInFlightRef.current = false;
@@ -837,7 +837,7 @@ export function VideoCallRoom() {
     setLiveTranscriptError("");
   }
 
-  function stopLiveGeminiRecorder() {
+  function stopLiveOpenRouterRecorder() {
     if (liveTranscriptRestartTimerRef.current) window.clearTimeout(liveTranscriptRestartTimerRef.current);
     liveTranscriptRestartTimerRef.current = null;
     const recorder = liveTranscriptRecorderRef.current;
@@ -847,9 +847,9 @@ export function VideoCallRoom() {
     }
   }
 
-  function startLiveGeminiRecorder(stream: MediaStream, mimeType: string) {
-    stopLiveGeminiRecorder();
-    resetLiveGeminiTranscript();
+  function startLiveOpenRouterRecorder(stream: MediaStream, mimeType: string) {
+    stopLiveOpenRouterRecorder();
+    resetLiveOpenRouterTranscript();
 
     const startCycle = () => {
       if (liveTranscriptBlockedRef.current) return;
@@ -868,7 +868,7 @@ export function VideoCallRoom() {
       recorder.onstop = () => {
         if (chunks.length) {
           const blob = new Blob(chunks, { type: liveMimeType });
-          enqueueLiveGeminiBlob(blob, liveMimeType);
+          enqueueLiveOpenRouterBlob(blob, liveMimeType);
         }
         if (agentRecordingRef.current) {
           liveTranscriptRestartTimerRef.current = window.setTimeout(startCycle, 100);
@@ -884,15 +884,15 @@ export function VideoCallRoom() {
     startCycle();
   }
 
-  function enqueueLiveGeminiBlob(blob: Blob, mimeType: string) {
+  function enqueueLiveOpenRouterBlob(blob: Blob, mimeType: string) {
     if (liveTranscriptBlockedRef.current) return;
     if (!blob.size || blob.size < 1200) return;
     liveTranscriptQueueRef.current.push({ blob, mimeType });
     setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
-    void processLiveGeminiQueue();
+    void processLiveOpenRouterQueue();
   }
 
-  async function processLiveGeminiQueue() {
+  async function processLiveOpenRouterQueue() {
     if (liveTranscriptBlockedRef.current) return;
     if (liveTranscriptInFlightRef.current) return;
     const next = liveTranscriptQueueRef.current.shift();
@@ -902,12 +902,12 @@ export function VideoCallRoom() {
     liveTranscriptInFlightRef.current = true;
     setListeningStatus("processing");
     try {
-      await sendLiveGeminiBlob(next.blob, next.mimeType);
+      await sendLiveOpenRouterBlob(next.blob, next.mimeType);
     } finally {
       liveTranscriptInFlightRef.current = false;
       setLiveTranscriptPending(liveTranscriptQueueRef.current.length);
       if (liveTranscriptQueueRef.current.length) {
-        void processLiveGeminiQueue();
+        void processLiveOpenRouterQueue();
       }
     }
   }
@@ -917,7 +917,7 @@ export function VideoCallRoom() {
     return lower.includes("quota") || lower.includes("suspended") || lower.includes("403") || lower.includes("permission_denied");
   }
 
-  async function sendLiveGeminiBlob(blob: Blob, mimeType: string) {
+  async function sendLiveOpenRouterBlob(blob: Blob, mimeType: string) {
     try {
       const formData = new FormData();
       formData.append("audio", blob, mimeType.includes("mp4") ? "live-chunk.m4a" : "live-chunk.webm");
@@ -937,14 +937,14 @@ export function VideoCallRoom() {
         setListeningStatus("saved_line");
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Gemini live transcript failed.";
+      const message = error instanceof Error ? error.message : "OpenRouter live transcript failed.";
       setLiveTranscriptError(message);
       if (isLiveTranscriptBlockedError(message)) {
         liveTranscriptBlockedRef.current = true;
         liveTranscriptQueueRef.current = [];
         setLiveTranscriptPending(0);
-        stopLiveGeminiRecorder();
-        setAgentNotice("Gemini quota/API key មិនទាន់ដំណើរការ។ Agent នឹងបន្តថត audio ប៉ុន្តែ live transcript ត្រូវការ quota/billing ឬ API key ថ្មីមុន។");
+        stopLiveOpenRouterRecorder();
+        setAgentNotice("OpenRouter credits/API key មិនទាន់ដំណើរការ។ Agent នឹងបន្តថត audio ប៉ុន្តែ live transcript ត្រូវការ credits ឬ API key ថ្មីមុន។");
       }
       setListeningStatus("speech_retry");
     }
@@ -1222,7 +1222,7 @@ export function VideoCallRoom() {
     const mimeType = getRecorderMimeType();
     const recorder = new MediaRecorder(audioStream, getRecorderOptions(mimeType, 256000));
     callChunksRef.current = [];
-    resetLiveGeminiTranscript();
+    resetLiveOpenRouterTranscript();
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         callChunksRef.current.push(event.data);
@@ -1235,7 +1235,7 @@ export function VideoCallRoom() {
     callRecorderRef.current = recorder;
     callRecordStartedAtRef.current = Date.now();
     recorder.start(1000);
-    startLiveGeminiRecorder(liveAudioStream, mimeType);
+    startLiveOpenRouterRecorder(liveAudioStream, mimeType);
     speakerRecordingsReadyRef.current = null;
     startSpeakerRecordersForCurrentTracks();
 
@@ -1268,7 +1268,7 @@ export function VideoCallRoom() {
     transcriptSnapshotRef.current = getCurrentAgentTranscript();
     speakerRecordingsReadyRef.current = stopSpeakerRecorders();
     agentRecordingRef.current = false;
-    stopLiveGeminiRecorder();
+    stopLiveOpenRouterRecorder();
     shouldRestartSpeechRef.current = false;
     clearSpeechTimers();
     speechRef.current?.stop();
@@ -1332,7 +1332,7 @@ export function VideoCallRoom() {
           ? saveJson.aiError
             ? "Agent បានរក្សា audio និង transcript រួច។ AI summary/tasks មានបញ្ហា ប៉ុន្តែទិន្នន័យប្រជុំបានទៅ History និង Transcript ហើយ។"
             : "Agent បានថត audio ហើយបម្លែងជាអក្សរដោយ AI រួច។ Summary និង tasks ត្រូវបានបង្កើត។"
-          : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ GEMINI_API_KEY។"
+          : "Agent បានរក្សា audio រួច។ Browser មិនបានផ្តល់ transcript ទេ សូមបញ្ចូល transcript ដោយដៃ ឬពិនិត្យ OPEN_ROUTER_API_KEY។"
       );
     } catch (error) {
       setError(
@@ -1542,14 +1542,14 @@ export function VideoCallRoom() {
               ) : null}
               {agentRecording ? (
                 <span className="rounded-full bg-sky/15 px-2.5 py-1 text-sky">
-                  Gemini {liveTranscriptPending ? `queue ${liveTranscriptPending}` : liveTranscriptInFlightRef.current ? "processing" : "ready"}
+                  OpenRouter {liveTranscriptPending ? `queue ${liveTranscriptPending}` : liveTranscriptInFlightRef.current ? "processing" : "ready"}
                 </span>
               ) : null}
             </div>
           </div>
           {liveTranscriptError ? (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-              Gemini live transcript error: {liveTranscriptError}
+              OpenRouter live transcript error: {liveTranscriptError}
             </div>
           ) : null}
           <textarea

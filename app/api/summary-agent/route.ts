@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { generateGeminiContent } from "@/lib/ai/gemini";
+import { generateOpenRouterContent, hasOpenRouterKey } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -32,7 +32,7 @@ function fallbackAgentAnswer(command: string, meeting: { title: string; summary:
   return [
     `Summary Agent: ${meeting.title}`,
     "",
-    "GEMINI_API_KEY មិនទាន់ដំណើរការ ដូច្នេះនេះជា fallback answer ពីទិន្នន័យដែលមាន។",
+    "OPEN_ROUTER_API_KEY មិនទាន់ដំណើរការ ដូច្នេះនេះជា fallback answer ពីទិន្នន័យដែលមាន។",
     "",
     command ? `ពាក្យបញ្ជា: ${command}` : "",
     excerpt || "មិនទាន់មាន transcript ឬ summary សម្រាប់ Agent វិភាគ។"
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
           .join("\n")
       : "No tasks yet.";
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!hasOpenRouterKey()) {
       return NextResponse.json({ answer: fallbackAgentAnswer(command, meeting), updatedSummary: false });
     }
 
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 
-    const answer = await generateGeminiContent([{ text: prompt }], { temperature: 0.2 });
+    const answer = await generateOpenRouterContent([{ text: prompt }], { temperature: 0.2 });
     let updatedSummary = false;
 
     if (regeneratingSummary && answer.trim()) {

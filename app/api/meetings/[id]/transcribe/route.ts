@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
+import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -26,14 +26,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
     const languageMode = await readLanguageMode(request, meeting.language);
     const transcript = await transcribeAudio(audioFile, [], languageMode, {
-      timeoutMs: Number(process.env.GEMINI_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
+      timeoutMs: Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
     });
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json(
         {
           error:
-            "No clear speech text was detected. Please check the audio, microphone, or Gemini quota/key, then try again."
+            "No clear speech text was detected. Please check the audio, microphone, or OpenRouter credits/key, then try again."
         },
         { status: 422 }
       );
@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ transcript });
   } catch (error) {
-    const publicError = publicGeminiTranscriptionError(error);
+    const publicError = publicAiTranscriptionError(error);
     return NextResponse.json(
       { error: publicError.message },
       { status: publicError.status }

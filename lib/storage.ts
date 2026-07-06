@@ -2,20 +2,13 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
-import {
-  deleteGeminiFile,
-  GeminiApiError,
-  generateGeminiContent,
-  transcriptionModel,
-  uploadGeminiFile,
-  waitForGeminiFileActive
-} from "@/lib/ai/gemini";
+import { hasOpenRouterKey, transcribeOpenRouterAudio } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
 import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 const databaseAudioLimit = 12 * 1024 * 1024;
-const geminiInlineAudioLimit = 20 * 1024 * 1024;
+const openRouterAudioLimit = 24 * 1024 * 1024;
 
 export type TranscriptionLanguageMode = "km" | "en";
 type TranscriptionOptions = {
@@ -253,165 +246,32 @@ async function ensureAudioFileTable() {
   `);
 }
 
-function languageModePrompt(languageMode: TranscriptionLanguageMode) {
-  if (languageMode === "km") {
-    return [
-      "The selected transcript language is Khmer.",
-      "This is transcription, not translation.",
-      "Write Khmer speech in Khmer script.",
-      "Do not romanize Khmer. Do not write Khmer pronunciation in English letters.",
-      "Do not translate Khmer into English.",
-      "Do not add English words unless the speaker clearly says an English product name, acronym, URL, number, person name, brand, or technical term.",
-      "If the speaker says English words inside a Khmer sentence, keep those exact English words only."
-    ];
-  }
-
-  if (languageMode === "en") {
-    return [
-      "The selected transcript language is English.",
-      "This is transcription, not translation.",
-      "Write English speech in English only.",
-      "Do not translate English into Khmer.",
-      "Do not add Khmer words unless the speaker clearly says a Khmer person name, place name, organization name, or Khmer term.",
-      "If the speaker says Khmer words inside an English sentence, keep those exact Khmer words only."
-    ];
-  }
-
-  return [];
-}
-
 export async function transcribeAudio(
   audioFile: File,
-  speakerNames: string[] = [],
+  _speakerNames: string[] = [],
   languageMode: TranscriptionLanguageMode = "km",
   options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
-  if (!process.env.GEMINI_API_KEY) return "";
-  const useGeminiFileApi = options.mode !== "live";
-  if (!useGeminiFileApi && audioFile.size > geminiInlineAudioLimit) {
-    throw new Error("Audio is larger than the 20 MB Gemini inline transcription limit.");
+  void _speakerNames;
+  if (!hasOpenRouterKey()) return "";
+  if (audioFile.size > openRouterAudioLimit) {
+    throw new Error("Audio is larger than the 24 MB OpenRouter transcription limit. Please split it into smaller parts.");
   }
 
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  const knownSpeakers = speakerNames.length
-    ? [
-        `Known participant names: ${speakerNames.join(", ")}.`,
-        "Use a known participant name only when the voice is clearly that person.",
-        'If the speaker is unclear, use "Speaker:" instead of guessing a name.'
-      ]
-    : [
-        "Do not add speaker labels unless there are clearly different voices.",
-        'If one person is speaking and the name is unknown, return only the spoken words without "Speaker:" labels.'
-      ];
-  const prompt = [
-    "You are a careful speech-to-text engine for Cambodian team meetings.",
-    "Your job is to transcribe speech from audio into text. This is not translation and not summarization.",
-    ...languageModePrompt(normalizedLanguageMode),
-    options.mode === "live"
-      ? "This is a short live audio chunk. It may start or end in the middle of a sentence."
-      : "This may be a saved meeting recording. Transcribe the whole audio from start to end.",
-    "Return every clearly audible word. Include words after pauses and do not stop early.",
-    "For short chunks, return audible words even when the sentence is incomplete.",
-    "Transcribe verbatim. Do not summarize, translate, rewrite, paraphrase, or skip repeated words.",
-    "Write only the actual words spoken by participants.",
-    "Never output timestamps, second counters, timecodes, beat markers, or placeholder text such as 00:01 00:02 00:03.",
-    "Return only transcript text. Do not include explanations, analysis, confidence notes, or phrases like 'No clear speech detected'.",
-    "If there is truly no audible speech, return an empty string instead of timestamps or guesses.",
-    "Do not invent speakers, names, or dialogue. Only write words actually heard in this audio.",
-    "Do not split one speaker into multiple Speaker 1/Speaker 2 labels unless different voices are clearly audible.",
-    "Preserve names, product terms, dates, numbers, deadlines, and action items exactly as spoken.",
-    "If the audio contains pauses, continue transcribing after every pause.",
-    "If a word is unclear, write the most likely heard word, but never invent a full sentence.",
-    "Add punctuation only when it helps readability.",
-    ...knownSpeakers,
-    speakerNames.length
-      ? 'When a speaker can be identified, prefix the line with the speaker name like "Name: transcript".'
-      : "Do not invent Speaker 1, Speaker 2, or Speaker 3 labels."
-  ].filter(Boolean).join(" ");
   const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
   const mimeType = audioFile.type || "audio/webm";
-  const timeoutMs = options.timeoutMs ?? Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000);
-  let uploadedFileName = "";
-
-  type AudioPart =
-    | { inlineData: { mimeType: string; data: string } }
-    | { fileData: { mimeType: string; fileUri: string } };
-
-  const inlineAudioPart = (): AudioPart => ({
-    inlineData: {
-      mimeType,
-      data: audioBuffer.toString("base64")
-    }
-  });
-
-  const geminiFileAudioPart = async (): Promise<AudioPart> => {
-    const uploaded = await uploadGeminiFile(audioBuffer, mimeType, audioFile.name || "meeting-audio");
-    uploadedFileName = uploaded.name;
-    const active = await waitForGeminiFileActive(uploaded, Math.min(timeoutMs, 60000));
-    return { fileData: { mimeType: active.mimeType, fileUri: active.uri } };
-  };
-
-  const runTranscript = async (audioPart: AudioPart) => {
-    const transcript = await generateGeminiContent(
-      [
-        { text: prompt },
-        audioPart
-      ],
-      {
-        model: transcriptionModel(),
-        temperature: 0,
-        timeoutMs
-      }
-    );
-    const cleaned = cleanTranscriptionText(transcript);
-    if (cleaned || options.mode === "live") return cleaned;
-
-    const retryTranscript = await generateGeminiContent(
-      [
-        {
-          text: [
-            prompt,
-            "Retry carefully. The previous attempt did not produce usable spoken words.",
-            "Ignore silence, music, room noise, and timer-like sounds.",
-            "Listen for Khmer and English speech and return only the words that are clearly spoken."
-          ].join(" ")
-        },
-        audioPart
-      ],
-      {
-        model: transcriptionModel(),
-        temperature: 0,
-        timeoutMs
-      }
-    );
-    return cleanTranscriptionText(retryTranscript);
-  };
-
-  const canFallbackInline = audioBuffer.length <= geminiInlineAudioLimit;
-  const isFilesPermissionError = (error: unknown) =>
-    error instanceof GeminiApiError && error.status === 403;
-
-  try {
-    if (!useGeminiFileApi) return runTranscript(inlineAudioPart());
-
-    try {
-      return await runTranscript(await geminiFileAudioPart());
-    } catch (error) {
-      if (!isFilesPermissionError(error)) throw error;
-      if (!canFallbackInline) {
-        throw new Error(
-          "Gemini Files API permission denied. For saved audio larger than 20 MB, enable Gemini Files API access for GEMINI_API_KEY or use a key without API restrictions."
-        );
-      }
-      return runTranscript(inlineAudioPart());
-    }
-  } finally {
-    if (uploadedFileName) {
-      await deleteGeminiFile(uploadedFileName);
-    }
-  }
+  const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
+  const transcript = await transcribeOpenRouterAudio(
+    audioBuffer,
+    mimeType,
+    audioFile.name || "meeting-audio.webm",
+    normalizedLanguageMode,
+    timeoutMs
+  );
+  return cleanTranscriptionText(transcript);
 }
 
 export async function transcribeAudioChunks(
@@ -426,7 +286,7 @@ export async function transcribeAudioChunks(
   for (const chunk of usableChunks) {
     const text = await transcribeAudio(chunk, speakerNames, languageMode, {
       mode: "live",
-      timeoutMs: Math.min(Number(process.env.GEMINI_TRANSCRIBE_TIMEOUT_MS ?? 55000), 35000)
+      timeoutMs: Math.min(Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000), 35000)
     });
     if (text && !isTimestampOnlyTranscript(text)) transcripts.push(text);
   }

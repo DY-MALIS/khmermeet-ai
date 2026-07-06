@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
-import { translateMeetingTranscript, type TranscriptTranslationTarget } from "@/lib/ai/gemini";
+import { translateMeetingTranscript, type TranscriptTranslationTarget } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { hasUsableTranscript } from "@/lib/transcript-quality";

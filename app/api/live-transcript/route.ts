@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
+import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ transcript });
   } catch (error) {
-    const publicError = publicGeminiTranscriptionError(error);
+    const publicError = publicAiTranscriptionError(error);
     return NextResponse.json(
       { error: publicError.message },
       { status: publicError.status }

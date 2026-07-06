@@ -1,35 +1,32 @@
-import { GeminiApiError } from "@/lib/ai/gemini";
+import { OpenRouterApiError } from "@/lib/ai/openrouter";
 
-export function publicGeminiTranscriptionError(error: unknown) {
-  if (error instanceof GeminiApiError) {
+export function publicAiTranscriptionError(error: unknown) {
+  if (error instanceof OpenRouterApiError) {
     const detail = error.safeDetail.toLowerCase();
 
-    if (error.status === 403 && detail.includes("denied access")) {
+    if (error.status === 401 || error.status === 403) {
       return {
-        message:
-          "Gemini API project access is still denied by Google. Audio is saved, but automatic transcription cannot run until Trust & Safety restores the project or a working API key is added.",
+        message: "OpenRouter API key is invalid or does not have access. Audio is saved; please update OPEN_ROUTER_API_KEY.",
         status: 503
       };
     }
 
-    if (error.status === 403 && detail.includes("suspended")) {
+    if (error.status === 402) {
       return {
-        message:
-          "Gemini API key or project is suspended. Audio is saved, but transcription needs a restored project or a new working GEMINI_API_KEY.",
+        message: "OpenRouter credits are not available. Audio is saved; please add credits to the OpenRouter account.",
         status: 503
       };
     }
 
     if (error.status === 429 || detail.includes("quota") || detail.includes("resource_exhausted")) {
       return {
-        message:
-          "Gemini quota or billing is not available right now. Audio is saved; please add quota/billing or try again later.",
+        message: "OpenRouter rate limit was reached. Audio is saved; please try again shortly.",
         status: 503
       };
     }
 
     return {
-      message: error.message || "Gemini could not transcribe this audio.",
+      message: error.message || "OpenRouter could not transcribe this audio.",
       status: error.status >= 400 && error.status < 600 ? error.status : 500
     };
   }

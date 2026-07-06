@@ -335,7 +335,7 @@ export function RecordingPanel() {
           </form>
           {audioUrl ? (
             <p className="text-sm text-leaf">
-              សំឡេងត្រូវបាន upload រួច។ {transcript ? "Transcript ត្រូវបានបង្កើត ហើយនឹងរក្សាទុកជាមួយ meeting record។" : "បើមិនមាន transcript សូមដាក់ GEMINI_API_KEY ឬបញ្ចូល transcript ដោយដៃក្រោយរក្សាទុក។"}
+              សំឡេងត្រូវបាន upload រួច។ {transcript ? "Transcript ត្រូវបានបង្កើត ហើយនឹងរក្សាទុកជាមួយ meeting record។" : "បើមិនមាន transcript សូមដាក់ OPEN_ROUTER_API_KEY ឬបញ្ចូល transcript ដោយដៃក្រោយរក្សាទុក។"}
             </p>
           ) : uploading ? (
             <p className="text-sm text-slate-500">កំពុង upload សំឡេងទៅ local storage...</p>

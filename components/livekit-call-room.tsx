@@ -644,7 +644,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setTranscriptionProgress(
       successfulChunks
         ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review transcript.`
-        : "Audio saved, but no clear speech text was detected. Please check microphone quality or Gemini quota."
+        : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
     );
     setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");
   }
@@ -669,7 +669,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en")}
             disabled={recording || saving}
-            title="Choose how Gemini should transcribe the saved meeting audio."
+            title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
             <option value="km">Khmer</option>
             <option value="en">English</option>

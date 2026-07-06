@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/gemini";
+import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
 
@@ -73,7 +73,7 @@ export async function createMeeting(formData: FormData) {
         data: { summary, status: "summarized" }
       });
     } catch {
-      // Keep the meeting saved even if Gemini quota/billing is unavailable.
+      // Keep the meeting saved even if the AI provider is unavailable.
     }
 
     try {
@@ -145,7 +145,7 @@ export async function transcribeMeetingAudio(formData: FormData) {
   const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
   const transcript = await transcribeAudio(audioFile);
   if (!hasUsableTranscript(transcript)) {
-    throw new Error("No clear speech text was detected. Please check the audio, microphone, or Gemini quota/key.");
+    throw new Error("No clear speech text was detected. Please check the audio, microphone, or OpenRouter credits/key.");
   }
 
   await prisma.meeting.update({

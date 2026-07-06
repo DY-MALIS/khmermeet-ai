@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { publicGeminiTranscriptionError } from "@/lib/api-error-messages";
+import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const transcript = speakerTranscript || chunkTranscript || (await transcribeAudio(file, speakerNames, languageMode));
     return NextResponse.json({ audioUrl, transcript });
   } catch (error) {
-    const publicError = publicGeminiTranscriptionError(error);
+    const publicError = publicAiTranscriptionError(error);
     return NextResponse.json({
       audioUrl,
       transcript: "",
