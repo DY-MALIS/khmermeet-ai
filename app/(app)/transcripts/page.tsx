@@ -31,10 +31,10 @@ export default async function TranscriptsPage() {
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះត្រូវការ PostgreSQL/Supabase/Neon DATABASE_URL ដើម្បីទាញ transcript ពី meetings។
+          មិនអាចភ្ជាប់ production database បានទេ។ Transcript មិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase។
         </div>
       ) : null}
-      {meetings.length ? (
+      {!dbUnavailable && meetings.length ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {meetings.map((meeting) => {
             const usableTranscript = hasUsableTranscript(meeting.transcript ?? "");
@@ -82,9 +82,9 @@ export default async function TranscriptsPage() {
             );
           })}
         </div>
-      ) : (
+      ) : !dbUnavailable ? (
         <EmptyState title="មិនទាន់មានអត្ថបទប្រជុំ" description="ថតប្រជុំ ឬប្រើ Meeting Agent ដើម្បីបង្កើត transcript។ ប្រសិនបើមានតែ audio វានឹងបង្ហាញនៅទីនេះដែរ។" />
-      )}
+      ) : null}
     </div>
   );
 }

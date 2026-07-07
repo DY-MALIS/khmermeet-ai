@@ -23,19 +23,20 @@ function revalidateMeetingViews(meetingId: string) {
 }
 
 export async function POST(request: Request) {
-  const user = await requireUser();
-  const body = await request.json().catch(() => ({}));
-  const title = cleanString(body.title) || "Uploaded meeting";
-  const audioUrl = cleanString(body.audioUrl);
-  const rawTranscript = cleanString(body.transcript);
-  const duration = Number(body.duration ?? 0);
-  const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
+  try {
+    const user = await requireUser();
+    const body = await request.json().catch(() => ({}));
+    const title = cleanString(body.title) || "Uploaded meeting";
+    const audioUrl = cleanString(body.audioUrl);
+    const rawTranscript = cleanString(body.transcript);
+    const duration = Number(body.duration ?? 0);
+    const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
 
-  if (!audioUrl) {
-    return NextResponse.json({ error: "Missing uploaded audio or video URL." }, { status: 400 });
-  }
+    if (!audioUrl) {
+      return NextResponse.json({ error: "Missing uploaded audio or video URL." }, { status: 400 });
+    }
 
-  await prisma.user.upsert({
+    await prisma.user.upsert({
     where: { id: user.id },
     update: {},
     create: {
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
     }
   });
 
-  const meeting = await prisma.meeting.create({
+    const meeting = await prisma.meeting.create({
     data: {
       title,
       audioUrl,
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
     }
   });
 
-  if (transcript) {
+    if (transcript) {
     try {
       const summary = await generateMeetingSummary(transcript);
       await prisma.meeting.update({
@@ -89,8 +90,22 @@ export async function POST(request: Request) {
     } catch {
       // Tasks can be generated later from the meeting detail page.
     }
-  }
+    }
 
-  revalidateMeetingViews(meeting.id);
-  return NextResponse.json({ id: meeting.id });
+    revalidateMeetingViews(meeting.id);
+    return NextResponse.json({ id: meeting.id });
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error && typeof error.code === "string"
+        ? error.code
+        : undefined;
+    return NextResponse.json(
+      {
+        error: "Could not save the meeting because the database is unavailable.",
+        code,
+        hint: "Check Vercel DATABASE_URL, Supabase status, and Prisma migration. The uploaded file was not intentionally deleted."
+      },
+      { status: 503 }
+    );
+  }
 }

@@ -34,7 +34,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/save/delete meetings ត្រូវការ local database។
+          មិនអាចភ្ជាប់ production database បានទេ។ ទិន្នន័យមិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase រួចសាកម្តងទៀត។
         </div>
       ) : null}
       <form className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_220px_auto]">
@@ -45,7 +45,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
         <input className="kh-input" name="date" type="date" defaultValue={params.date} />
         <button className="kh-button-primary">ស្វែងរក</button>
       </form>
-      {meetings.length ? (
+      {!dbUnavailable && meetings.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {meetings.map((meeting) => (
             <article className="kh-card p-5" key={meeting.id}>
@@ -64,7 +64,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
             </article>
           ))}
         </div>
-      ) : <EmptyState title="រកមិនឃើញប្រជុំ" description="សាកល្បងស្វែងរកពាក្យផ្សេង ឬបង្កើតប្រជុំថ្មី។" />}
+      ) : !dbUnavailable ? <EmptyState title="រកមិនឃើញប្រជុំ" description="សាកល្បងស្វែងរកពាក្យផ្សេង ឬបង្កើតប្រជុំថ្មី។" /> : null}
     </div>
   );
 }

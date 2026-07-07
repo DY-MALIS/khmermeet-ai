@@ -64,10 +64,10 @@ export default async function DashboardPage() {
       </section>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ App shell បើកបានហើយ ប៉ុន្តែការរក្សាទុកប្រជុំ/កិច្ចការត្រូវការ local database និង Prisma setup។
+          មិនអាចភ្ជាប់ production database បានទេ។ ស្ថិតិខាងក្រោមត្រូវបានផ្អាក ដើម្បីកុំឲ្យមើលច្រឡំថាទិន្នន័យបាត់។ សូមពិនិត្យ DATABASE_URL និង Supabase។
         </div>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <div className="kh-card p-5" key={stat.label}>
             <div className="flex items-center justify-between">
@@ -77,8 +77,8 @@ export default async function DashboardPage() {
             <p className="mt-4 text-3xl font-bold text-ink">{stat.value}</p>
           </div>
         ))}
-      </div>
-      <div className="grid gap-6 xl:grid-cols-2">
+      </div> : null}
+      {!dbUnavailable ? <div className="grid gap-6 xl:grid-cols-2">
         <section className="kh-card p-5">
           <h2 className="mb-4 text-lg font-bold">ប្រជុំថ្មីៗ</h2>
           {meetings.length ? (
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
             </div>
           ) : <EmptyState title="គ្មានកិច្ចការរង់ចាំ" description="កិច្ចការថ្មីនឹងបង្ហាញនៅទីនេះ។" />}
         </section>
-      </div>
+      </div> : null}
     </div>
   );
 }

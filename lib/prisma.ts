@@ -4,9 +4,14 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function databaseUrl() {
   const url = process.env.DATABASE_URL;
-  if (!url || !process.env.VERCEL || url.includes("pgbouncer=true")) return url;
+  if (!url || !process.env.VERCEL) return url;
   if (!url.includes("pooler.supabase.com")) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true`;
+
+  const parsed = new URL(url);
+  parsed.searchParams.set("pgbouncer", "true");
+  parsed.searchParams.set("connection_limit", "1");
+  parsed.searchParams.set("connect_timeout", "10");
+  return parsed.toString();
 }
 
 export const prisma =

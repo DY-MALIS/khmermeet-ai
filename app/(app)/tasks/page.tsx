@@ -46,10 +46,10 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះបើកបានហើយ ប៉ុន្តែ list/update/delete tasks ត្រូវការ local database។
+          មិនអាចភ្ជាប់ production database បានទេ។ កិច្ចការមិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase រួចសាកម្តងទៀត។
         </div>
       ) : null}
-      <section className="kh-card p-4">
+      {!dbUnavailable ? <section className="kh-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-leaf/10 text-leaf">
             <Plus className="h-4 w-4" />
@@ -89,7 +89,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             <Link className="kh-button-secondary mt-3" href="/meetings/new">បង្កើត meeting</Link>
           </div>
         )}
-      </section>
+      </section> : null}
       <form className="kh-card grid gap-3 p-4 md:grid-cols-[1fr_1fr_1fr_auto_auto]">
         <select className="kh-input" name="status" defaultValue={params.status ?? ""}>
           <option value="">គ្រប់ស្ថានភាព</option>
@@ -114,7 +114,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           </Link>
         ) : null}
       </form>
-      <section className="kh-card overflow-hidden">
+      {!dbUnavailable ? <section className="kh-card overflow-hidden">
         {tasks.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
@@ -190,7 +190,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             ) : null}
           </div>
         )}
-      </section>
+      </section> : null}
     </div>
   );
 }

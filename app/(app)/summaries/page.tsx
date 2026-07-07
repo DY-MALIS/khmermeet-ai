@@ -32,10 +32,10 @@ export default async function SummariesPage() {
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Database មិនទាន់ដំណើរការ។ ទំព័រនេះត្រូវការ PostgreSQL/Supabase/Neon DATABASE_URL ដើម្បីទាញ summary ពី meetings។
+          មិនអាចភ្ជាប់ production database បានទេ។ Summary មិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase។
         </div>
       ) : null}
-      {meetings.length ? (
+      {!dbUnavailable && meetings.length ? (
         <div className="space-y-4">
           {meetings.map((meeting) => (
             <article className="kh-card p-5" key={meeting.id}>
@@ -92,9 +92,9 @@ export default async function SummariesPage() {
             </article>
           ))}
         </div>
-      ) : (
+      ) : !dbUnavailable ? (
         <EmptyState title="មិនទាន់មានសង្ខេបដោយ AI" description="បញ្ចូល transcript រួចចុច Generate AI Summary ឬប្រើ Meeting Agent។" />
-      )}
+      ) : null}
     </div>
   );
 }
