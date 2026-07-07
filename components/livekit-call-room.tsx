@@ -13,7 +13,7 @@ import {
 import { Track } from "livekit-client";
 import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -39,7 +39,7 @@ function createRoomCode() {
 
 function readMeetingParams() {
   if (typeof window === "undefined") {
-    return { hasInviteRoom: false, room: createRoomCode(), title: "" };
+    return { hasInviteRoom: false, room: "MEETING", title: "" };
   }
 
   const params = new URLSearchParams(window.location.search);
@@ -100,11 +100,11 @@ function getCallGridMetrics(trackCount: number) {
 }
 
 export function LiveKitCallRoom() {
-  const initialMeeting = useMemo(() => readMeetingParams(), []);
-  const [room, setRoom] = useState(initialMeeting.room);
+  const [room, setRoom] = useState("MEETING");
   const [name, setName] = useState("Local User");
-  const [title, setTitle] = useState(initialMeeting.title);
-  const [isInviteGuest] = useState(initialMeeting.hasInviteRoom);
+  const [title, setTitle] = useState("");
+  const [isInviteGuest, setIsInviteGuest] = useState(false);
+  const [paramsReady, setParamsReady] = useState(false);
   const [cameraOn, setCameraOn] = useState(true);
   const [microphoneOn, setMicrophoneOn] = useState(true);
   const [callMedia, setCallMedia] = useState({ audio: true, video: true });
@@ -114,10 +114,19 @@ export function LiveKitCallRoom() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
+    const initialMeeting = readMeetingParams();
+    setRoom(initialMeeting.room);
+    setTitle(initialMeeting.title);
+    setIsInviteGuest(initialMeeting.hasInviteRoom);
+    setParamsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!paramsReady) return;
     if (!new URLSearchParams(window.location.search).get("room")) {
       window.history.replaceState(null, "", `/meetings/call?room=${room}`);
     }
-  }, [room]);
+  }, [paramsReady, room]);
 
   function meetingTitle() {
     return title.trim() || `Video call ${room}`;
