@@ -1,8 +1,7 @@
-import { JitsiCallRoom } from "@/components/jitsi-call-room";
-import { LiveKitCallRoom } from "@/components/livekit-call-room";
+import { VideoCallClient } from "@/components/video-call-client";
 
 export default function MeetingCallPage() {
-  const provider = process.env.NEXT_PUBLIC_VIDEO_PROVIDER || "livekit";
+  const provider = process.env.NEXT_PUBLIC_VIDEO_PROVIDER === "jitsi" ? "jitsi" : "livekit";
 
   return (
     <div className="space-y-6">
@@ -15,7 +14,7 @@ export default function MeetingCallPage() {
             : "Free Jitsi mode for basic video meetings without a LiveKit API key. Automatic recording, transcript, summary, and tasks need LiveKit production mode."}
         </p>
       </div>
-      {provider === "livekit" ? <LiveKitCallRoom /> : <JitsiCallRoom />}
+      <VideoCallClient provider={provider} />
     </div>
   );
 }
