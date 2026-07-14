@@ -25,14 +25,6 @@ type TokenPayload = {
   name: string;
 };
 
-const audioConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-  channelCount: { ideal: 1 },
-  sampleRate: { ideal: 48000 }
-};
-
 function createRoomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -224,8 +216,8 @@ export function LiveKitCallRoom() {
           token={tokenPayload.token}
           serverUrl={tokenPayload.livekitUrl}
           connect
-          audio={callMedia.audio ? audioConstraints : false}
-          video={callMedia.video ? { facingMode: "user", resolution: { width: 1280, height: 720 } } : false}
+          audio={callMedia.audio}
+          video={callMedia.video}
           onDisconnected={() => setTokenPayload(null)}
           onError={(error) => {
             const message = error.message || "Could not connect camera/microphone.";

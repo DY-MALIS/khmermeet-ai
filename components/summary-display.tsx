@@ -1,15 +1,20 @@
-const summaryHeadings = [
+const khmerSummaryHeadings = [
   "សង្ខេបប្រជុំ",
   "ចំណុចសំខាន់ៗ",
   "ការសម្រេចចិត្ត",
   "បញ្ហាដែលបានលើកឡើង",
-  "ជំហានបន្ទាប់",
+  "ជំហានបន្ទាប់"
+];
+
+const englishSummaryHeadings = [
   "Meeting overview",
   "Key discussion points",
   "Decisions made",
   "Problems mentioned",
   "Next steps"
 ];
+
+const summaryHeadings = [...khmerSummaryHeadings, ...englishSummaryHeadings];
 
 function normalizeSummaryHeading(line: string) {
   return line
@@ -23,6 +28,10 @@ function normalizeSummaryHeading(line: string) {
 function isSummaryHeading(line: string) {
   const normalized = normalizeSummaryHeading(line);
   return summaryHeadings.some((heading) => heading.toLowerCase() === normalized.toLowerCase());
+}
+
+function defaultSummaryTitle(summary: string) {
+  return /[\u1780-\u17ff]/.test(summary) ? "សង្ខេបប្រជុំ" : "Meeting overview";
 }
 
 export function SummaryDisplay({ summary }: { summary: string }) {
@@ -40,7 +49,7 @@ export function SummaryDisplay({ summary }: { summary: string }) {
     }
 
     if (!current) {
-      current = { title: "សង្ខេបប្រជុំ", items: [] };
+      current = { title: defaultSummaryTitle(summary), items: [] };
       sections.push(current);
     }
 
