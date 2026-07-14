@@ -53,6 +53,14 @@ function requestHeaders() {
   };
 }
 
+function uploadHeaders() {
+  return {
+    Authorization: `Bearer ${getOpenRouterKey()}`,
+    "HTTP-Referer": process.env.NEXTAUTH_URL || "https://khmermeet-ai.vercel.app",
+    "X-OpenRouter-Title": "KhmerMeet AI"
+  };
+}
+
 function sanitizeDetail(detail: string) {
   return detail
     .replace(/sk-or-v1-[0-9A-Za-z_-]+/g, "[hidden-openrouter-key]")
@@ -155,19 +163,28 @@ export async function transcribeOpenRouterAudio(
   let response: Response;
 
   try {
+    const formData = new FormData();
+    formData.append("model", transcriptionModel());
+    formData.append("language", language);
+    formData.append("temperature", "0");
+    formData.append(
+      "prompt",
+      language === "km"
+        ? "Transcribe only the spoken Khmer speech. Keep Khmer script. Do not invent timestamps or translate to another language."
+        : "Transcribe only the spoken English speech. Keep English text. Do not invent timestamps or translate to another language."
+    );
+    formData.append(
+      "file",
+      new File([new Uint8Array(audio)], filename || `meeting-audio.${audioFormat(mimeType, filename)}`, {
+        type: mimeType || "audio/webm"
+      })
+    );
+
     response = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
       method: "POST",
-      headers: requestHeaders(),
+      headers: uploadHeaders(),
       signal: controller.signal,
-      body: JSON.stringify({
-        model: transcriptionModel(),
-        input_audio: {
-          data: audio.toString("base64"),
-          format: audioFormat(mimeType, filename)
-        },
-        language,
-        temperature: 0
-      })
+      body: formData
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -183,8 +200,17 @@ export async function transcribeOpenRouterAudio(
     throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, detail));
   }
 
-  const payload = (await response.json()) as { text?: string };
-  return payload.text?.trim() ?? "";
+  const payload = (await response.json()) as {
+    text?: string;
+    transcript?: string;
+    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+  };
+  if (typeof payload.text === "string") return payload.text.trim();
+  if (typeof payload.transcript === "string") return payload.transcript.trim();
+  const content = payload.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("\n").trim();
+  return "";
 }
 
 function fallbackSummary(transcript: string) {
