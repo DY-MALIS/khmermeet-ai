@@ -24,6 +24,7 @@ export function hasCorruptedEncoding(text: string) {
 }
 
 export function hasLowSpeechSignal(text: string) {
+  const timestampMatches = text.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) ?? [];
   const compact = stripSpeakerLabels(text)
     .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
     .replace(/\s+/g, " ")
@@ -31,7 +32,8 @@ export function hasLowSpeechSignal(text: string) {
   if (!compact) return true;
 
   const letters = compact.match(/\p{L}/gu) ?? [];
-  if (letters.length < 8) return true;
+  if (letters.length < 4) return true;
+  if (letters.length < 8 && timestampMatches.length >= 2) return true;
 
   const tokens = compact.split(/\s+/).filter(Boolean);
   if (tokens.length >= 8) {

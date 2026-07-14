@@ -58,7 +58,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           <p className="text-sm font-semibold text-leaf">Meeting detail</p>
           <h1 className="text-3xl font-bold text-ink">{meeting.title}</h1>
           <p className="mt-2 text-sm text-slate-500">
-            {meeting.createdAt.toLocaleString()} · {formatMeetingDuration(meeting.duration)}
+            {meeting.createdAt.toLocaleString()} - {formatMeetingDuration(meeting.duration)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

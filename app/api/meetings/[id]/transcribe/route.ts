@@ -24,16 +24,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
+    if (audioFile.size < 1500) {
+      return NextResponse.json(
+        {
+          error:
+            "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
+        },
+        { status: 422 }
+      );
+    }
+
     const languageMode = await readLanguageMode(request, meeting.language);
     const transcript = await transcribeAudio(audioFile, [], languageMode, {
       timeoutMs: Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
     });
 
     if (!hasUsableTranscript(transcript)) {
+      const durationHint =
+        meeting.duration && meeting.duration < 10
+          ? " This recording is very short, so the AI may not have enough speech to transcribe."
+          : "";
       return NextResponse.json(
         {
           error:
-            "No clear speech text was detected. Please check the audio, microphone, or OpenRouter credits/key, then try again."
+            `No clear speech text was detected.${durationHint} Please check the audio volume, microphone, selected language, and OpenRouter credits/key, then try again.`
         },
         { status: 422 }
       );
