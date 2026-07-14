@@ -445,7 +445,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en">("km");
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
@@ -756,7 +756,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             disabled={recording || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km">Khmer</option>
+            <option value="km-en">Khmer + English</option>
+            <option value="km">Khmer only</option>
             <option value="en">English</option>
           </select>
           <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>

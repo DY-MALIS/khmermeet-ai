@@ -10,7 +10,7 @@ const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") :
 const databaseAudioLimit = 12 * 1024 * 1024;
 const openRouterAudioLimit = 24 * 1024 * 1024;
 
-export type TranscriptionLanguageMode = "km" | "en";
+export type TranscriptionLanguageMode = "km" | "en" | "km-en";
 type TranscriptionOptions = {
   timeoutMs?: number;
   mode?: "final" | "live";
@@ -19,7 +19,15 @@ type TranscriptionOptions = {
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
   if (value === "km" || value === "km-KH" || value === "khmer") return "km";
   if (value === "en" || value === "en-US" || value === "english") return "en";
-  return "km";
+  if (
+    value === "km-en" ||
+    value === "mixed" ||
+    value === "mixed-khmer-english" ||
+    value === "khmer-english"
+  ) {
+    return "km-en";
+  }
+  return "km-en";
 }
 
 function cleanTranscriptionText(text: string) {
@@ -249,7 +257,7 @@ async function ensureAudioFileTable() {
 export async function transcribeAudio(
   audioFile: File,
   _speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "km",
+  languageMode: TranscriptionLanguageMode = "km-en",
   options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
@@ -277,7 +285,7 @@ export async function transcribeAudio(
 export async function transcribeAudioChunks(
   audioChunks: File[],
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "km"
+  languageMode: TranscriptionLanguageMode = "km-en"
 ) {
   const usableChunks = audioChunks.filter((chunk) => chunk.size > 0).slice(0, 40);
   if (!usableChunks.length) return "";

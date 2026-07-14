@@ -155,7 +155,7 @@ export async function transcribeOpenRouterAudio(
   audio: Buffer,
   mimeType: string,
   filename: string,
-  language: "km" | "en",
+  language: "km" | "en" | "km-en",
   timeoutMs = 55000
 ) {
   const controller = new AbortController();
@@ -165,13 +165,17 @@ export async function transcribeOpenRouterAudio(
   try {
     const formData = new FormData();
     formData.append("model", transcriptionModel());
-    formData.append("language", language);
+    if (language !== "km-en") {
+      formData.append("language", language);
+    }
     formData.append("temperature", "0");
     formData.append(
       "prompt",
       language === "km"
-        ? "Transcribe only the spoken Khmer speech. Keep Khmer script. Do not invent timestamps or translate to another language."
-        : "Transcribe only the spoken English speech. Keep English text. Do not invent timestamps or translate to another language."
+        ? "Transcribe exactly the spoken Khmer speech in Khmer script. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If speech is unclear, write [unclear]."
+        : language === "en"
+          ? "Transcribe exactly the spoken English speech in English. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If speech is unclear, write [unclear]."
+          : "Transcribe exactly what is spoken. Preserve Khmer speech in Khmer script and English speech in English. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If a word is unclear, write [unclear]."
     );
     formData.append(
       "file",
