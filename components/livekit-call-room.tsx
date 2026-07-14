@@ -1,12 +1,12 @@
 "use client";
 
 import "@livekit/components-styles";
+import type { TrackReference } from "@livekit/components-core";
 import {
-  ControlBar,
-  GridLayout,
   LiveKitRoom,
-  ParticipantTile,
   RoomAudioRenderer,
+  VideoTrack,
+  useLocalParticipant,
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
@@ -330,24 +330,108 @@ function LiveKitOneScreenConference() {
         <span>One-screen grid view</span>
       </div>
       <div className="kh-livekit-stage h-[52svh] min-h-[300px] max-h-[680px] p-2 md:h-[calc(100svh-22rem)] md:min-h-[380px]">
-        <GridLayout
-          tracks={visibleTracks}
-          className="kh-livekit-grid h-full gap-2"
+        <div
+          className="grid h-full gap-2"
           style={{
             gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
           }}
         >
-          <ParticipantTile className="kh-livekit-tile" />
-        </GridLayout>
+          {visibleTracks.map((trackRef) => {
+            const participantName = trackRef.participant.name || trackRef.participant.identity || "Participant";
+            const trackKey = `${trackRef.participant.sid}-${trackRef.source}`;
+            const hasVideo = Boolean(trackRef.publication?.track);
+
+            return (
+              <div
+                key={trackKey}
+                className="relative flex min-h-0 overflow-hidden rounded-lg border border-white/10 bg-slate-900"
+              >
+                {hasVideo ? (
+                  <VideoTrack
+                    trackRef={trackRef as TrackReference}
+                    className="h-full w-full object-cover"
+                    playsInline
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
+                    <Camera className="h-8 w-8" />
+                    <span className="text-sm font-semibold">Camera off</span>
+                  </div>
+                )}
+                <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
+                  {participantName}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <RoomAudioRenderer />
-      <ControlBar
-        className="border-t border-white/10 bg-slate-950 px-2 py-3"
-        controls={{ microphone: true, camera: true, screenShare: true, chat: false, leave: true, settings: true }}
-        variation="verbose"
-      />
+      <LiveKitCallControls />
     </section>
+  );
+}
+
+function LiveKitCallControls() {
+  const room = useRoomContext();
+  const {
+    isCameraEnabled,
+    isMicrophoneEnabled,
+    isScreenShareEnabled,
+    localParticipant
+  } = useLocalParticipant();
+  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "screen" | "leave" | "">("");
+
+  async function runControl(name: "mic" | "camera" | "screen" | "leave", action: () => Promise<unknown>) {
+    if (busyControl) return;
+    setBusyControl(name);
+    try {
+      await action();
+    } finally {
+      setBusyControl("");
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
+      <button
+        className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}
+      >
+        <Mic className="mr-2 inline h-4 w-4" />
+        {isMicrophoneEnabled ? "Microphone" : "Mic off"}
+      </button>
+      <button
+        className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("camera", () => localParticipant.setCameraEnabled(!isCameraEnabled))}
+      >
+        <Camera className="mr-2 inline h-4 w-4" />
+        {isCameraEnabled ? "Camera" : "Camera off"}
+      </button>
+      <button
+        className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
+      >
+        <Share2 className="mr-2 inline h-4 w-4" />
+        {isScreenShareEnabled ? "Stop share" : "Share screen"}
+      </button>
+      <button
+        className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("leave", () => room.disconnect())}
+      >
+        <Phone className="mr-2 inline h-4 w-4" />
+        Leave
+      </button>
+    </div>
   );
 }
 
