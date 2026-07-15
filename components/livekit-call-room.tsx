@@ -445,7 +445,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
@@ -752,13 +752,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           <select
             className="kh-input h-10 w-auto min-w-36 py-1 text-sm"
             value={transcriptionLanguage}
-            onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en")}
+            onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={recording || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km-en">Khmer + English</option>
-            <option value="km">Khmer only</option>
-            <option value="en">English</option>
+            <option value="km">Khmer Speech-to-Text voice</option>
+            <option value="en">English Speech-to-Text voice</option>
+            <option value="km-en">Khmer + English Speech-to-Text</option>
           </select>
           <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording ? `Recording ${formatTime(seconds)}` : "Ready"}

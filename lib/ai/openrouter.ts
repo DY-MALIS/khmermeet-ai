@@ -225,7 +225,7 @@ export async function refineOpenRouterTranscript(
 
   const languageInstruction =
     language === "km"
-      ? "The final transcript must be Khmer only. Keep Khmer script. Do not translate into English."
+      ? "The final transcript must be Khmer only. Keep Khmer script. Do not translate into English, romanized Khmer, or mixed English unless an English word was clearly spoken."
       : language === "en"
         ? "The final transcript must be English only. Do not translate into Khmer."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
@@ -243,6 +243,7 @@ export async function refineOpenRouterTranscript(
     "- Do not add new facts, decisions, or tasks.",
     "- Do not translate between Khmer and English unless the selected mode explicitly requires one language.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- For Khmer mode, remove hallucinated English words and timestamps unless they were clearly spoken.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
     "- Return transcript text only.",
@@ -261,10 +262,10 @@ export async function refineOpenRouterTranscript(
 function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames: string[]) {
   const languageInstruction =
     language === "km"
-      ? "Transcribe only the spoken Khmer speech in Khmer script."
+      ? "The audio is Khmer. Transcribe only real spoken Khmer speech in natural Khmer script. Do not output English, romanized Khmer, timestamps, or guessed words unless they were clearly spoken."
       : language === "en"
-        ? "Transcribe only the spoken English speech in English."
-        : "Transcribe exactly what is spoken. Preserve Khmer speech in Khmer script and English speech in English.";
+        ? "The audio is English. Transcribe only real spoken English speech in English. Do not output Khmer, timestamps, or guessed words unless they were clearly spoken."
+        : "The audio may contain Khmer and English. Transcribe exactly what is spoken: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
 
   const speakerInstruction = speakerNames.length
     ? `Known speaker names: ${speakerNames.join(", ")}. If you can identify the speaker from the supplied audio track or context, start each line with the speaker name followed by a colon. If there is only one known speaker, use that speaker name for every spoken line.`
@@ -278,6 +279,7 @@ function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames:
     "Do not summarize.",
     "Do not add timestamps.",
     "Do not invent missing words.",
+    "If speech is unclear, write [unclear] instead of guessing.",
     "Keep every clear phrase and sentence in the order spoken.",
     "If a word or short phrase is unclear, write [unclear] only for that part.",
     "Return transcript text only."

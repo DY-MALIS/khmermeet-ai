@@ -27,7 +27,7 @@ export function normalizeTranscriptionLanguageMode(value: unknown): Transcriptio
   ) {
     return "km-en";
   }
-  return "km-en";
+  return "km";
 }
 
 function cleanTranscriptionText(text: string) {
@@ -257,7 +257,7 @@ async function ensureAudioFileTable() {
 export async function transcribeAudio(
   audioFile: File,
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "km-en",
+  languageMode: TranscriptionLanguageMode = "km",
   options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
@@ -295,7 +295,7 @@ export async function transcribeAudio(
 export async function transcribeAudioChunks(
   audioChunks: File[],
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "km-en"
+  languageMode: TranscriptionLanguageMode = "km"
 ) {
   const usableChunks = audioChunks.filter((chunk) => chunk.size > 0).slice(0, 40);
   if (!usableChunks.length) return "";

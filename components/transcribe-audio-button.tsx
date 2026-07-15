@@ -17,7 +17,7 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
 
   async function transcribe() {
     setPending(true);
@@ -49,6 +49,9 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
             ? "Choose the language mode, then let AI replace the current transcript from the saved recording. This also clears the old summary so you can regenerate it from the new text."
             : "Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked, the audio stays saved and you can paste the transcript manually."}
         </p>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          For Khmer speech, use Khmer Speech-to-Text voice. Use mixed mode only when the same audio clearly contains both Khmer and English.
+        </p>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -58,9 +61,9 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km-en">Khmer + English</option>
-          <option value="km">Khmer only</option>
-          <option value="en">English</option>
+          <option value="km">Khmer Speech-to-Text voice</option>
+          <option value="en">English Speech-to-Text voice</option>
+          <option value="km-en">Khmer + English Speech-to-Text</option>
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

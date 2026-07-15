@@ -39,7 +39,7 @@ export function ExternalMediaUploadPanel() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
   const [status, setStatus] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
@@ -157,9 +157,9 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="km-en">Khmer + English</option>
-          <option value="km">Khmer only</option>
-          <option value="en">English</option>
+          <option value="km">Khmer Speech-to-Text voice</option>
+          <option value="en">English Speech-to-Text voice</option>
+          <option value="km-en">Khmer + English Speech-to-Text</option>
         </select>
       </div>
 
