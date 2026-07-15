@@ -7,7 +7,12 @@ import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
 
-export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
+type TranscribeAudioButtonProps = {
+  meetingId: string;
+  hasTranscript?: boolean;
+};
+
+export function TranscribeAudioButton({ meetingId, hasTranscript = false }: TranscribeAudioButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -26,7 +31,7 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
-      setMessage("Transcription saved. Refreshing transcript...");
+      setMessage(hasTranscript ? "Transcript replaced. Refreshing meeting..." : "Transcription saved. Refreshing transcript...");
       router.refresh();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not transcribe audio.");
@@ -38,10 +43,11 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
       <div>
-        <p className="font-semibold text-ink">Transcribe recorded audio</p>
+        <p className="font-semibold text-ink">{hasTranscript ? "Re-transcribe saved audio" : "Transcribe recorded audio"}</p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked,
-          the audio stays saved and you can paste the transcript manually.
+          {hasTranscript
+            ? "Choose the language mode, then let AI replace the current transcript from the saved recording. This also clears the old summary so you can regenerate it from the new text."
+            : "Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked, the audio stays saved and you can paste the transcript manually."}
         </p>
       </div>
 
@@ -58,7 +64,7 @@ export function TranscribeAudioButton({ meetingId }: { meetingId: string }) {
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {pending ? "Transcribing audio..." : "Transcribe audio"}
+          {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
         </button>
       </div>
 

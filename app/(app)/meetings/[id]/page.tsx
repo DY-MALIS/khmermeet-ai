@@ -91,9 +91,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </div>
           ) : null}
 
-          {!transcriptIsUsable && meeting.audioUrl ? (
+          {meeting.audioUrl ? (
             <div className="mb-4">
-              <TranscribeAudioButton meetingId={meeting.id} />
+              <TranscribeAudioButton meetingId={meeting.id} hasTranscript={Boolean(meeting.transcript?.trim())} />
             </div>
           ) : null}
 
