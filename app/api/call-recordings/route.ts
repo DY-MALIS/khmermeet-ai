@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
     const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
+    const speakerNames = normalizeSpeakerNames(body.speakerNames);
 
     await prisma.user.upsert({
       where: { id: user.id },
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         duration,
         language: "km-en",
         status: transcript ? "transcribed" : "recorded",
+        speakerNames,
         createdById: user.id
       }
     });
@@ -111,4 +113,18 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function normalizeSpeakerNames(value: unknown) {
+  const rawNames = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,，\n]/)
+      : [];
+
+  return [...new Set(
+    rawNames
+      .map((name) => (typeof name === "string" ? name.trim() : ""))
+      .filter(Boolean)
+  )].slice(0, 20);
 }

@@ -26,7 +26,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
     const speakersField = formData.get("speakers");
-    const speakerNames = typeof speakersField === "string" ? parseSpeakerNames(speakersField) : [];
+    const formSpeakerNames = typeof speakersField === "string" ? parseSpeakerNames(speakersField) : [];
+    const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
+    const speakerNames = savedSpeakerNames.length ? savedSpeakerNames : formSpeakerNames;
     const index = Number(formData.get("index") ?? 0);
     const transcript = await transcribeAudio(file, speakerNames, languageMode, {
       mode: "live",

@@ -547,6 +547,18 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     if (media && media.state !== "inactive") media.stop();
   }
 
+  function getCurrentSpeakerNames() {
+    const names = [
+      room.localParticipant.name || room.localParticipant.identity,
+      ...[...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)
+    ];
+
+    return [...new Set(names.map((name) => name?.trim()).filter((name): name is string => Boolean(name)))].slice(
+      0,
+      20
+    );
+  }
+
   function startRecording() {
     setError("");
     setNotice("");
@@ -632,7 +644,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           title: meetingTitle,
           audioUrl: serverRecording.storageUrl,
           transcript: "",
-          duration
+          duration,
+          speakerNames: getCurrentSpeakerNames()
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);
@@ -659,15 +672,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       setLocalBackup(blob);
       const uploadData = new FormData();
       uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
-      const speakers = [
-        room.localParticipant.name || room.localParticipant.identity,
-        ...[...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)
-      ].filter(Boolean);
+      const speakers = getCurrentSpeakerNames();
       uploadData.append("speakers", JSON.stringify(speakers));
       uploadData.append("languageMode", transcriptionLanguage);
       uploadData.append("skipTranscription", "true");
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
-      const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; error?: string }>(uploadResponse);
+      const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; speakerNames?: string[]; error?: string }>(uploadResponse);
       if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
 
       const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript : "";
@@ -679,7 +689,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           title: meetingTitle,
           audioUrl,
           transcript,
-          duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
+          duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+          speakerNames: Array.isArray(uploadJson.speakerNames) && uploadJson.speakerNames.length ? uploadJson.speakerNames : speakers
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);

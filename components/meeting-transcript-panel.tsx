@@ -11,6 +11,7 @@ type MeetingTranscriptPanelProps = {
   initialTranscript: string;
   rawTranscript?: string | null;
   transcriptIsUsable: boolean;
+  speakerNames?: string[] | null;
 };
 
 export function MeetingTranscriptPanel({
@@ -18,21 +19,19 @@ export function MeetingTranscriptPanel({
   audioUrl,
   initialTranscript,
   rawTranscript,
-  transcriptIsUsable
+  transcriptIsUsable,
+  speakerNames
 }: MeetingTranscriptPanelProps) {
   const [transcript, setTranscript] = useState(initialTranscript);
-  const [speakerNamesText, setSpeakerNamesText] = useState("");
 
   useEffect(() => {
     setTranscript(initialTranscript);
   }, [initialTranscript, meetingId]);
 
   const hasAnyTranscript = Boolean(rawTranscript?.trim() || transcript.trim());
-  const speakerNames = speakerNamesText
-    .split(/[,，\n]/)
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .slice(0, 20);
+  const meetingSpeakerNames = Array.from(
+    new Set((speakerNames ?? []).map((name) => name.trim()).filter(Boolean))
+  ).slice(0, 20);
 
   return (
     <section className="kh-card p-5" id="transcript">
@@ -48,25 +47,30 @@ export function MeetingTranscriptPanel({
       {audioUrl ? (
         <div className="mb-4 space-y-3">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <label className="block text-sm font-semibold text-ink" htmlFor="speaker-names">
-              Speaker names
-            </label>
+            <p className="text-sm font-semibold text-ink">Meeting speakers</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              Enter participant names before transcribing. Separate names with commas, for example: Malis, Dara,
-              Sophea, Rith. Transcript output will use Name: spoken text.
+              KhmerMeet uses the participant names saved from the video meeting. If a voice is unclear in the mixed
+              recording, the transcript may use Unknown Speaker instead of guessing.
             </p>
-            <input
-              id="speaker-names"
-              className="kh-input mt-3"
-              value={speakerNamesText}
-              onChange={(event) => setSpeakerNamesText(event.target.value)}
-              placeholder="Malis, Dara, Sophea, Rith"
-            />
+            {meetingSpeakerNames.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {meetingSpeakerNames.map((speaker) => (
+                  <span className="kh-badge bg-leaf/10 text-leaf" key={speaker}>
+                    {speaker}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg bg-saffron/10 p-3 text-sm leading-6 text-slate-600">
+                No participant names were saved for this recording. New video meetings will save participant names
+                automatically when users join with their display name.
+              </p>
+            )}
           </div>
           <TranscribeAudioButton
             meetingId={meetingId}
             hasTranscript={hasAnyTranscript}
-            speakerNames={speakerNames}
+            speakerNames={meetingSpeakerNames}
             onTranscribed={setTranscript}
           />
         </div>

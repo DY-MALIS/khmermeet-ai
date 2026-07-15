@@ -87,6 +87,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           initialTranscript={transcriptText}
           rawTranscript={meeting.transcript}
           transcriptIsUsable={transcriptIsUsable}
+          speakerNames={meeting.speakerNames}
         />
 
         <section className="kh-card p-5">

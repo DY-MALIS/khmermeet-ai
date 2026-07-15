@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const skipTranscription = formData.get("skipTranscription") === "true";
   const audioUrl = await saveLocalAudio(file);
   if (skipTranscription) {
-    return NextResponse.json({ audioUrl, transcript: "" });
+    return NextResponse.json({ audioUrl, transcript: "", speakerNames });
   }
   try {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);
@@ -31,12 +31,13 @@ export async function POST(request: Request) {
     const speakerTranscript = await transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames, languageMode);
     const chunkTranscript = speakerTranscript ? "" : await transcribeAudioChunks(audioChunks, speakerNames, languageMode);
     const transcript = speakerTranscript || chunkTranscript || (await transcribeAudio(file, speakerNames, languageMode));
-    return NextResponse.json({ audioUrl, transcript });
+    return NextResponse.json({ audioUrl, transcript, speakerNames });
   } catch (error) {
     const publicError = publicAiTranscriptionError(error);
     return NextResponse.json({
       audioUrl,
       transcript: "",
+      speakerNames,
       transcriptionError: publicError.message
     });
   }

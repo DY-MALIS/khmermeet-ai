@@ -36,7 +36,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const body = await readTranscriptionBody(request);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
-    const transcript = await transcribeAudio(audioFile, body.speakerNames, languageMode, {
+    const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
+    const speakerNames = savedSpeakerNames.length ? savedSpeakerNames : body.speakerNames;
+    const transcript = await transcribeAudio(audioFile, speakerNames, languageMode, {
       timeoutMs: Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
     });
 
