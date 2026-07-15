@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
-import { hasOpenRouterKey, transcribeOpenRouterAudio } from "@/lib/ai/openrouter";
+import { hasOpenRouterKey, refineOpenRouterTranscript, transcribeOpenRouterAudio } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
 import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
@@ -256,13 +256,12 @@ async function ensureAudioFileTable() {
 
 export async function transcribeAudio(
   audioFile: File,
-  _speakerNames: string[] = [],
+  speakerNames: string[] = [],
   languageMode: TranscriptionLanguageMode = "km-en",
   options: TranscriptionOptions = {}
 ) {
   // TODO: Real-time speech-to-text streaming.
   // TODO: Speaker detection.
-  void _speakerNames;
   if (!hasOpenRouterKey()) return "";
   if (audioFile.size > openRouterAudioLimit) {
     throw new Error("Audio is larger than the 24 MB OpenRouter transcription limit. Please split it into smaller parts.");
@@ -277,9 +276,20 @@ export async function transcribeAudio(
     mimeType,
     audioFile.name || "meeting-audio.webm",
     normalizedLanguageMode,
+    normalizeSpeakerNames(speakerNames),
     timeoutMs
   );
-  return cleanTranscriptionText(transcript);
+  const cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
+  if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
+
+  const refinedTranscript = await refineOpenRouterTranscript(
+    cleanedTranscript,
+    normalizedLanguageMode,
+    normalizeSpeakerNames(speakerNames),
+    Math.min(timeoutMs, 55000)
+  ).catch(() => cleanedTranscript);
+
+  return addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames) || cleanedTranscript;
 }
 
 export async function transcribeAudioChunks(
@@ -300,4 +310,23 @@ export async function transcribeAudioChunks(
   }
 
   return cleanTranscriptionText(transcripts.join("\n"));
+}
+
+function normalizeSpeakerNames(speakerNames: string[]) {
+  return speakerNames
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
+  const [speakerName] = normalizeSpeakerNames(speakerNames);
+  if (!speakerName || !text.trim()) return text;
+
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => (/^[^:\n]{1,60}:\s/.test(line) ? line : `${speakerName}: ${line}`))
+    .join("\n");
 }

@@ -156,6 +156,7 @@ export async function transcribeOpenRouterAudio(
   mimeType: string,
   filename: string,
   language: "km" | "en" | "km-en",
+  speakerNames: string[] = [],
   timeoutMs = 55000
 ) {
   const controller = new AbortController();
@@ -171,11 +172,7 @@ export async function transcribeOpenRouterAudio(
     formData.append("temperature", "0");
     formData.append(
       "prompt",
-      language === "km"
-        ? "Transcribe exactly the spoken Khmer speech in Khmer script. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If speech is unclear, write [unclear]."
-        : language === "en"
-          ? "Transcribe exactly the spoken English speech in English. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If speech is unclear, write [unclear]."
-          : "Transcribe exactly what is spoken. Preserve Khmer speech in Khmer script and English speech in English. Do not translate, summarize, add timestamps, add speaker labels, or invent words. If a word is unclear, write [unclear]."
+      buildTranscriptionPrompt(language, speakerNames)
     );
     formData.append(
       "file",
@@ -215,6 +212,76 @@ export async function transcribeOpenRouterAudio(
   if (typeof content === "string") return content.trim();
   if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("\n").trim();
   return "";
+}
+
+export async function refineOpenRouterTranscript(
+  transcript: string,
+  language: "km" | "en" | "km-en",
+  speakerNames: string[] = [],
+  timeoutMs = 55000
+) {
+  const clean = transcript.trim();
+  if (!clean || !hasOpenRouterKey()) return clean;
+
+  const languageInstruction =
+    language === "km"
+      ? "The final transcript must be Khmer only. Keep Khmer script. Do not translate into English."
+      : language === "en"
+        ? "The final transcript must be English only. Do not translate into Khmer."
+        : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
+  const speakerInstruction = speakerNames.length
+    ? `Known speaker names: ${speakerNames.join(", ")}. Preserve or add the correct known speaker label when the source line already indicates that speaker. If there is only one known speaker, prefix each spoken line with that speaker name.`
+    : "Preserve Speaker 1, Speaker 2 labels if present. Do not invent real person names.";
+
+  const prompt = [
+    "You are a careful meeting transcript proofreader.",
+    "Clean the raw speech-to-text output into a readable meeting transcript.",
+    languageInstruction,
+    speakerInstruction,
+    "Rules:",
+    "- Do not summarize.",
+    "- Do not add new facts, decisions, or tasks.",
+    "- Do not translate between Khmer and English unless the selected mode explicitly requires one language.",
+    "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
+    "- If a phrase is unclear, write [unclear] instead of guessing.",
+    "- Return transcript text only.",
+    "",
+    "Raw transcript:",
+    clean
+  ].join("\n");
+
+  return generateOpenRouterContent([{ text: prompt }], {
+    model: textModel(),
+    temperature: 0,
+    timeoutMs
+  });
+}
+
+function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames: string[]) {
+  const languageInstruction =
+    language === "km"
+      ? "Transcribe only the spoken Khmer speech in Khmer script."
+      : language === "en"
+        ? "Transcribe only the spoken English speech in English."
+        : "Transcribe exactly what is spoken. Preserve Khmer speech in Khmer script and English speech in English.";
+
+  const speakerInstruction = speakerNames.length
+    ? `Known speaker names: ${speakerNames.join(", ")}. If you can identify the speaker from the supplied audio track or context, start each line with the speaker name followed by a colon. If there is only one known speaker, use that speaker name for every spoken line.`
+    : "Do not guess real speaker names. If multiple speakers are clearly present but names are unknown, use Speaker 1, Speaker 2, etc.";
+
+  return [
+    languageInstruction,
+    speakerInstruction,
+    "This is a verbatim meeting transcript task.",
+    "Do not translate between Khmer and English.",
+    "Do not summarize.",
+    "Do not add timestamps.",
+    "Do not invent missing words.",
+    "Keep every clear phrase and sentence in the order spoken.",
+    "If a word or short phrase is unclear, write [unclear] only for that part.",
+    "Return transcript text only."
+  ].join(" ");
 }
 
 function fallbackSummary(transcript: string) {
