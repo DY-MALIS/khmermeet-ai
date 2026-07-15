@@ -21,12 +21,18 @@ export function MeetingTranscriptPanel({
   transcriptIsUsable
 }: MeetingTranscriptPanelProps) {
   const [transcript, setTranscript] = useState(initialTranscript);
+  const [speakerNamesText, setSpeakerNamesText] = useState("");
 
   useEffect(() => {
     setTranscript(initialTranscript);
   }, [initialTranscript, meetingId]);
 
   const hasAnyTranscript = Boolean(rawTranscript?.trim() || transcript.trim());
+  const speakerNames = speakerNamesText
+    .split(/[,，\n]/)
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .slice(0, 20);
 
   return (
     <section className="kh-card p-5" id="transcript">
@@ -40,8 +46,29 @@ export function MeetingTranscriptPanel({
       ) : null}
 
       {audioUrl ? (
-        <div className="mb-4">
-          <TranscribeAudioButton meetingId={meetingId} hasTranscript={hasAnyTranscript} onTranscribed={setTranscript} />
+        <div className="mb-4 space-y-3">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <label className="block text-sm font-semibold text-ink" htmlFor="speaker-names">
+              Speaker names
+            </label>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Enter participant names before transcribing. Separate names with commas, for example: Malis, Dara,
+              Sophea, Rith. Transcript output will use Name: spoken text.
+            </p>
+            <input
+              id="speaker-names"
+              className="kh-input mt-3"
+              value={speakerNamesText}
+              onChange={(event) => setSpeakerNamesText(event.target.value)}
+              placeholder="Malis, Dara, Sophea, Rith"
+            />
+          </div>
+          <TranscribeAudioButton
+            meetingId={meetingId}
+            hasTranscript={hasAnyTranscript}
+            speakerNames={speakerNames}
+            onTranscribed={setTranscript}
+          />
         </div>
       ) : null}
 

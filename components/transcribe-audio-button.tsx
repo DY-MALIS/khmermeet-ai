@@ -10,10 +10,16 @@ type LanguageMode = "km" | "en" | "km-en";
 type TranscribeAudioButtonProps = {
   meetingId: string;
   hasTranscript?: boolean;
+  speakerNames?: string[];
   onTranscribed?: (transcript: string) => void;
 };
 
-export function TranscribeAudioButton({ meetingId, hasTranscript = false, onTranscribed }: TranscribeAudioButtonProps) {
+export function TranscribeAudioButton({
+  meetingId,
+  hasTranscript = false,
+  speakerNames = [],
+  onTranscribed
+}: TranscribeAudioButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -28,7 +34,7 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false, onTran
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode })
+        body: JSON.stringify({ languageMode, speakerNames })
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
@@ -56,6 +62,11 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false, onTran
         <p className="mt-1 text-xs leading-5 text-slate-500">
           Khmer mode outputs Khmer only. English mode outputs English only. Use mixed mode only when you want to keep both Khmer and English as spoken.
         </p>
+        {speakerNames.length ? (
+          <p className="mt-1 text-xs leading-5 text-leaf">
+            Speaker labels: {speakerNames.join(", ")}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

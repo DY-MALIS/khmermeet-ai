@@ -34,8 +34,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    const languageMode = await readLanguageMode(request, meeting.language);
-    const transcript = await transcribeAudio(audioFile, [], languageMode, {
+    const body = await readTranscriptionBody(request);
+    const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
+    const transcript = await transcribeAudio(audioFile, body.speakerNames, languageMode, {
       timeoutMs: Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
     });
 
@@ -78,12 +79,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 }
 
-async function readLanguageMode(request: Request, fallback: string | null) {
-  if (request.headers.get("content-type")?.includes("application/json")) {
-    const body = await request.json().catch(() => ({}));
-    return normalizeTranscriptionLanguageMode(
-      body && typeof body === "object" && "languageMode" in body ? body.languageMode : fallback
-    );
+async function readTranscriptionBody(request: Request) {
+  if (!request.headers.get("content-type")?.includes("application/json")) {
+    return { languageMode: undefined as unknown, speakerNames: [] as string[] };
   }
-  return normalizeTranscriptionLanguageMode(fallback);
+
+  const body = await request.json().catch(() => ({}));
+  if (!body || typeof body !== "object") {
+    return { languageMode: undefined as unknown, speakerNames: [] as string[] };
+  }
+
+  const rawSpeakerNames = "speakerNames" in body ? body.speakerNames : [];
+  const speakerNames = Array.isArray(rawSpeakerNames)
+    ? rawSpeakerNames
+        .map((name) => (typeof name === "string" ? name.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 20)
+    : typeof rawSpeakerNames === "string"
+      ? rawSpeakerNames
+          .split(/[,，\n]/)
+          .map((name) => name.trim())
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
+
+  return {
+    languageMode: "languageMode" in body ? body.languageMode : undefined,
+    speakerNames
+  };
 }

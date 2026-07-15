@@ -230,7 +230,7 @@ export async function refineOpenRouterTranscript(
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
   const speakerInstruction = speakerNames.length
-    ? `Known speaker names: ${speakerNames.join(", ")}. Preserve or add the correct known speaker label when the source line already indicates that speaker. If there is only one known speaker, prefix each spoken line with that speaker name.`
+    ? `Known speaker names: ${speakerNames.join(", ")}. Every spoken turn must start with one of these names followed by a colon when the speaker can be identified. If the audio/source does not make the identity clear, use Unknown Speaker: instead of inventing a name. If there is only one known speaker, prefix each spoken line with that speaker name.`
     : "Preserve Speaker 1, Speaker 2 labels if present. Do not invent real person names.";
 
   const prompt = [
@@ -241,6 +241,8 @@ export async function refineOpenRouterTranscript(
     "Rules:",
     "- Do not summarize.",
     "- Do not add new facts, decisions, or tasks.",
+    "- Keep speaker labels at the start of each spoken turn: Name: spoken text.",
+    "- Do not combine different speakers into one paragraph.",
     "- For Khmer mode, normalize every clear spoken phrase into Khmer script only.",
     "- For English mode, normalize every clear spoken phrase into English only.",
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
@@ -270,7 +272,7 @@ function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames:
         : "The audio may contain Khmer and English. Transcribe exactly what is spoken: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
 
   const speakerInstruction = speakerNames.length
-    ? `Known speaker names: ${speakerNames.join(", ")}. If you can identify the speaker from the supplied audio track or context, start each line with the speaker name followed by a colon. If there is only one known speaker, use that speaker name for every spoken line.`
+    ? `Known speaker names: ${speakerNames.join(", ")}. Required format: one spoken turn per line, starting with the speaker label, like "Malis: ...". Use only these names when identity is clear. If the identity is not clear in a mixed recording, use "Unknown Speaker: ...". If there is only one known speaker, use that speaker name for every spoken line.`
     : "Do not guess real speaker names. If multiple speakers are clearly present but names are unknown, use Speaker 1, Speaker 2, etc.";
 
   return [
@@ -284,6 +286,8 @@ function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames:
         : "Do not translate between Khmer and English in mixed mode.",
     "Do not summarize.",
     "Do not add timestamps.",
+    "Keep speaker turns separate. Never merge multiple speakers into one line.",
+    "Return each line in this exact pattern: Speaker name: spoken text.",
     "Do not invent missing words.",
     "If speech is unclear, write [unclear] instead of guessing.",
     "Keep every clear phrase and sentence in the order spoken.",
