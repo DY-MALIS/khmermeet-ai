@@ -10,9 +10,10 @@ type LanguageMode = "km" | "en" | "km-en";
 type TranscribeAudioButtonProps = {
   meetingId: string;
   hasTranscript?: boolean;
+  onTranscribed?: (transcript: string) => void;
 };
 
-export function TranscribeAudioButton({ meetingId, hasTranscript = false }: TranscribeAudioButtonProps) {
+export function TranscribeAudioButton({ meetingId, hasTranscript = false, onTranscribed }: TranscribeAudioButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
@@ -31,6 +32,9 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
+      if (typeof data.transcript === "string" && data.transcript.trim()) {
+        onTranscribed?.(data.transcript);
+      }
       setMessage(hasTranscript ? "Transcript replaced. Refreshing meeting..." : "Transcription saved. Refreshing transcript...");
       router.refresh();
     } catch (error) {

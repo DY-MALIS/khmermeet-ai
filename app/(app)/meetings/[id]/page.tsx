@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState, ErrorState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
+import { MeetingTranscriptPanel } from "@/components/meeting-transcript-panel";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
-import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { TranscriptTranslationAgent } from "@/components/transcript-translation-agent";
-import { extractTasks, generateSummary, getMeetingById, updateTranscript } from "@/lib/actions";
+import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
@@ -81,33 +81,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
-        <section className="kh-card p-5" id="transcript">
-          <h2 className="mb-4 text-lg font-bold">Transcript</h2>
-
-          {!transcriptIsUsable && meeting.transcript ? (
-            <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
-              The saved transcript does not look like real speech text. It may contain only timestamps or unclear output.
-              Please transcribe the audio again or paste the correct meeting text below.
-            </div>
-          ) : null}
-
-          {meeting.audioUrl ? (
-            <div className="mb-4">
-              <TranscribeAudioButton meetingId={meeting.id} hasTranscript={Boolean(meeting.transcript?.trim())} />
-            </div>
-          ) : null}
-
-          <form action={updateTranscript} className="space-y-3">
-            <input type="hidden" name="id" value={meeting.id} />
-            <textarea
-              className="kh-input min-h-72"
-              name="transcript"
-              defaultValue={transcriptText}
-              placeholder="Paste or edit the real meeting transcript here..."
-            />
-            <ActionButton>Save transcript</ActionButton>
-          </form>
-        </section>
+        <MeetingTranscriptPanel
+          meetingId={meeting.id}
+          audioUrl={meeting.audioUrl}
+          initialTranscript={transcriptText}
+          rawTranscript={meeting.transcript}
+          transcriptIsUsable={transcriptIsUsable}
+        />
 
         <section className="kh-card p-5">
           <h2 className="mb-4 text-lg font-bold">AI Summary</h2>
