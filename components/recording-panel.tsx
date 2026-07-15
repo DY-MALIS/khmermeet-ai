@@ -290,9 +290,9 @@ export function RecordingPanel() {
           onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
           disabled={state === "recording" || state === "paused" || uploading}
         >
-          <option value="km">Khmer Speech-to-Text voice</option>
-          <option value="en">English Speech-to-Text voice</option>
-          <option value="km-en">Khmer + English Speech-to-Text</option>
+          <option value="km">Khmer output</option>
+          <option value="en">English output</option>
+          <option value="km-en">Keep Khmer + English</option>
         </select>
       </label>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

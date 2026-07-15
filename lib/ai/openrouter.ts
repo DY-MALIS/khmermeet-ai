@@ -225,9 +225,9 @@ export async function refineOpenRouterTranscript(
 
   const languageInstruction =
     language === "km"
-      ? "The final transcript must be Khmer only. Keep Khmer script. Do not translate into English, romanized Khmer, or mixed English unless an English word was clearly spoken."
+      ? "The selected output language is Khmer. Return Khmer script only. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
       : language === "en"
-        ? "The final transcript must be English only. Do not translate into Khmer."
+        ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
   const speakerInstruction = speakerNames.length
     ? `Known speaker names: ${speakerNames.join(", ")}. Preserve or add the correct known speaker label when the source line already indicates that speaker. If there is only one known speaker, prefix each spoken line with that speaker name.`
@@ -241,9 +241,11 @@ export async function refineOpenRouterTranscript(
     "Rules:",
     "- Do not summarize.",
     "- Do not add new facts, decisions, or tasks.",
-    "- Do not translate between Khmer and English unless the selected mode explicitly requires one language.",
+    "- For Khmer mode, normalize every clear spoken phrase into Khmer script only.",
+    "- For English mode, normalize every clear spoken phrase into English only.",
+    "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
-    "- For Khmer mode, remove hallucinated English words and timestamps unless they were clearly spoken.",
+    "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
     "- Return transcript text only.",
@@ -262,9 +264,9 @@ export async function refineOpenRouterTranscript(
 function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames: string[]) {
   const languageInstruction =
     language === "km"
-      ? "The audio is Khmer. Transcribe only real spoken Khmer speech in natural Khmer script. Do not output English, romanized Khmer, timestamps, or guessed words unless they were clearly spoken."
+      ? "Output language: Khmer. Listen to the audio and write only real spoken content in natural Khmer script. If English or romanized Khmer is detected, convert the meaning into Khmer unless it is a proper name, product name, URL, code term, or acronym."
       : language === "en"
-        ? "The audio is English. Transcribe only real spoken English speech in English. Do not output Khmer, timestamps, or guessed words unless they were clearly spoken."
+        ? "Output language: English. Listen to the audio and write only real spoken content in natural English. If Khmer is detected, convert the meaning into English unless it is a proper name, product name, URL, code term, or acronym."
         : "The audio may contain Khmer and English. Transcribe exactly what is spoken: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
 
   const speakerInstruction = speakerNames.length
@@ -275,7 +277,11 @@ function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames:
     languageInstruction,
     speakerInstruction,
     "This is a verbatim meeting transcript task.",
-    "Do not translate between Khmer and English.",
+    language === "km"
+      ? "Normalize the transcript to Khmer only."
+      : language === "en"
+        ? "Normalize the transcript to English only."
+        : "Do not translate between Khmer and English in mixed mode.",
     "Do not summarize.",
     "Do not add timestamps.",
     "Do not invent missing words.",

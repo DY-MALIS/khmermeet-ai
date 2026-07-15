@@ -157,9 +157,9 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="km">Khmer Speech-to-Text voice</option>
-          <option value="en">English Speech-to-Text voice</option>
-          <option value="km-en">Khmer + English Speech-to-Text</option>
+          <option value="km">Khmer output</option>
+          <option value="en">English output</option>
+          <option value="km-en">Keep Khmer + English</option>
         </select>
       </div>
 

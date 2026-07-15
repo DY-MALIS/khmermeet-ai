@@ -50,7 +50,7 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
             : "Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked, the audio stays saved and you can paste the transcript manually."}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          For Khmer speech, use Khmer Speech-to-Text voice. Use mixed mode only when the same audio clearly contains both Khmer and English.
+          Khmer mode outputs Khmer only. English mode outputs English only. Use mixed mode only when you want to keep both Khmer and English as spoken.
         </p>
       </div>
 
@@ -61,9 +61,9 @@ export function TranscribeAudioButton({ meetingId, hasTranscript = false }: Tran
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km">Khmer Speech-to-Text voice</option>
-          <option value="en">English Speech-to-Text voice</option>
-          <option value="km-en">Khmer + English Speech-to-Text</option>
+          <option value="km">Khmer output</option>
+          <option value="en">English output</option>
+          <option value="km-en">Keep Khmer + English</option>
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

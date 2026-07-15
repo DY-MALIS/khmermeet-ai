@@ -756,9 +756,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             disabled={recording || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km">Khmer Speech-to-Text voice</option>
-            <option value="en">English Speech-to-Text voice</option>
-            <option value="km-en">Khmer + English Speech-to-Text</option>
+            <option value="km">Khmer output</option>
+            <option value="en">English output</option>
+            <option value="km-en">Keep Khmer + English</option>
           </select>
           <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording ? `Recording ${formatTime(seconds)}` : "Ready"}
