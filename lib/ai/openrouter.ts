@@ -266,19 +266,20 @@ export async function refineOpenRouterTranscript(
 function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames: string[]) {
   const languageInstruction =
     language === "km"
-      ? "Output language: Khmer. Listen to the audio and write only real spoken content in natural Khmer script. If English or romanized Khmer is detected, convert the meaning into Khmer unless it is a proper name, product name, URL, code term, or acronym."
+      ? "Output language: Khmer only. Listen carefully and transcribe the meaning of every spoken phrase into natural Khmer script. Keep proper names, product names, URLs, code terms, and acronyms unchanged."
       : language === "en"
-        ? "Output language: English. Listen to the audio and write only real spoken content in natural English. If Khmer is detected, convert the meaning into English unless it is a proper name, product name, URL, code term, or acronym."
-        : "The audio may contain Khmer and English. Transcribe exactly what is spoken: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
+        ? "Output language: English only. Listen carefully and transcribe the meaning of every spoken phrase into natural English. Keep proper names, product names, URLs, code terms, and acronyms unchanged."
+        : "The audio may contain Khmer and English. Preserve the spoken language of each phrase: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
 
   const speakerInstruction = speakerNames.length
-    ? `Known speaker names: ${speakerNames.join(", ")}. Required format: one spoken turn per line, starting with the speaker label, like "Malis: ...". Use only these names when identity is clear. If the identity is not clear in a mixed recording, use "Unknown Speaker: ...". If there is only one known speaker, use that speaker name for every spoken line.`
-    : "Do not guess real speaker names. If multiple speakers are clearly present but names are unknown, use Speaker 1, Speaker 2, etc.";
+    ? `Known participant names from the meeting join screen: ${speakerNames.join(", ")}. Use only these names as speaker labels when the voice is clearly identifiable. If there is only one known participant, label every spoken turn with that name. If identity is unclear, use "Unknown speaker". Never invent names.`
+    : "No participant names were provided. Do not guess real names. If multiple speakers are clearly present, use Speaker 1, Speaker 2, etc.; otherwise use Speaker 1.";
 
   return [
+    "You are a professional speech-to-text transcriber for Cambodian meetings.",
     languageInstruction,
     speakerInstruction,
-    "This is a verbatim meeting transcript task.",
+    "This is a verbatim meeting transcript task, not a summary task.",
     language === "km"
       ? "Normalize the transcript to Khmer only."
       : language === "en"
@@ -286,12 +287,15 @@ function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames:
         : "Do not translate between Khmer and English in mixed mode.",
     "Do not summarize.",
     "Do not add timestamps.",
-    "Keep speaker turns separate. Never merge multiple speakers into one line.",
-    "Return each line in this exact pattern: Speaker name: spoken text.",
+    "Listen from the beginning to the end and capture every audible sentence in chronological order.",
+    "Keep speaker turns separate. Never merge different speakers into one line.",
+    "Return each line in this exact pattern: Name: spoken text.",
     "Do not invent missing words.",
-    "If speech is unclear, write [unclear] instead of guessing.",
+    language === "km"
+      ? "If a word is unclear, write [មិនច្បាស់] only for that unclear word or phrase."
+      : "If a word is unclear, write [unclear] only for that unclear word or phrase.",
     "Keep every clear phrase and sentence in the order spoken.",
-    "If a word or short phrase is unclear, write [unclear] only for that part.",
+    "If the recording contains real speech, never return only one short phrase for a long recording.",
     "Return transcript text only."
   ].join(" ");
 }

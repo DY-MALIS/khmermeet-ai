@@ -25,10 +25,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
-    const speakersField = formData.get("speakers");
-    const formSpeakerNames = typeof speakersField === "string" ? parseSpeakerNames(speakersField) : [];
     const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
-    const speakerNames = savedSpeakerNames.length ? savedSpeakerNames : formSpeakerNames;
+    const speakerNames = savedSpeakerNames;
     const index = Number(formData.get("index") ?? 0);
     const transcript = await transcribeAudio(file, speakerNames, languageMode, {
       mode: "live",
@@ -71,18 +69,4 @@ function sanitizeError(message: string) {
     .replace(/key=AIza[0-9A-Za-z_-]+/g, "key=[hidden]")
     .replace(/AIza[0-9A-Za-z_-]+/g, "[hidden-api-key]")
     .slice(0, 500);
-}
-
-function parseSpeakerNames(value: string) {
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((speaker): speaker is string => typeof speaker === "string")
-      .map((speaker) => speaker.trim())
-      .filter(Boolean)
-      .slice(0, 20);
-  } catch {
-    return [];
-  }
 }

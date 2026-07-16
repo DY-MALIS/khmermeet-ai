@@ -281,6 +281,7 @@ export async function transcribeAudio(
   );
   const cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
+  assertUsableSavedTranscript(cleanedTranscript, audioFile);
 
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
@@ -289,7 +290,10 @@ export async function transcribeAudio(
     Math.min(timeoutMs, 55000)
   ).catch(() => cleanedTranscript);
 
-  return addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames) || cleanedTranscript;
+  const cleanedRefinedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames);
+  const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, audioFile);
+  assertUsableSavedTranscript(bestTranscript, audioFile);
+  return bestTranscript;
 }
 
 export async function transcribeAudioChunks(
@@ -329,4 +333,53 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .filter(Boolean)
     .map((line) => (/^[^:\n]{1,60}:\s/.test(line) ? line : `${speakerName}: ${line}`))
     .join("\n");
+}
+
+function chooseBetterSavedTranscript(rawTranscript: string, refinedTranscript: string, audioFile: File) {
+  if (!refinedTranscript.trim()) return rawTranscript;
+  if (isLikelyIncompleteTranscript(refinedTranscript, audioFile)) return rawTranscript;
+
+  const rawScore = transcriptTokenScore(rawTranscript);
+  const refinedScore = transcriptTokenScore(refinedTranscript);
+  if (rawScore >= 6 && refinedScore < rawScore * 0.6) return rawTranscript;
+
+  return refinedTranscript;
+}
+
+function assertUsableSavedTranscript(transcript: string, audioFile: File) {
+  if (!isLikelyIncompleteTranscript(transcript, audioFile)) return;
+  throw new Error(
+    "No clear speech text was detected. Please check the audio, microphone, selected language, or OpenRouter credits/key, then try again."
+  );
+}
+
+function isLikelyIncompleteTranscript(transcript: string, audioFile: File) {
+  const clean = transcript.trim();
+  if (!clean || isTimestampOnlyTranscript(clean)) return true;
+
+  const lower = clean.toLowerCase();
+  if (
+    lower.includes("no clear speech") ||
+    lower.includes("no discernible speech") ||
+    lower.includes("there is no discernible speech") ||
+    lower.includes("silence") ||
+    lower.includes("no speech detected") ||
+    clean.includes("មិនមានសំឡេង") ||
+    clean.includes("មិនច្បាស់ទាំងអស់")
+  ) {
+    return true;
+  }
+
+  const score = transcriptTokenScore(clean);
+  if (audioFile.size > 500_000 && score < 12) return true;
+  if (audioFile.size > 100_000 && score < 8) return true;
+  if (audioFile.size > 20_000 && score < 4) return true;
+
+  return false;
+}
+
+function transcriptTokenScore(transcript: string) {
+  const latinWords = transcript.match(/[A-Za-z0-9][A-Za-z0-9'_-]*/g)?.length ?? 0;
+  const khmerChars = transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
+  return latinWords + Math.ceil(khmerChars / 6);
 }
