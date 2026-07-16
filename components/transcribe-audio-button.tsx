@@ -38,11 +38,17 @@ export function TranscribeAudioButton({
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
-      if (typeof data.transcript === "string" && data.transcript.trim()) {
-        onTranscribed?.(data.transcript);
+      const nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
+      if (!nextTranscript) {
+        throw new Error("Transcription finished, but no speech text was returned. Please try again with clearer audio.");
       }
-      setMessage(hasTranscript ? "Transcript replaced. Refreshing meeting..." : "Transcription saved. Refreshing transcript...");
-      router.refresh();
+      onTranscribed?.(nextTranscript);
+      setMessage(
+        hasTranscript
+          ? "Transcript replaced below. Refreshing meeting data..."
+          : "Transcription saved below. Refreshing meeting data..."
+      );
+      window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not transcribe audio.");
     } finally {

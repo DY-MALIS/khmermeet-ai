@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActionButton } from "@/components/action-button";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { updateTranscript } from "@/lib/actions";
@@ -23,10 +23,34 @@ export function MeetingTranscriptPanel({
   speakerNames
 }: MeetingTranscriptPanelProps) {
   const [transcript, setTranscript] = useState(initialTranscript);
+  const pendingTranscribedTranscriptRef = useRef<string | null>(null);
+  const lastMeetingIdRef = useRef(meetingId);
 
   useEffect(() => {
-    setTranscript(initialTranscript);
+    if (lastMeetingIdRef.current !== meetingId) {
+      lastMeetingIdRef.current = meetingId;
+      pendingTranscribedTranscriptRef.current = null;
+      setTranscript(initialTranscript);
+    }
   }, [initialTranscript, meetingId]);
+
+  useEffect(() => {
+    const pendingTranscript = pendingTranscribedTranscriptRef.current;
+
+    if (pendingTranscript) {
+      if (initialTranscript.trim() === pendingTranscript.trim()) {
+        pendingTranscribedTranscriptRef.current = null;
+      }
+      return;
+    }
+
+    setTranscript(initialTranscript);
+  }, [initialTranscript]);
+
+  function handleTranscribed(nextTranscript: string) {
+    pendingTranscribedTranscriptRef.current = nextTranscript;
+    setTranscript(nextTranscript);
+  }
 
   const hasAnyTranscript = Boolean(rawTranscript?.trim() || transcript.trim());
   const meetingSpeakerNames = Array.from(
@@ -71,7 +95,7 @@ export function MeetingTranscriptPanel({
             meetingId={meetingId}
             hasTranscript={hasAnyTranscript}
             speakerNames={meetingSpeakerNames}
-            onTranscribed={setTranscript}
+            onTranscribed={handleTranscribed}
           />
         </div>
       ) : null}
