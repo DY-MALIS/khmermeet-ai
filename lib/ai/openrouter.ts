@@ -92,7 +92,7 @@ export function textModel() {
 }
 
 export function transcriptionModel() {
-  return process.env.OPEN_ROUTER_TRANSCRIBE_MODEL ?? "openai/whisper-large-v3";
+  return process.env.OPEN_ROUTER_TRANSCRIBE_MODEL ?? "openai/gpt-4o-mini-transcribe";
 }
 
 export function hasOpenRouterKey() {
