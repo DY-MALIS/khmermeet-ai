@@ -11,14 +11,34 @@ import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
+function meetingLoadErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "";
+
+  if (code === "P2022") {
+    return "Database schema is missing a column used by meetings. Run the latest Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.";
+  }
+
+  if (code === "P2021") {
+    return "Database tables are missing. Run the Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.";
+  }
+
+  if (code === "P1001") {
+    return "Database server cannot be reached. Check DATABASE_URL and Supabase project status, then try again.";
+  }
+
+  return "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again.";
+}
+
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const meetingResult = await getMeetingById(id)
     .then((meeting) => ({ meeting, error: "" }))
-    .catch(() => ({
+    .catch((error) => ({
       meeting: null,
-      error:
-        "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again."
+      error: meetingLoadErrorMessage(error)
     }));
   const { meeting, error } = meetingResult;
 

@@ -19,10 +19,21 @@ CREATE TABLE IF NOT EXISTS "Meeting" (
     "language" TEXT NOT NULL DEFAULT 'km',
     "duration" INTEGER NOT NULL DEFAULT 0,
     "status" TEXT NOT NULL DEFAULT 'recorded',
+    "speakerNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "createdById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "Meeting_pkey" PRIMARY KEY ("id")
+);
+
+CREATE TABLE IF NOT EXISTS "AudioFile" (
+    "id" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "data" BYTEA NOT NULL,
+    "size" INTEGER NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AudioFile_pkey" PRIMARY KEY ("id")
 );
 
 CREATE TABLE IF NOT EXISTS "Task" (
@@ -51,6 +62,8 @@ CREATE TABLE IF NOT EXISTS "CallSignal" (
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 CREATE INDEX IF NOT EXISTS "CallSignal_roomId_id_idx" ON "CallSignal"("roomId", "id");
 CREATE INDEX IF NOT EXISTS "CallSignal_createdAt_idx" ON "CallSignal"("createdAt");
+
+ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "speakerNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
 DO $$
 BEGIN
