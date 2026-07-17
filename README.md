@@ -42,7 +42,7 @@ cp .env.example .env
 DATABASE_URL="file:./dev.db"
 OPEN_ROUTER_API_KEY="..."
 OPEN_ROUTER_TEXT_MODEL=openai/gpt-4o-mini
-OPEN_ROUTER_TRANSCRIBE_MODEL=openai/gpt-4o-mini-transcribe
+OPEN_ROUTER_TRANSCRIBE_MODEL=openai/whisper-large-v3
 OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS=55000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"

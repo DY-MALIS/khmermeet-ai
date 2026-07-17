@@ -10,6 +10,9 @@ type OpenRouterErrorContext = {
   providerStatus?: string;
 };
 
+const DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini";
+const DEFAULT_TRANSCRIPTION_MODEL = "openai/whisper-large-v3";
+
 export class OpenRouterApiError extends Error {
   status: number;
   safeDetail: string;
@@ -88,11 +91,23 @@ function errorMessage(status: number) {
 }
 
 export function textModel() {
-  return process.env.OPEN_ROUTER_TEXT_MODEL ?? "openai/gpt-4o-mini";
+  return process.env.OPEN_ROUTER_TEXT_MODEL ?? DEFAULT_TEXT_MODEL;
 }
 
 export function transcriptionModel() {
-  return process.env.OPEN_ROUTER_TRANSCRIBE_MODEL ?? "openai/gpt-4o-mini-transcribe";
+  const configured = process.env.OPEN_ROUTER_TRANSCRIBE_MODEL?.trim();
+  if (!configured) return DEFAULT_TRANSCRIPTION_MODEL;
+
+  const normalized = configured.toLowerCase();
+  const isTtsModel = normalized.includes("tts") || normalized.includes("text-to-speech");
+  const isUnsupportedTranscribeModel = normalized.includes("gpt-4o-mini-transcribe");
+  const isSupportedTranscribeModel = normalized.includes("whisper");
+
+  if (isTtsModel || isUnsupportedTranscribeModel || !isSupportedTranscribeModel) {
+    return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+
+  return configured;
 }
 
 export function hasOpenRouterKey() {
@@ -198,7 +213,11 @@ export async function transcribeOpenRouterAudio(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, detail));
+    const message =
+      response.status === 400
+        ? "OpenRouter transcription model is not supported for audio upload. Use OPEN_ROUTER_TRANSCRIBE_MODEL=openai/whisper-large-v3, or remove that environment variable to use the default."
+        : errorMessage(response.status);
+    throw new OpenRouterApiError(message, parseErrorContext(response.status, detail));
   }
 
   const payload = (await response.json()) as {
