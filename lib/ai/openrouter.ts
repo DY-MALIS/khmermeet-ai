@@ -56,14 +56,6 @@ function requestHeaders() {
   };
 }
 
-function uploadHeaders() {
-  return {
-    Authorization: `Bearer ${getOpenRouterKey()}`,
-    "HTTP-Referer": process.env.NEXTAUTH_URL || "https://khmermeet-ai.vercel.app",
-    "X-OpenRouter-Title": "KhmerMeet AI"
-  };
-}
-
 function sanitizeDetail(detail: string) {
   return detail
     .replace(/sk-or-v1-[0-9A-Za-z_-]+/g, "[hidden-openrouter-key]")
@@ -171,7 +163,6 @@ export async function transcribeOpenRouterAudio(
   mimeType: string,
   filename: string,
   language: "km" | "en" | "km-en",
-  speakerNames: string[] = [],
   timeoutMs = 55000
 ) {
   const controller = new AbortController();
@@ -179,28 +170,23 @@ export async function transcribeOpenRouterAudio(
   let response: Response;
 
   try {
-    const formData = new FormData();
-    formData.append("model", transcriptionModel());
+    const body: Record<string, unknown> = {
+      model: transcriptionModel(),
+      temperature: 0,
+      input_audio: {
+        data: audio.toString("base64"),
+        format: audioFormat(mimeType, filename)
+      }
+    };
     if (language !== "km-en") {
-      formData.append("language", language);
+      body.language = language;
     }
-    formData.append("temperature", "0");
-    formData.append(
-      "prompt",
-      buildTranscriptionPrompt(language, speakerNames)
-    );
-    formData.append(
-      "file",
-      new File([new Uint8Array(audio)], filename || `meeting-audio.${audioFormat(mimeType, filename)}`, {
-        type: mimeType || "audio/webm"
-      })
-    );
 
     response = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
       method: "POST",
-      headers: uploadHeaders(),
+      headers: requestHeaders(),
       signal: controller.signal,
-      body: formData
+      body: JSON.stringify(body)
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -215,7 +201,7 @@ export async function transcribeOpenRouterAudio(
     const detail = await response.text().catch(() => "");
     const message =
       response.status === 400
-        ? "OpenRouter transcription model is not supported for audio upload. Use OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3, or remove that environment variable to use the default."
+        ? "OpenRouter rejected the transcription request. Check that OPEN_ROUTER_TRANSCRIBE_MODEL is a valid OpenRouter STT model and that the audio format is supported, or remove that environment variable to use the default."
         : errorMessage(response.status);
     throw new OpenRouterApiError(message, parseErrorContext(response.status, detail));
   }
@@ -280,43 +266,6 @@ export async function refineOpenRouterTranscript(
     temperature: 0,
     timeoutMs
   });
-}
-
-function buildTranscriptionPrompt(language: "km" | "en" | "km-en", speakerNames: string[]) {
-  const languageInstruction =
-    language === "km"
-      ? "Output language: Khmer only. Listen carefully and transcribe the meaning of every spoken phrase into natural Khmer script. Keep proper names, product names, URLs, code terms, and acronyms unchanged."
-      : language === "en"
-        ? "Output language: English only. Listen carefully and transcribe the meaning of every spoken phrase into natural English. Keep proper names, product names, URLs, code terms, and acronyms unchanged."
-        : "The audio may contain Khmer and English. Preserve the spoken language of each phrase: Khmer speech in Khmer script, English speech in English. Do not translate either language.";
-
-  const speakerInstruction = speakerNames.length
-    ? `Known participant names from the meeting join screen: ${speakerNames.join(", ")}. Use only these names as speaker labels when the voice is clearly identifiable. If there is only one known participant, label every spoken turn with that name. If identity is unclear, use "Unknown speaker". Never invent names.`
-    : "No participant names were provided. Do not guess real names. If multiple speakers are clearly present, use Speaker 1, Speaker 2, etc.; otherwise use Speaker 1.";
-
-  return [
-    "You are a professional speech-to-text transcriber for Cambodian meetings.",
-    languageInstruction,
-    speakerInstruction,
-    "This is a verbatim meeting transcript task, not a summary task.",
-    language === "km"
-      ? "Normalize the transcript to Khmer only."
-      : language === "en"
-        ? "Normalize the transcript to English only."
-        : "Do not translate between Khmer and English in mixed mode.",
-    "Do not summarize.",
-    "Do not add timestamps.",
-    "Listen from the beginning to the end and capture every audible sentence in chronological order.",
-    "Keep speaker turns separate. Never merge different speakers into one line.",
-    "Return each line in this exact pattern: Name: spoken text.",
-    "Do not invent missing words.",
-    language === "km"
-      ? "If a word is unclear, write [មិនច្បាស់] only for that unclear word or phrase."
-      : "If a word is unclear, write [unclear] only for that unclear word or phrase.",
-    "Keep every clear phrase and sentence in the order spoken.",
-    "If the recording contains real speech, never return only one short phrase for a long recording.",
-    "Return transcript text only."
-  ].join(" ");
 }
 
 function fallbackSummary(transcript: string) {

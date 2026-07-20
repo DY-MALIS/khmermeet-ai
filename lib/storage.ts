@@ -276,7 +276,6 @@ export async function transcribeAudio(
     mimeType,
     audioFile.name || "meeting-audio.webm",
     normalizedLanguageMode,
-    normalizeSpeakerNames(speakerNames),
     timeoutMs
   );
   const cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
