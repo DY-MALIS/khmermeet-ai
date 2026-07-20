@@ -11,7 +11,7 @@ type OpenRouterErrorContext = {
 };
 
 const DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini";
-const DEFAULT_TRANSCRIPTION_MODEL = "openai/whisper-large-v3";
+const DEFAULT_TRANSCRIPTION_MODEL = "google/chirp-3";
 
 export class OpenRouterApiError extends Error {
   status: number;
@@ -215,7 +215,7 @@ export async function transcribeOpenRouterAudio(
     const detail = await response.text().catch(() => "");
     const message =
       response.status === 400
-        ? "OpenRouter transcription model is not supported for audio upload. Use OPEN_ROUTER_TRANSCRIBE_MODEL=openai/whisper-large-v3, or remove that environment variable to use the default."
+        ? "OpenRouter transcription model is not supported for audio upload. Use OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3, or remove that environment variable to use the default."
         : errorMessage(response.status);
     throw new OpenRouterApiError(message, parseErrorContext(response.status, detail));
   }
