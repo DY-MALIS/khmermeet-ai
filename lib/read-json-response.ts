@@ -1,6 +1,7 @@
 type ApiPayload = Record<string, unknown> & {
   error?: string;
   hint?: string;
+  status?: number;
 };
 
 function cleanResponseText(text: string) {
@@ -15,13 +16,22 @@ function cleanResponseText(text: string) {
 
 export async function readJsonResponse<T extends ApiPayload = ApiPayload>(response: Response): Promise<T> {
   const rawText = await response.text().catch(() => "");
-  if (!rawText.trim()) return {} as T;
+  if (!rawText.trim()) {
+    return {
+      status: response.status,
+      error:
+        response.status === 413
+          ? "The upload was rejected by the server for being too large."
+          : undefined
+    } as T;
+  }
 
   try {
-    return JSON.parse(rawText) as T;
+    return { status: response.status, ...(JSON.parse(rawText) as object) } as T;
   } catch {
     const cleaned = cleanResponseText(rawText);
     return {
+      status: response.status,
       error: cleaned || `Server returned ${response.status || "an"} invalid response. Please try again.`
     } as T;
   }

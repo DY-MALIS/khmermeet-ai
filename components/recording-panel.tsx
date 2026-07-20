@@ -1,8 +1,7 @@
 "use client";
 
-import { Mic, Pause, Play, RotateCcw, Save, Square, Trash2 } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { createMeeting } from "@/lib/actions";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
@@ -24,6 +23,10 @@ function recordingPermissionHelp() {
   return "មិនអាចបើក microphone បានទេ។ សូមចុច Allow ក្នុង browser permission, ប្រើ Chrome/Edge/Safari ថ្មីៗ, ហើយកុំបើកក្នុង Facebook/Telegram in-app browser។";
 }
 
+function defaultMeetingTitle() {
+  return `ការថតសំឡេង ${new Date().toLocaleString()}`;
+}
+
 export function RecordingPanel() {
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -37,11 +40,12 @@ export function RecordingPanel() {
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
+  const [title, setTitle] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
-  const [transcript, setTranscript] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
+  const [savingMeeting, setSavingMeeting] = useState(false);
+  const [savedMeetingId, setSavedMeetingId] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
@@ -131,8 +135,9 @@ export function RecordingPanel() {
   async function start() {
     setError("");
     setAudioUrl("");
-    setTranscript("");
     setPreviewUrl("");
+    setSavedMeetingId("");
+    setTranscriptionProgress("");
     cleanupRecording();
     if (!supported) {
       setError("Browser នេះមិនគាំទ្រ audio recording ទេ។ សូមប្រើ Chrome, Edge, ឬ Firefox ថ្មីៗ។");
@@ -168,14 +173,20 @@ export function RecordingPanel() {
         formData.append("skipTranscription", "true");
         try {
           const response = await fetch("/api/uploads", { method: "POST", body: formData });
-          const data = await readJsonResponse<{ audioUrl?: string; transcript?: string; error?: string }>(response);
+          const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response);
           if (response.ok) {
             if (!data.audioUrl) throw new Error("Audio upload did not return a saved file URL.");
             setAudioUrl(data.audioUrl);
             setDbUnavailable(false);
-            void transcribeLocalSegments(blobType);
+            await saveMeetingAuto(data.audioUrl, blobType);
           }
-          else setError(data.error ?? "មិនអាចរក្សាទុកសំឡេងបានទេ។");
+          else
+            setError(
+              data.error ??
+                (response.status === 413
+                  ? "សំឡេងធំពេក មិនអាច upload បានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
+                  : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
+            );
         } catch {
           setError("មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។");
         } finally {
@@ -195,13 +206,37 @@ export function RecordingPanel() {
     }
   }
 
-  async function transcribeLocalSegments(blobType: string) {
+  async function saveMeetingAuto(savedAudioUrl: string, blobType: string) {
+    setSavingMeeting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/call-recordings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim() || defaultMeetingTitle(),
+          audioUrl: savedAudioUrl,
+          transcript: "",
+          duration: seconds
+        })
+      });
+      const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
+      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? "Could not save the meeting.");
+      setSavedMeetingId(data.meetingId);
+      void transcribeAndAttachSegments(data.meetingId, blobType);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "មិនអាចរក្សាទុកប្រជុំបានទេ។ សូមសាកល្បងម្តងទៀត។");
+    } finally {
+      setSavingMeeting(false);
+    }
+  }
+
+  async function transcribeAndAttachSegments(meetingId: string, blobType: string) {
     const audioSegments = segmentsRef.current.filter((chunk) => chunk.size > 1000);
     if (!audioSegments.length) return;
 
-    setTranscribing(true);
+    let successfulChunks = 0;
     setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
-    const transcriptParts: string[] = [];
 
     for (let index = 0; index < audioSegments.length; index += 1) {
       const chunk = audioSegments[index];
@@ -209,14 +244,14 @@ export function RecordingPanel() {
       const chunkType = chunk.type || blobType;
       formData.append("audio", chunk, `meeting-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
       formData.append("languageMode", transcriptionLanguage);
+      formData.append("index", String(index + 1));
       setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
 
       try {
-        const response = await fetch("/api/live-transcript", { method: "POST", body: formData });
+        const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
         const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
         if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
-          transcriptParts.push(data.transcript.trim());
-          setTranscript(transcriptParts.join("\n"));
+          successfulChunks += 1;
         }
       } catch {
         // Keep processing the next chunk so one weak audio section does not block a long meeting.
@@ -224,11 +259,10 @@ export function RecordingPanel() {
     }
 
     setTranscriptionProgress(
-      transcriptParts.length
-        ? `Transcription complete: ${transcriptParts.length}/${audioSegments.length} segments produced text.`
+      successfulChunks
+        ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review.`
         : "Audio saved, but no clear speech text was detected in the audio segments."
     );
-    setTranscribing(false);
   }
 
   function pause() {
@@ -256,21 +290,6 @@ export function RecordingPanel() {
     setState("stopped");
   }
 
-  function discard() {
-    recorder.current = null;
-    chunks.current = [];
-    segmentsRef.current = [];
-    cleanupRecording();
-    setAudioUrl("");
-    setTranscript("");
-    setPreviewUrl("");
-    setSeconds(0);
-    startedAtRef.current = 0;
-    accumulatedMsRef.current = 0;
-    setState("idle");
-    setError("");
-  }
-
   return (
     <div className="kh-card p-5">
       <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
@@ -281,20 +300,45 @@ export function RecordingPanel() {
           Database status could not be checked from this browser. You can still record and try saving; the server will confirm when it saves.
         </div>
       ) : null}
-      {error ? <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-      <label className="mb-4 block max-w-xs space-y-1">
-        <span className="text-sm font-semibold text-slate-600">Transcript language</span>
-        <select
-          className="kh-input"
-          value={transcriptionLanguage}
-          onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
-          disabled={state === "recording" || state === "paused" || uploading}
-        >
-          <option value="km">Khmer output</option>
-          <option value="en">English output</option>
-          <option value="km-en">Keep Khmer + English</option>
-        </select>
-      </label>
+      {error ? (
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <p>{error}</p>
+          {!savedMeetingId && audioUrl ? (
+            <button
+              className="mt-2 font-semibold underline"
+              type="button"
+              onClick={() => void saveMeetingAuto(audioUrl, recorder.current?.mimeType || "audio/webm")}
+            >
+              សាកល្បងរក្សាទុកម្តងទៀត
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="mb-4 grid gap-4 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ (ស្រេចចិត្ត)</span>
+          <input
+            className="kh-input"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={defaultMeetingTitle()}
+            disabled={state === "recording" || state === "paused"}
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold text-slate-600">Transcript language</span>
+          <select
+            className="kh-input"
+            value={transcriptionLanguage}
+            onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
+            disabled={state === "recording" || state === "paused" || uploading}
+          >
+            <option value="km">Khmer output</option>
+            <option value="en">English output</option>
+            <option value="km-en">Keep Khmer + English</option>
+          </select>
+        </label>
+      </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>
@@ -320,26 +364,15 @@ export function RecordingPanel() {
               <audio className="w-full" controls src={previewUrl} />
             </div>
           ) : null}
-          <form action={createMeeting} className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-            <input className="kh-input" name="title" placeholder="ចំណងជើងប្រជុំ" required />
-            <input type="hidden" name="audioUrl" value={audioUrl} />
-            <input type="hidden" name="transcript" value={transcript} />
-            <input type="hidden" name="duration" value={seconds} />
-            <button className="kh-button-primary" disabled={uploading || transcribing || !audioUrl}>
-              <Save className="h-4 w-4" />
-              {uploading ? "កំពុង upload..." : transcribing ? "កំពុងបម្លែងសំឡេង..." : "រក្សាទុកប្រជុំ"}
-            </button>
-            <button className="kh-button-secondary" onClick={discard} type="button">
-              <Trash2 className="h-4 w-4" />
-              បោះចោល
-            </button>
-          </form>
-          {audioUrl ? (
-            <p className="text-sm text-leaf">
-              សំឡេងត្រូវបាន upload រួច។ {transcript ? "Transcript ត្រូវបានបង្កើត ហើយនឹងរក្សាទុកជាមួយ meeting record។" : "បើមិនមាន transcript សូមដាក់ OPEN_ROUTER_API_KEY ឬបញ្ចូល transcript ដោយដៃក្រោយរក្សាទុក។"}
+          {uploading ? (
+            <p className="text-sm text-slate-500">កំពុង upload សំឡេង...</p>
+          ) : savingMeeting ? (
+            <p className="text-sm text-slate-500">កំពុងរក្សាទុកប្រជុំដោយស្វ័យប្រវត្តិ...</p>
+          ) : savedMeetingId ? (
+            <p className="flex items-center gap-2 text-sm text-leaf">
+              <CheckCircle2 className="h-4 w-4" />
+              បានរក្សាទុករួច។ <a className="font-semibold underline" href={`/meetings/${savedMeetingId}`}>មើលប្រជុំ</a>
             </p>
-          ) : uploading ? (
-            <p className="text-sm text-slate-500">កំពុង upload សំឡេងទៅ local storage...</p>
           ) : null}
           {transcriptionProgress ? <p className="text-sm text-slate-500">{transcriptionProgress}</p> : null}
           <button className="kh-button-secondary" onClick={start} type="button">

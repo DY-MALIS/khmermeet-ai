@@ -19,7 +19,13 @@ export async function POST(request: Request) {
       : [];
   const languageMode = normalizeTranscriptionLanguageMode(formData.get("languageMode"));
   const skipTranscription = formData.get("skipTranscription") === "true";
-  const audioUrl = await saveLocalAudio(file);
+  let audioUrl: string;
+  try {
+    audioUrl = await saveLocalAudio(file);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not save the recording.";
+    return NextResponse.json({ error: message }, { status: 413 });
+  }
   if (skipTranscription) {
     return NextResponse.json({ audioUrl, transcript: "", speakerNames });
   }
