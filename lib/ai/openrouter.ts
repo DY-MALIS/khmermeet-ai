@@ -155,6 +155,8 @@ function audioFormat(mimeType: string, filename: string) {
   if (value.includes("m4a") || value.includes("mp4")) return "m4a";
   if (value.includes("ogg")) return "ogg";
   if (value.includes("aac")) return "aac";
+  // LiveKit Egress HLS audio segments are MPEG-TS containers carrying AAC audio.
+  if (value.includes("mp2t") || value.endsWith(".ts")) return "aac";
   return "webm";
 }
 

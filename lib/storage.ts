@@ -7,7 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
-const databaseAudioLimit = 12 * 1024 * 1024;
+// Vercel Serverless Functions (Route Handlers) hard-cap the request body at 4.5MB.
+// A request larger than that is rejected by the platform before this code runs,
+// so this limit must stay below 4.5MB to ever actually trigger.
+const databaseAudioLimit = 4 * 1024 * 1024;
 const openRouterAudioLimit = 24 * 1024 * 1024;
 
 export type TranscriptionLanguageMode = "km" | "en" | "km-en";
@@ -141,7 +144,9 @@ export async function saveLocalAudio(file: File) {
 
   if (process.env.VERCEL) {
     if (bytes.length > databaseAudioLimit) {
-      throw new Error("Audio file is too large for MVP database storage. Please record a shorter clip or connect Supabase Storage/S3.");
+      throw new Error(
+        `Recording is ${(bytes.length / (1024 * 1024)).toFixed(1)}MB, which is over the ${(databaseAudioLimit / (1024 * 1024)).toFixed(0)}MB upload limit on this server. Please record a shorter clip, lower the recording quality, or connect Supabase Storage for larger uploads.`
+      );
     }
     const audio = await createAudioFileRecord(name, file.type || "audio/webm", bytes);
     return `/api/uploads/${audio.id}`;
@@ -203,11 +208,37 @@ export async function downloadSupabaseAudio(objectPath: string) {
   };
 }
 
+export async function listSupabaseStorageFolder(prefix: string) {
+  const storage = supabaseStorageClient();
+  if (!storage) throw new Error("Supabase Storage is not configured.");
+
+  const { data, error } = await storage.client.storage
+    .from(storage.bucket)
+    .list(prefix, { limit: 1000, sortBy: { column: "name", order: "asc" } });
+  if (error) throw new Error(error.message);
+
+  return (data ?? [])
+    .filter((entry) => entry.id)
+    .map((entry) => `${prefix}/${entry.name}`);
+}
+
+export async function createSupabaseSignedUrl(objectPath: string, expiresInSeconds = 3600) {
+  const storage = supabaseStorageClient();
+  if (!storage) throw new Error("Supabase Storage is not configured.");
+
+  const { data, error } = await storage.client.storage
+    .from(storage.bucket)
+    .createSignedUrl(objectPath, expiresInSeconds);
+  if (error || !data) throw new Error(error?.message || "Could not create signed URL.");
+  return data.signedUrl;
+}
+
 function contentTypeFromPath(objectPath: string) {
   if (objectPath.endsWith(".mp4")) return "video/mp4";
   if (objectPath.endsWith(".m4a")) return "audio/mp4";
   if (objectPath.endsWith(".mp3")) return "audio/mpeg";
   if (objectPath.endsWith(".webm")) return "audio/webm";
+  if (objectPath.endsWith(".ts")) return "video/mp2t";
   return "application/octet-stream";
 }
 

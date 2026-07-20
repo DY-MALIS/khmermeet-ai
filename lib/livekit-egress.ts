@@ -1,8 +1,11 @@
 import {
   EgressClient,
+  EgressStatus,
   EncodedFileOutput,
   EncodedFileType,
-  S3Upload
+  S3Upload,
+  SegmentedFileOutput,
+  SegmentedFileProtocol
 } from "livekit-server-sdk";
 
 function requiredEnv(name: string) {
@@ -26,26 +29,45 @@ function egressClient() {
   );
 }
 
-function egressS3Output(filepath: string) {
+function egressS3Upload() {
   const accessKey = requiredEnv("LIVEKIT_EGRESS_S3_ACCESS_KEY");
   const secret = requiredEnv("LIVEKIT_EGRESS_S3_SECRET");
   const bucket = process.env.LIVEKIT_EGRESS_S3_BUCKET?.trim() || process.env.SUPABASE_STORAGE_BUCKET?.trim();
   if (!bucket) throw new Error("LIVEKIT_EGRESS_S3_BUCKET or SUPABASE_STORAGE_BUCKET is not configured.");
 
+  return new S3Upload({
+    accessKey,
+    secret,
+    bucket,
+    endpoint: requiredEnv("LIVEKIT_EGRESS_S3_ENDPOINT"),
+    region: process.env.LIVEKIT_EGRESS_S3_REGION?.trim() || "auto",
+    forcePathStyle: process.env.LIVEKIT_EGRESS_S3_FORCE_PATH_STYLE !== "false"
+  });
+}
+
+function egressS3Output(filepath: string) {
   return new EncodedFileOutput({
     filepath,
     fileType: EncodedFileType.MP4,
     disableManifest: true,
     output: {
       case: "s3",
-      value: new S3Upload({
-        accessKey,
-        secret,
-        bucket,
-        endpoint: requiredEnv("LIVEKIT_EGRESS_S3_ENDPOINT"),
-        region: process.env.LIVEKIT_EGRESS_S3_REGION?.trim() || "auto",
-        forcePathStyle: process.env.LIVEKIT_EGRESS_S3_FORCE_PATH_STYLE !== "false"
-      })
+      value: egressS3Upload()
+    }
+  });
+}
+
+function egressS3SegmentsOutput(filenamePrefix: string, playlistName: string) {
+  const segmentDuration = Number(process.env.LIVEKIT_EGRESS_SEGMENT_SECONDS ?? 300);
+  return new SegmentedFileOutput({
+    protocol: SegmentedFileProtocol.HLS_PROTOCOL,
+    filenamePrefix,
+    playlistName,
+    segmentDuration: Number.isFinite(segmentDuration) && segmentDuration > 0 ? segmentDuration : 300,
+    disableManifest: true,
+    output: {
+      case: "s3",
+      value: egressS3Upload()
     }
   });
 }
@@ -64,13 +86,17 @@ export function storagePlaybackUrl(filepath: string) {
 
 export async function startLiveKitRoomRecording(room: string, title?: string) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filepath = `livekit-egress/${safeSegment(room)}/${timestamp}-${safeSegment(title || room)}.mp4`;
+  const base = `livekit-egress/${safeSegment(room)}/${timestamp}-${safeSegment(title || room)}`;
+  const filepath = `${base}.m4a`;
+  const segmentsPrefix = `${base}/segments`;
+
   const info = await egressClient().startRoomCompositeEgress(
     room,
-    { file: egressS3Output(filepath) },
     {
-      layout: "grid"
-    }
+      file: egressS3Output(filepath),
+      segments: egressS3SegmentsOutput(`${segmentsPrefix}/segment`, "index.m3u8")
+    },
+    { audioOnly: true }
   );
 
   return {
@@ -78,15 +104,49 @@ export async function startLiveKitRoomRecording(room: string, title?: string) {
     roomName: info.roomName || room,
     status: info.status,
     filepath,
-    storageUrl: storagePlaybackUrl(filepath)
+    storageUrl: storagePlaybackUrl(filepath),
+    segmentsPrefix
   };
 }
 
-export async function stopLiveKitRoomRecording(egressId: string) {
-  const info = await egressClient().stopEgress(egressId);
-  return {
-    egressId: info.egressId,
-    roomName: info.roomName,
-    status: info.status
-  };
+type EgressPollResult =
+  | { status: "complete"; egressId: string }
+  | { status: "failed"; error: string }
+  | { status: "finalizing"; egressId: string }
+  | { status: "unknown" };
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollEgressStatus(
+  client: EgressClient,
+  egressId: string,
+  { pollIntervalMs = 2000, budgetMs = 45000 }: { pollIntervalMs?: number; budgetMs?: number } = {}
+): Promise<EgressPollResult> {
+  const deadline = Date.now() + budgetMs;
+  do {
+    const [info] = await client.listEgress({ egressId });
+    if (!info) return { status: "unknown" };
+    if (info.status === EgressStatus.EGRESS_COMPLETE) return { status: "complete", egressId };
+    if (
+      info.status === EgressStatus.EGRESS_FAILED ||
+      info.status === EgressStatus.EGRESS_ABORTED ||
+      info.status === EgressStatus.EGRESS_LIMIT_REACHED
+    ) {
+      return { status: "failed", error: info.error || "Egress failed." };
+    }
+    if (Date.now() >= deadline) return { status: "finalizing", egressId };
+    await sleep(pollIntervalMs);
+  } while (true);
+}
+
+export async function stopLiveKitRoomRecordingAndWait(egressId: string) {
+  const client = egressClient();
+  await client.stopEgress(egressId).catch(() => undefined);
+  return pollEgressStatus(client, egressId, { budgetMs: 45000 });
+}
+
+export async function checkLiveKitEgressStatus(egressId: string) {
+  return pollEgressStatus(egressClient(), egressId, { budgetMs: 0 });
 }

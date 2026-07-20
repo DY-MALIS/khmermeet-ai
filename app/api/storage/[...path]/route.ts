@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { downloadSupabaseAudio } from "@/lib/storage";
+import { createSupabaseSignedUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +12,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   }
 
   try {
-    const file = await downloadSupabaseAudio(objectPath);
-    return new NextResponse(file.data, {
-      headers: {
-        "Content-Type": file.mimeType,
-        "Content-Length": String(file.data.length),
-        "Cache-Control": "private, max-age=3600"
-      }
-    });
+    const signedUrl = await createSupabaseSignedUrl(objectPath);
+    return NextResponse.redirect(signedUrl, { status: 307 });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Storage file not found." },

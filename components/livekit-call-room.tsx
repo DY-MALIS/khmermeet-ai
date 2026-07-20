@@ -450,7 +450,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [localBackupUrl, setLocalBackupUrl] = useState("");
-  const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string } | null>(null);
+  const [serverRecording, setServerRecording] = useState<{ egressId: string; storageUrl: string; segmentsPrefix: string } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const segmentRecorderRef = useRef<MediaRecorder | null>(null);
@@ -610,12 +610,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           title: meetingTitle
         })
       });
-      const data = await readJsonResponse<{ egressId?: string; storageUrl?: string; error?: string; hint?: string }>(response);
+      const data = await readJsonResponse<{ egressId?: string; storageUrl?: string; segmentsPrefix?: string; error?: string; hint?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? data.hint ?? "Server recording failed.");
-      if (!data.egressId || !data.storageUrl) throw new Error("Server recording did not return a recording id.");
-      setServerRecording({ egressId: data.egressId, storageUrl: data.storageUrl });
+      if (!data.egressId || !data.storageUrl || !data.segmentsPrefix) throw new Error("Server recording did not return a recording id.");
+      setServerRecording({ egressId: data.egressId, storageUrl: data.storageUrl, segmentsPrefix: data.segmentsPrefix });
       serverStartedAtRef.current = Date.now();
-      setNotice("Server recording started. LiveKit Egress is recording the whole room to storage.");
+      setNotice("Server recording started. LiveKit Egress is recording audio to storage (audio-only, for long meetings).");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not start server recording.");
     } finally {
@@ -623,18 +623,34 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }
   }
 
+  async function waitForEgressComplete(egressId: string) {
+    const stopResponse = await fetch("/api/livekit-egress/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ egressId })
+    });
+    const stopData = await readJsonResponse<{ recordingStatus?: string; error?: string }>(stopResponse);
+    if (!stopResponse.ok) throw new Error(stopData.error ?? "Could not stop server recording.");
+    if (stopData.recordingStatus === "complete") return;
+
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      setNotice("Finalizing recording upload...");
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      const statusResponse = await fetch(`/api/livekit-egress/status?egressId=${encodeURIComponent(egressId)}`);
+      const statusData = await readJsonResponse<{ recordingStatus?: string; error?: string }>(statusResponse);
+      if (!statusResponse.ok) throw new Error(statusData.error ?? "Server recording failed to finalize.");
+      if (statusData.recordingStatus === "complete") return;
+    }
+    throw new Error("Server recording is taking too long to finalize. Please check back later.");
+  }
+
   async function stopServerRecording() {
     if (!serverRecording) return;
     setSaving(true);
     setError("");
     try {
-      const response = await fetch("/api/livekit-egress/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ egressId: serverRecording.egressId })
-      });
-      const data = await readJsonResponse<{ error?: string }>(response);
-      if (!response.ok) throw new Error(data.error ?? "Could not stop server recording.");
+      await waitForEgressComplete(serverRecording.egressId);
 
       const duration = Math.max(1, Math.round((Date.now() - serverStartedAtRef.current) / 1000));
       const saveResponse = await fetch("/api/call-recordings", {
@@ -653,13 +669,55 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(serverRecording.storageUrl);
-      setNotice("Server recording stopped and saved to meeting history. Transcript still needs speech-to-text processing.");
+      setNotice("Server recording saved to meeting history. Transcribing long-form audio in segments — keep this tab open...");
+
+      const segmentsResponse = await fetch(`/api/livekit-egress/segments?prefix=${encodeURIComponent(serverRecording.segmentsPrefix)}`);
+      const segmentsJson = await readJsonResponse<{ segments?: string[]; error?: string }>(segmentsResponse);
+      if (!segmentsResponse.ok) throw new Error(segmentsJson.error ?? "Could not list recording segments.");
+
+      await transcribeServerRecordingSegments(saveJson.meetingId, segmentsJson.segments ?? [], getCurrentSpeakerNames());
+      await fetch(`/api/meetings/${saveJson.meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
+
       setServerRecording(null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save server recording.");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function transcribeServerRecordingSegments(meetingId: string, segments: string[], speakers: string[]) {
+    if (!segments.length) {
+      setNotice("Server recording saved, but no audio segments were produced yet.");
+      return;
+    }
+
+    let successfulChunks = 0;
+    setTranscriptionProgress(`Transcribing 0/${segments.length} audio segments...`);
+
+    for (let index = 0; index < segments.length; index += 1) {
+      setTranscriptionProgress(`Transcribing ${index + 1}/${segments.length} audio segments...`);
+      try {
+        const response = await fetch(`/api/meetings/${meetingId}/transcribe-segment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ objectPath: segments[index], index: index + 1, languageMode: transcriptionLanguage, speakers })
+        });
+        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
+          successfulChunks += 1;
+        }
+      } catch {
+        // Continue with the next segment so one timeout/noisy section does not stop a long recording.
+      }
+    }
+
+    setTranscriptionProgress(
+      successfulChunks
+        ? `Transcription complete: ${successfulChunks}/${segments.length} segments produced text.`
+        : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
+    );
+    setNotice("Server recording transcribed and saved to meeting history.");
   }
 
   async function saveRecording(mimeType: string) {
@@ -678,7 +736,14 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       uploadData.append("skipTranscription", "true");
       const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
       const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; speakerNames?: string[]; error?: string }>(uploadResponse);
-      if (!uploadResponse.ok) throw new Error(uploadJson.error ?? "Audio upload failed.");
+      if (!uploadResponse.ok) {
+        throw new Error(
+          uploadJson.error ??
+            (uploadResponse.status === 413
+              ? "This recording is too large to upload. Download the local backup below, or record a shorter meeting."
+              : "Audio upload failed.")
+        );
+      }
 
       const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript : "";
       const audioUrl = typeof uploadJson.audioUrl === "string" ? uploadJson.audioUrl : "";
@@ -786,9 +851,15 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             </button>
           )}
           {!serverRecording ? (
-            <button className="kh-button-secondary" type="button" onClick={startServerRecording} disabled={saving || recording}>
+            <button
+              className="kh-button-secondary"
+              type="button"
+              onClick={startServerRecording}
+              disabled={saving || recording}
+              title="Audio-only server-side recording for long meetings (1-5+ hours)"
+            >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Server Rec
+              Server Rec (audio, long meetings)
             </button>
           ) : (
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopServerRecording} disabled={saving}>
