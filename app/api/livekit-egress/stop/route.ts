@@ -9,17 +9,21 @@ export async function POST(request: Request) {
   try {
     await requireUser();
     const body = await request.json().catch(() => ({}));
-    const egressId = typeof body.egressId === "string" ? body.egressId.trim() : "";
+    const fileEgressId = typeof body.fileEgressId === "string" ? body.fileEgressId.trim() : "";
+    const segmentsEgressId = typeof body.segmentsEgressId === "string" ? body.segmentsEgressId.trim() : "";
 
-    if (!egressId) {
-      return NextResponse.json({ error: "egressId is required." }, { status: 400 });
+    if (!fileEgressId) {
+      return NextResponse.json({ error: "fileEgressId is required." }, { status: 400 });
     }
 
-    const result = await stopLiveKitRoomRecordingAndWait(egressId);
-    if (result.status === "failed") {
-      return NextResponse.json({ egressId, recordingStatus: "failed", error: result.error }, { status: 502 });
+    const { fileResult, segmentsResult } = await stopLiveKitRoomRecordingAndWait(fileEgressId, segmentsEgressId);
+    if (fileResult.status === "failed") {
+      return NextResponse.json({ recordingStatus: "failed", error: fileResult.error }, { status: 502 });
     }
-    return NextResponse.json({ egressId, recordingStatus: result.status });
+    return NextResponse.json({
+      recordingStatus: fileResult.status,
+      segmentsStatus: segmentsResult.status
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not stop LiveKit server recording." },

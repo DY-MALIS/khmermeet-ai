@@ -84,25 +84,37 @@ export function storagePlaybackUrl(filepath: string) {
   return `/api/storage/${filepath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+// Two independent egress jobs instead of one combined { file, segments } output.
+// The single-file job matches the pattern that was already proven to work in
+// production; combining file+segments in one job is allowed by the SDK's types
+// but its real-world reliability is unverified, so segments run as a separate,
+// best-effort job that can fail without taking down the (more important) file
+// recording used for playback.
 export async function startLiveKitRoomRecording(room: string, title?: string) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const base = `livekit-egress/${safeSegment(room)}/${timestamp}-${safeSegment(title || room)}`;
   const filepath = `${base}.m4a`;
   const segmentsPrefix = `${base}/segments`;
 
-  const info = await egressClient().startRoomCompositeEgress(
-    room,
-    {
-      file: egressS3Output(filepath),
-      segments: egressS3SegmentsOutput(`${segmentsPrefix}/segment`, "index.m3u8")
-    },
-    { audioOnly: true }
-  );
+  const client = egressClient();
+  const fileInfo = await client.startRoomCompositeEgress(room, { file: egressS3Output(filepath) }, { audioOnly: true });
+
+  let segmentsEgressId = "";
+  try {
+    const segmentsInfo = await client.startRoomCompositeEgress(
+      room,
+      { segments: egressS3SegmentsOutput(`${segmentsPrefix}/segment`, "index.m3u8") },
+      { audioOnly: true }
+    );
+    segmentsEgressId = segmentsInfo.egressId;
+  } catch {
+    // Playback recording still works without live transcription segments.
+  }
 
   return {
-    egressId: info.egressId,
-    roomName: info.roomName || room,
-    status: info.status,
+    fileEgressId: fileInfo.egressId,
+    segmentsEgressId,
+    roomName: fileInfo.roomName || room,
     filepath,
     storageUrl: storagePlaybackUrl(filepath),
     segmentsPrefix
@@ -141,12 +153,25 @@ async function pollEgressStatus(
   } while (true);
 }
 
-export async function stopLiveKitRoomRecordingAndWait(egressId: string) {
-  const client = egressClient();
+async function stopAndWaitOne(client: EgressClient, egressId: string, budgetMs: number) {
   await client.stopEgress(egressId).catch(() => undefined);
-  return pollEgressStatus(client, egressId, { budgetMs: 45000 });
+  return pollEgressStatus(client, egressId, { budgetMs });
 }
 
-export async function checkLiveKitEgressStatus(egressId: string) {
-  return pollEgressStatus(egressClient(), egressId, { budgetMs: 0 });
+export async function stopLiveKitRoomRecordingAndWait(fileEgressId: string, segmentsEgressId: string) {
+  const client = egressClient();
+  const [fileResult, segmentsResult] = await Promise.all([
+    stopAndWaitOne(client, fileEgressId, 45000),
+    segmentsEgressId ? stopAndWaitOne(client, segmentsEgressId, 45000) : Promise.resolve<EgressPollResult>({ status: "complete", egressId: "" })
+  ]);
+  return { fileResult, segmentsResult };
+}
+
+export async function checkLiveKitEgressStatus(fileEgressId: string, segmentsEgressId: string) {
+  const client = egressClient();
+  const [fileResult, segmentsResult] = await Promise.all([
+    pollEgressStatus(client, fileEgressId, { budgetMs: 0 }),
+    segmentsEgressId ? pollEgressStatus(client, segmentsEgressId, { budgetMs: 0 }) : Promise.resolve<EgressPollResult>({ status: "complete", egressId: "" })
+  ]);
+  return { fileResult, segmentsResult };
 }

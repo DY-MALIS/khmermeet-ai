@@ -8,16 +8,21 @@ export const maxDuration = 30;
 export async function GET(request: Request) {
   try {
     await requireUser();
-    const egressId = new URL(request.url).searchParams.get("egressId")?.trim() || "";
-    if (!egressId) {
-      return NextResponse.json({ error: "egressId is required." }, { status: 400 });
+    const params = new URL(request.url).searchParams;
+    const fileEgressId = params.get("fileEgressId")?.trim() || "";
+    const segmentsEgressId = params.get("segmentsEgressId")?.trim() || "";
+    if (!fileEgressId) {
+      return NextResponse.json({ error: "fileEgressId is required." }, { status: 400 });
     }
 
-    const result = await checkLiveKitEgressStatus(egressId);
-    if (result.status === "failed") {
-      return NextResponse.json({ egressId, recordingStatus: "failed", error: result.error }, { status: 502 });
+    const { fileResult, segmentsResult } = await checkLiveKitEgressStatus(fileEgressId, segmentsEgressId);
+    if (fileResult.status === "failed") {
+      return NextResponse.json({ recordingStatus: "failed", error: fileResult.error }, { status: 502 });
     }
-    return NextResponse.json({ egressId, recordingStatus: result.status });
+    return NextResponse.json({
+      recordingStatus: fileResult.status,
+      segmentsStatus: segmentsResult.status
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not check server recording status." },
