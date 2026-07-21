@@ -314,17 +314,27 @@ export async function transcribeAudio(
   const filename = audioFile.name || "meeting-audio.webm";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
-  let transcript = "";
-  try {
-    transcript = await transcribeOpenRouterAudio(audioBuffer, mimeType, filename, normalizedLanguageMode, timeoutMs);
-  } catch (error) {
-    // A 400 means the primary model rejected this specific request (known to
-    // happen on Khmer audio) - worth retrying with the fallback model below.
-    // Other errors (invalid key, no credits, rate limit) won't be fixed by
-    // switching models, so let those surface immediately as before.
-    if (!(error instanceof OpenRouterApiError) || error.status !== 400) throw error;
+  // google/chirp-3 (the primary STT model) has a confirmed fixed-hallucination
+  // bug on Khmer audio: it returns the same fluent, well-formed but entirely
+  // fabricated text regardless of what was actually said. That output is not
+  // empty, garbled, or repetitive, so no output-based quality check below can
+  // catch it - Khmer/mixed audio therefore skips chirp-3 entirely and goes
+  // straight to the multimodal chat fallback instead of risking that bug.
+  // English still uses chirp-3 first since it's confirmed reliable there.
+  let cleanedTranscript = "";
+  if (normalizedLanguageMode === "en") {
+    let transcript = "";
+    try {
+      transcript = await transcribeOpenRouterAudio(audioBuffer, mimeType, filename, normalizedLanguageMode, timeoutMs);
+    } catch (error) {
+      // A 400 means the primary model rejected this specific request -
+      // worth retrying with the fallback model below. Other errors (invalid
+      // key, no credits, rate limit) won't be fixed by switching models, so
+      // let those surface immediately as before.
+      if (!(error instanceof OpenRouterApiError) || error.status !== 400) throw error;
+    }
+    cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
   }
-  let cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
 
   if (!hasUsableTranscript(cleanedTranscript)) {
     const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
