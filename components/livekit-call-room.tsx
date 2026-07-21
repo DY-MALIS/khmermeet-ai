@@ -716,21 +716,27 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
     for (let index = 0; index < segments.length; index += 1) {
       setTranscriptionProgress(`Transcribing ${index + 1}/${segments.length} audio segments...`);
-      try {
-        const response = await fetch(`/api/meetings/${meetingId}/transcribe-segment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ objectPath: segments[index], index: index + 1, languageMode: transcriptionLanguage, speakers })
-        });
-        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
-        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
-          successfulChunks += 1;
-        } else if (!response.ok && data.error) {
-          lastErrorMessage = data.error;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await fetch(`/api/meetings/${meetingId}/transcribe-segment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ objectPath: segments[index], index: index + 1, languageMode: transcriptionLanguage, speakers })
+          });
+          const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+          // A 2xx response (including "skipped: no usable speech") is final -
+          // only a real request failure below is worth retrying, since the
+          // same audio would just produce the same "no speech" result again.
+          if (response.ok) {
+            if (typeof data.transcript === "string" && data.transcript.trim()) successfulChunks += 1;
+            break;
+          }
+          lastErrorMessage = data.error ?? lastErrorMessage;
+        } catch (error) {
+          lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
         }
-      } catch (error) {
-        // Continue with the next segment so one timeout/noisy section does not stop a long recording.
-        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
+        if (attempt < maxAttempts) await new Promise((resolve) => window.setTimeout(resolve, 2000 * attempt));
       }
     }
 

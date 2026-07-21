@@ -248,17 +248,23 @@ export function RecordingPanel() {
       formData.append("index", String(index + 1));
       setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
 
-      try {
-        const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
-        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
-        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
-          successfulChunks += 1;
-        } else if (!response.ok && data.error) {
-          lastErrorMessage = data.error;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
+          const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+          // A 2xx response (including "no usable speech") is final - only a
+          // real request failure below is worth retrying.
+          if (response.ok) {
+            if (typeof data.transcript === "string" && data.transcript.trim()) successfulChunks += 1;
+            break;
+          }
+          lastErrorMessage = data.error ?? lastErrorMessage;
+        } catch (error) {
+          // Keep processing the next chunk so one weak audio section does not block a long meeting.
+          lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
         }
-      } catch (error) {
-        // Keep processing the next chunk so one weak audio section does not block a long meeting.
-        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
+        if (attempt < maxAttempts) await new Promise((resolve) => window.setTimeout(resolve, 2000 * attempt));
       }
     }
 
