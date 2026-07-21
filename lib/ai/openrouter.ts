@@ -11,7 +11,11 @@ type OpenRouterErrorContext = {
 };
 
 const DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini";
-const DEFAULT_TRANSCRIPTION_MODEL = "google/chirp-3";
+// google/chirp-3 hallucinates fluent-sounding but entirely wrong English text for
+// Khmer audio instead of failing; whisper-large-v3 returns an empty transcript for
+// audio it can't recognize, which is safer since it won't silently corrupt a
+// meeting transcript with fabricated content.
+const DEFAULT_TRANSCRIPTION_MODEL = "openai/whisper-large-v3";
 
 export class OpenRouterApiError extends Error {
   status: number;
