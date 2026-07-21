@@ -2,9 +2,15 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
-import { hasOpenRouterKey, refineOpenRouterTranscript, transcribeOpenRouterAudio } from "@/lib/ai/openrouter";
+import {
+  OpenRouterApiError,
+  hasOpenRouterKey,
+  refineOpenRouterTranscript,
+  transcribeOpenRouterAudio,
+  transcribeOpenRouterAudioViaChat
+} from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
-import { isTimestampOnlyTranscript } from "@/lib/transcript-quality";
+import { hasUsableTranscript, isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 // Vercel Serverless Functions (Route Handlers) hard-cap the request body at 4.5MB.
@@ -305,15 +311,33 @@ export async function transcribeAudio(
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
   const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
   const mimeType = audioFile.type || "audio/webm";
+  const filename = audioFile.name || "meeting-audio.webm";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
-  const transcript = await transcribeOpenRouterAudio(
-    audioBuffer,
-    mimeType,
-    audioFile.name || "meeting-audio.webm",
-    normalizedLanguageMode,
-    timeoutMs
-  );
-  const cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
+
+  let transcript = "";
+  try {
+    transcript = await transcribeOpenRouterAudio(audioBuffer, mimeType, filename, normalizedLanguageMode, timeoutMs);
+  } catch (error) {
+    // A 400 means the primary model rejected this specific request (known to
+    // happen on Khmer audio) - worth retrying with the fallback model below.
+    // Other errors (invalid key, no credits, rate limit) won't be fixed by
+    // switching models, so let those surface immediately as before.
+    if (!(error instanceof OpenRouterApiError) || error.status !== 400) throw error;
+  }
+  let cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
+
+  if (!hasUsableTranscript(cleanedTranscript)) {
+    const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
+      audioBuffer,
+      mimeType,
+      filename,
+      normalizedLanguageMode,
+      timeoutMs
+    ).catch(() => "");
+    const cleanedFallback = addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames);
+    if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
+  }
+
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
   assertUsableSavedTranscript(cleanedTranscript);
 

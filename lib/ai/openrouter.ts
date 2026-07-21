@@ -218,6 +218,97 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-flash";
+
+function multimodalTranscriptionModel() {
+  return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
+}
+
+function transcriptionChatPrompt(language: "km" | "en" | "km-en") {
+  const languageInstruction =
+    language === "km"
+      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form."
+      : language === "en"
+        ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
+        : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
+
+  return [
+    "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
+    languageInstruction,
+    "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
+    "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
+    "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
+    "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
+    "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
+    "Return the transcript text only - no preamble, no explanation, no markdown formatting, no commentary about the audio."
+  ].join(" ");
+}
+
+// Fallback transcription path using a general multimodal chat model instead of
+// a narrow speech-only model. google/chirp-3 (the primary STT model) has been
+// confirmed to hallucinate or reject requests on Khmer audio specifically; a
+// large multimodal model has broader language understanding and is tried here
+// when the primary result comes back empty/unusable, without replacing chirp-3
+// as the default for audio that it already handles fine (e.g. English).
+export async function transcribeOpenRouterAudioViaChat(
+  audio: Buffer,
+  mimeType: string,
+  filename: string,
+  language: "km" | "en" | "km-en",
+  timeoutMs = 55000
+) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
+  let response: Response;
+
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: requestHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: multimodalTranscriptionModel(),
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: transcriptionChatPrompt(language) },
+              {
+                type: "input_audio",
+                input_audio: {
+                  data: audio.toString("base64"),
+                  format: audioFormat(mimeType, filename)
+                }
+              }
+            ]
+          }
+        ]
+      })
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("OpenRouter transcription timed out. Please split long recordings into smaller parts.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, detail));
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content;
+  const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => part.text ?? "").join("\n") : "";
+  const trimmed = text.trim();
+  return trimmed === "[no speech detected]" ? "" : trimmed;
+}
+
 export async function refineOpenRouterTranscript(
   transcript: string,
   language: "km" | "en" | "km-en",
