@@ -11,11 +11,14 @@ type OpenRouterErrorContext = {
 };
 
 const DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini";
-// google/chirp-3 hallucinates fluent-sounding but entirely wrong English text for
-// Khmer audio instead of failing; whisper-large-v3 returns an empty transcript for
-// audio it can't recognize, which is safer since it won't silently corrupt a
-// meeting transcript with fabricated content.
-const DEFAULT_TRANSCRIPTION_MODEL = "openai/whisper-large-v3";
+// google/chirp-3 transcribes English correctly but hallucinates a fixed fake
+// phrase for Khmer audio instead of failing (confirmed: identical output
+// regardless of what was actually said). whisper-large-v3 returns an empty
+// transcript for Khmer it can't recognize, which is safer since it won't
+// silently corrupt a meeting transcript with fabricated content, so it's the
+// default for anything that might be Khmer.
+const DEFAULT_TRANSCRIPTION_MODEL_EN = "google/chirp-3";
+const DEFAULT_TRANSCRIPTION_MODEL_KM = "openai/whisper-large-v3";
 
 export class OpenRouterApiError extends Error {
   status: number;
@@ -90,13 +93,14 @@ export function textModel() {
   return process.env.OPEN_ROUTER_TEXT_MODEL ?? DEFAULT_TEXT_MODEL;
 }
 
-export function transcriptionModel() {
+export function transcriptionModel(language: "km" | "en" | "km-en" = "km") {
   const configured = process.env.OPEN_ROUTER_TRANSCRIBE_MODEL?.trim();
-  if (!configured) return DEFAULT_TRANSCRIPTION_MODEL;
+  const defaultModel = language === "en" ? DEFAULT_TRANSCRIPTION_MODEL_EN : DEFAULT_TRANSCRIPTION_MODEL_KM;
+  if (!configured) return defaultModel;
 
   const normalized = configured.toLowerCase();
   const isTtsModel = normalized.includes("tts") || normalized.includes("text-to-speech");
-  if (isTtsModel) return DEFAULT_TRANSCRIPTION_MODEL;
+  if (isTtsModel) return defaultModel;
 
   return configured;
 }
@@ -172,7 +176,7 @@ export async function transcribeOpenRouterAudio(
 
   try {
     const body: Record<string, unknown> = {
-      model: transcriptionModel(),
+      model: transcriptionModel(language),
       temperature: 0,
       input_audio: {
         data: audio.toString("base64"),

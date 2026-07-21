@@ -95,7 +95,8 @@ function getDiagnostics() {
     keyEnding: key ? `...${key.slice(-4)}` : null,
     keyLength: key.length || 0,
     textModel: textModel(),
-    transcriptionModel: transcriptionModel(),
+    transcriptionModelKm: transcriptionModel("km"),
+    transcriptionModelEn: transcriptionModel("en"),
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
     environment: process.env.VERCEL_ENV ?? "local"
   };
