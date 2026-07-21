@@ -32,7 +32,7 @@ export function hasLowSpeechSignal(text: string) {
   if (!compact) return true;
 
   const letters = compact.match(/\p{L}/gu) ?? [];
-  if (letters.length < 4) return true;
+  if (letters.length < 1) return true;
   if (letters.length < 8 && timestampMatches.length >= 2) return true;
 
   const tokens = compact.split(/\s+/).filter(Boolean);

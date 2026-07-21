@@ -236,6 +236,7 @@ export function RecordingPanel() {
     if (!audioSegments.length) return;
 
     let successfulChunks = 0;
+    let lastErrorMessage = "";
     setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
 
     for (let index = 0; index < audioSegments.length; index += 1) {
@@ -252,16 +253,21 @@ export function RecordingPanel() {
         const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
         if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
           successfulChunks += 1;
+        } else if (!response.ok && data.error) {
+          lastErrorMessage = data.error;
         }
-      } catch {
+      } catch (error) {
         // Keep processing the next chunk so one weak audio section does not block a long meeting.
+        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
       }
     }
 
     setTranscriptionProgress(
       successfulChunks
         ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review.`
-        : "Audio saved, but no clear speech text was detected in the audio segments."
+        : lastErrorMessage
+          ? `Audio saved, but transcription failed: ${lastErrorMessage}`
+          : "Audio saved, but no clear speech text was detected in the audio segments."
     );
   }
 

@@ -295,7 +295,11 @@ export async function transcribeAudio(
   // TODO: Speaker detection.
   if (!hasOpenRouterKey()) return "";
   if (audioFile.size > openRouterAudioLimit) {
-    throw new Error("Audio is larger than the 24 MB OpenRouter transcription limit. Please split it into smaller parts.");
+    throw new Error(
+      options.mode === "live"
+        ? "This audio segment is larger than the 24 MB OpenRouter transcription limit."
+        : "This saved recording is too large to re-transcribe as a single file (OpenRouter's 24 MB limit covers roughly 25-30 minutes of audio). Full-length transcription already runs automatically in small segments while you record, so long meetings are already captured — this button is only reliable for shorter recordings. Open the meeting to review the transcript captured during recording."
+    );
   }
 
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
@@ -311,7 +315,7 @@ export async function transcribeAudio(
   );
   const cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
-  assertUsableSavedTranscript(cleanedTranscript, audioFile);
+  assertUsableSavedTranscript(cleanedTranscript);
 
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
@@ -321,8 +325,8 @@ export async function transcribeAudio(
   ).catch(() => cleanedTranscript);
 
   const cleanedRefinedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames);
-  const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, audioFile);
-  assertUsableSavedTranscript(bestTranscript, audioFile);
+  const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript);
+  assertUsableSavedTranscript(bestTranscript);
   return bestTranscript;
 }
 
@@ -365,9 +369,9 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .join("\n");
 }
 
-function chooseBetterSavedTranscript(rawTranscript: string, refinedTranscript: string, audioFile: File) {
+function chooseBetterSavedTranscript(rawTranscript: string, refinedTranscript: string) {
   if (!refinedTranscript.trim()) return rawTranscript;
-  if (isLikelyIncompleteTranscript(refinedTranscript, audioFile)) return rawTranscript;
+  if (isLikelyIncompleteTranscript(refinedTranscript)) return rawTranscript;
 
   const rawScore = transcriptTokenScore(rawTranscript);
   const refinedScore = transcriptTokenScore(refinedTranscript);
@@ -376,14 +380,14 @@ function chooseBetterSavedTranscript(rawTranscript: string, refinedTranscript: s
   return refinedTranscript;
 }
 
-function assertUsableSavedTranscript(transcript: string, audioFile: File) {
-  if (!isLikelyIncompleteTranscript(transcript, audioFile)) return;
+function assertUsableSavedTranscript(transcript: string) {
+  if (!isLikelyIncompleteTranscript(transcript)) return;
   throw new Error(
     "No clear speech text was detected. Please check the audio, microphone, selected language, or OpenRouter credits/key, then try again."
   );
 }
 
-function isLikelyIncompleteTranscript(transcript: string, audioFile: File) {
+function isLikelyIncompleteTranscript(transcript: string) {
   const clean = transcript.trim();
   if (!clean || isTimestampOnlyTranscript(clean)) return true;
 
@@ -399,11 +403,6 @@ function isLikelyIncompleteTranscript(transcript: string, audioFile: File) {
   ) {
     return true;
   }
-
-  const score = transcriptTokenScore(clean);
-  if (audioFile.size > 500_000 && score < 12) return true;
-  if (audioFile.size > 100_000 && score < 8) return true;
-  if (audioFile.size > 20_000 && score < 4) return true;
 
   return false;
 }

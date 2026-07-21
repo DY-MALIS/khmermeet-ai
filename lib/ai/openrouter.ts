@@ -92,12 +92,7 @@ export function transcriptionModel() {
 
   const normalized = configured.toLowerCase();
   const isTtsModel = normalized.includes("tts") || normalized.includes("text-to-speech");
-  const isUnsupportedTranscribeModel = normalized.includes("gpt-4o-mini-transcribe");
-  const isSupportedTranscribeModel = normalized.includes("whisper");
-
-  if (isTtsModel || isUnsupportedTranscribeModel || !isSupportedTranscribeModel) {
-    return DEFAULT_TRANSCRIPTION_MODEL;
-  }
+  if (isTtsModel) return DEFAULT_TRANSCRIPTION_MODEL;
 
   return configured;
 }

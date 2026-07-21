@@ -711,6 +711,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }
 
     let successfulChunks = 0;
+    let lastErrorMessage = "";
     setTranscriptionProgress(`Transcribing 0/${segments.length} audio segments...`);
 
     for (let index = 0; index < segments.length; index += 1) {
@@ -724,16 +725,21 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
         if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
           successfulChunks += 1;
+        } else if (!response.ok && data.error) {
+          lastErrorMessage = data.error;
         }
-      } catch {
+      } catch (error) {
         // Continue with the next segment so one timeout/noisy section does not stop a long recording.
+        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
       }
     }
 
     setTranscriptionProgress(
       successfulChunks
         ? `Transcription complete: ${successfulChunks}/${segments.length} segments produced text.`
-        : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
+        : lastErrorMessage
+          ? `Audio saved, but transcription failed: ${lastErrorMessage}`
+          : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
     );
     setNotice("Server recording transcribed and saved to meeting history.");
   }
@@ -797,6 +803,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     if (!audioSegments.length) return;
 
     let successfulChunks = 0;
+    let lastErrorMessage = "";
     setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
 
     for (let index = 0; index < audioSegments.length; index += 1) {
@@ -814,16 +821,21 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
         if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
           successfulChunks += 1;
+        } else if (!response.ok && data.error) {
+          lastErrorMessage = data.error;
         }
-      } catch {
+      } catch (error) {
         // Continue with the next chunk so one timeout/noisy section does not stop a long recording.
+        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
       }
     }
 
     setTranscriptionProgress(
       successfulChunks
         ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review transcript.`
-        : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
+        : lastErrorMessage
+          ? `Audio saved, but transcription failed: ${lastErrorMessage}`
+          : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
     );
     setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");
   }

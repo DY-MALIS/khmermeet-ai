@@ -4,6 +4,7 @@ import {
   generateOpenRouterContent,
   OpenRouterApiError,
   textModel,
+  transcribeOpenRouterAudio,
   transcriptionModel
 } from "@/lib/ai/openrouter";
 
@@ -19,27 +20,71 @@ export async function GET() {
     );
   }
 
+  const chat = await checkChatCompletions();
+  const transcription = await checkTranscription();
+
+  const ok = chat.ok && transcription.ok;
+  return NextResponse.json(
+    {
+      ok,
+      status: ok ? "working" : "failed",
+      message: ok
+        ? "OpenRouter chat and transcription endpoints are both working."
+        : !chat.ok
+          ? chat.message
+          : transcription.message,
+      diagnostics,
+      chat,
+      transcription
+    },
+    { status: ok ? 200 : 500 }
+  );
+}
+
+async function checkChatCompletions() {
   try {
     const sample = await generateOpenRouterContent([{ text: "Reply with only OK." }], { temperature: 0 });
-    return NextResponse.json({
-      ok: true,
-      status: "working",
-      message: "OpenRouter API key is working.",
-      diagnostics,
-      sample: sample.slice(0, 40)
-    });
+    return { ok: true as const, message: "OpenRouter API key is working.", sample: sample.slice(0, 40) };
   } catch (error) {
-    return NextResponse.json(
-      {
-        ok: false,
-        status: "failed",
-        message: error instanceof Error ? error.message : "OpenRouter API check failed.",
-        diagnostics,
-        openRouterError: getSafeError(error)
-      },
-      { status: 500 }
-    );
+    return {
+      ok: false as const,
+      message: error instanceof Error ? error.message : "OpenRouter chat completions check failed.",
+      openRouterError: getSafeError(error)
+    };
   }
+}
+
+async function checkTranscription() {
+  try {
+    await transcribeOpenRouterAudio(buildSilentWav(), "audio/wav", "health-check.wav", "km", 20000);
+    return { ok: true as const, message: "OpenRouter transcription endpoint is working." };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof Error ? error.message : "OpenRouter transcription check failed.",
+      openRouterError: getSafeError(error)
+    };
+  }
+}
+
+function buildSilentWav(durationMs = 300, sampleRate = 8000) {
+  const numSamples = Math.floor((durationMs / 1000) * sampleRate);
+  const dataSize = numSamples * 2;
+  const buffer = Buffer.alloc(44 + dataSize);
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20);
+  buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataSize, 40);
+  return buffer;
 }
 
 function getDiagnostics() {
