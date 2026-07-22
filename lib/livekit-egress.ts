@@ -3,9 +3,11 @@ import {
   EgressStatus,
   EncodedFileOutput,
   EncodedFileType,
+  RoomServiceClient,
   S3Upload,
   SegmentedFileOutput,
-  SegmentedFileProtocol
+  SegmentedFileProtocol,
+  TrackSource
 } from "livekit-server-sdk";
 
 function requiredEnv(name: string) {
@@ -27,6 +29,10 @@ function egressClient() {
     requiredEnv("LIVEKIT_API_SECRET"),
     { requestTimeout: 30_000 }
   );
+}
+
+function roomServiceClient() {
+  return new RoomServiceClient(liveKitHttpUrl(), requiredEnv("LIVEKIT_API_KEY"), requiredEnv("LIVEKIT_API_SECRET"));
 }
 
 function egressS3Upload() {
@@ -57,13 +63,17 @@ function egressS3Output(filepath: string) {
   });
 }
 
-function egressS3SegmentsOutput(filenamePrefix: string, playlistName: string) {
+export function getEgressSegmentDurationSeconds() {
   const segmentDuration = Number(process.env.LIVEKIT_EGRESS_SEGMENT_SECONDS ?? 300);
+  return Number.isFinite(segmentDuration) && segmentDuration > 0 ? segmentDuration : 300;
+}
+
+function egressS3SegmentsOutput(filenamePrefix: string, playlistName: string) {
   return new SegmentedFileOutput({
     protocol: SegmentedFileProtocol.HLS_PROTOCOL,
     filenamePrefix,
     playlistName,
-    segmentDuration: Number.isFinite(segmentDuration) && segmentDuration > 0 ? segmentDuration : 300,
+    segmentDuration: getEgressSegmentDurationSeconds(),
     disableManifest: true,
     output: {
       case: "s3",
@@ -84,41 +94,105 @@ export function storagePlaybackUrl(filepath: string) {
   return `/api/storage/${filepath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-// Two independent egress jobs instead of one combined { file, segments } output.
-// The single-file job matches the pattern that was already proven to work in
-// production; combining file+segments in one job is allowed by the SDK's types
-// but its real-world reliability is unverified, so segments run as a separate,
-// best-effort job that can fail without taking down the (more important) file
-// recording used for playback.
+export type TrackJobInfo = {
+  egressId: string;
+  identity: string;
+  name: string;
+  segmentsPrefix: string;
+  startOffsetMs: number;
+};
+
+// One track-composite egress job per participant's microphone, instead of one
+// mixed-room job. Overlapping speech gets physically superimposed into a single
+// signal the moment audio is mixed, and no transcription model can undo that -
+// capturing each participant separately avoids the problem instead of trying to
+// fix it after the fact. Best-effort: one participant's job failing must not
+// abort the recording or any other participant's job.
+async function startTrackEgressJob(
+  client: EgressClient,
+  room: string,
+  recordingBase: string,
+  identity: string,
+  name: string,
+  trackSid: string,
+  recordingStartedAt: number
+): Promise<TrackJobInfo | null> {
+  try {
+    const segmentsPrefix = `${recordingBase}/segments/${safeSegment(identity)}`;
+    const info = await client.startTrackCompositeEgress(
+      room,
+      egressS3SegmentsOutput(`${segmentsPrefix}/segment`, "index.m3u8"),
+      { audioTrackId: trackSid }
+    );
+    return { egressId: info.egressId, identity, name, segmentsPrefix, startOffsetMs: Date.now() - recordingStartedAt };
+  } catch {
+    return null;
+  }
+}
+
 export async function startLiveKitRoomRecording(room: string, title?: string) {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const base = `livekit-egress/${safeSegment(room)}/${timestamp}-${safeSegment(title || room)}`;
-  const filepath = `${base}.m4a`;
-  const segmentsPrefix = `${base}/segments`;
+  const recordingStartedAt = Date.now();
+  const timestamp = new Date(recordingStartedAt).toISOString().replace(/[:.]/g, "-");
+  const recordingBase = `livekit-egress/${safeSegment(room)}/${timestamp}-${safeSegment(title || room)}`;
+  const filepath = `${recordingBase}.m4a`;
 
   const client = egressClient();
   const fileInfo = await client.startRoomCompositeEgress(room, { file: egressS3Output(filepath) }, { audioOnly: true });
 
-  let segmentsEgressId = "";
+  const trackJobs: TrackJobInfo[] = [];
   try {
-    const segmentsInfo = await client.startRoomCompositeEgress(
-      room,
-      { segments: egressS3SegmentsOutput(`${segmentsPrefix}/segment`, "index.m3u8") },
-      { audioOnly: true }
-    );
-    segmentsEgressId = segmentsInfo.egressId;
+    const participants = await roomServiceClient().listParticipants(room);
+    for (const participant of participants) {
+      const micTrack = participant.tracks.find((track) => track.source === TrackSource.MICROPHONE);
+      if (!micTrack) continue;
+      const job = await startTrackEgressJob(
+        client,
+        room,
+        recordingBase,
+        participant.identity,
+        participant.name || participant.identity,
+        micTrack.sid,
+        recordingStartedAt
+      );
+      if (job) trackJobs.push(job);
+    }
   } catch {
-    // Playback recording still works without live transcription segments.
+    // Listing participants failed - the file recording still proceeds. Late
+    // joiners can still get a track job via startParticipantTrackEgress.
   }
 
   return {
     fileEgressId: fileInfo.egressId,
-    segmentsEgressId,
     roomName: fileInfo.roomName || room,
     filepath,
     storageUrl: storagePlaybackUrl(filepath),
-    segmentsPrefix
+    recordingBase,
+    recordingStartedAt,
+    trackJobs
   };
+}
+
+// For a participant who joins after the recording already started.
+export async function startParticipantTrackEgress(
+  room: string,
+  recordingBase: string,
+  identity: string,
+  name: string | undefined,
+  recordingStartedAt: number
+): Promise<TrackJobInfo | null> {
+  const client = egressClient();
+  // ParticipantConnected can fire slightly before that participant's mic
+  // track is actually published, so retry briefly before giving up.
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const participants = await roomServiceClient().listParticipants(room);
+    const participant = participants.find((entry) => entry.identity === identity);
+    const micTrack = participant?.tracks.find((track) => track.source === TrackSource.MICROPHONE);
+    if (micTrack) {
+      return startTrackEgressJob(client, room, recordingBase, identity, name || identity, micTrack.sid, recordingStartedAt);
+    }
+    if (attempt < 3) await sleep(1500);
+  }
+  return null;
 }
 
 type EgressPollResult =
@@ -158,20 +232,30 @@ async function stopAndWaitOne(client: EgressClient, egressId: string, budgetMs: 
   return pollEgressStatus(client, egressId, { budgetMs });
 }
 
-export async function stopLiveKitRoomRecordingAndWait(fileEgressId: string, segmentsEgressId: string) {
-  const client = egressClient();
-  const [fileResult, segmentsResult] = await Promise.all([
-    stopAndWaitOne(client, fileEgressId, 45000),
-    segmentsEgressId ? stopAndWaitOne(client, segmentsEgressId, 45000) : Promise.resolve<EgressPollResult>({ status: "complete", egressId: "" })
-  ]);
-  return { fileResult, segmentsResult };
+export async function stopSingleTrackEgress(egressId: string) {
+  return stopAndWaitOne(egressClient(), egressId, 15000);
 }
 
-export async function checkLiveKitEgressStatus(fileEgressId: string, segmentsEgressId: string) {
+export async function stopLiveKitRoomRecordingAndWait(fileEgressId: string, trackEgressIds: string[]) {
   const client = egressClient();
-  const [fileResult, segmentsResult] = await Promise.all([
-    pollEgressStatus(client, fileEgressId, { budgetMs: 0 }),
-    segmentsEgressId ? pollEgressStatus(client, segmentsEgressId, { budgetMs: 0 }) : Promise.resolve<EgressPollResult>({ status: "complete", egressId: "" })
+  const [fileResult, ...trackResultsList] = await Promise.all([
+    stopAndWaitOne(client, fileEgressId, 45000),
+    ...trackEgressIds.map((id) => stopAndWaitOne(client, id, 45000))
   ]);
-  return { fileResult, segmentsResult };
+  return {
+    fileResult,
+    trackResults: trackEgressIds.map((egressId, index) => ({ egressId, result: trackResultsList[index] }))
+  };
+}
+
+export async function checkLiveKitEgressStatus(fileEgressId: string, trackEgressIds: string[]) {
+  const client = egressClient();
+  const [fileResult, ...trackResultsList] = await Promise.all([
+    pollEgressStatus(client, fileEgressId, { budgetMs: 0 }),
+    ...trackEgressIds.map((id) => pollEgressStatus(client, id, { budgetMs: 0 }))
+  ]);
+  return {
+    fileResult,
+    trackResults: trackEgressIds.map((egressId, index) => ({ egressId, result: trackResultsList[index] }))
+  };
 }

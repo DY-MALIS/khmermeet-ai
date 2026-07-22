@@ -17,20 +17,21 @@ model User {
 }
 
 model Meeting {
-  id           String   @id @default(cuid())
-  title        String
-  audioUrl     String?
-  transcript   String?
-  summary      String?
-  language     String   @default("km")
-  duration     Int      @default(0)
-  status       String   @default("recorded")
-  speakerNames String[] @default([])
-  createdById  String
-  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  tasks        Task[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String                     @id @default(cuid())
+  title              String
+  audioUrl           String?
+  transcript         String?
+  summary            String?
+  language           String                     @default("km")
+  duration           Int                        @default(0)
+  status             String                     @default("recorded")
+  speakerNames       String[]                   @default([])
+  createdById        String
+  createdBy          User                       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tasks              Task[]
+  transcriptSegments MeetingTranscriptSegment[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
 }
 
 model AudioFile {
@@ -55,6 +56,21 @@ model Task {
   sourceText   String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+model MeetingTranscriptSegment {
+  id              String   @id @default(cuid())
+  meetingId       String
+  meeting         Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  speakerIdentity String
+  speakerName     String?
+  segmentIndex    Int
+  startMs         Int
+  endMs           Int
+  text            String
+  createdAt       DateTime @default(now())
+
+  @@index([meetingId, startMs])
 }
 
 model CallSignal {

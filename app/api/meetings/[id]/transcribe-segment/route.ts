@@ -1,8 +1,8 @@
 import path from "path";
 import { NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { getEgressSegmentDurationSeconds } from "@/lib/livekit-egress";
 import { downloadSupabaseAudio, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
@@ -26,12 +26,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const index = Number(body.index ?? 0);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
+    const speakerIdentity = typeof body.speakerIdentity === "string" ? body.speakerIdentity.trim() : "";
+    const speakerName = typeof body.speakerName === "string" ? body.speakerName.trim() : "";
+    const startOffsetMs = Number(body.startOffsetMs);
+    if (!speakerIdentity || !Number.isFinite(startOffsetMs)) {
+      return NextResponse.json({ error: "speakerIdentity and startOffsetMs are required." }, { status: 400 });
+    }
 
     const { data, mimeType } = await downloadSupabaseAudio(objectPath);
     const file = new File([data], path.basename(objectPath), { type: mimeType });
 
-    const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
-    const transcript = await transcribeAudio(file, savedSpeakerNames, languageMode, {
+    // No speakerNames passed here: this track is already single-speaker audio,
+    // so the speaker label is attached externally (below) instead of asking
+    // the model to guess/label speakers within the transcribed text itself.
+    const transcript = await transcribeAudio(file, [], languageMode, {
       mode: "live",
       timeoutMs: 45000
     });
@@ -40,23 +48,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ transcript: "", skipped: true, index });
     }
 
-    const existing = meeting.transcript?.trim();
-    const nextTranscript = [existing, transcript.trim()].filter(Boolean).join("\n");
+    const segmentDurationMs = getEgressSegmentDurationSeconds() * 1000;
+    const startMs = startOffsetMs + (index - 1) * segmentDurationMs;
+    const endMs = startMs + segmentDurationMs;
 
-    await prisma.meeting.update({
-      where: { id },
+    await prisma.meetingTranscriptSegment.create({
       data: {
-        transcript: nextTranscript,
-        summary: null,
-        language: "km-en",
-        status: "transcribed"
+        meetingId: id,
+        speakerIdentity,
+        speakerName: speakerName || speakerIdentity,
+        segmentIndex: index,
+        startMs,
+        endMs,
+        text: transcript.trim()
       }
     });
-
-    revalidatePath("/transcripts");
-    revalidatePath("/summaries");
-    revalidatePath("/dashboard");
-    revalidatePath(`/meetings/${id}`);
 
     return NextResponse.json({ transcript, index });
   } catch (error) {

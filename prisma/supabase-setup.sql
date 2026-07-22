@@ -51,6 +51,19 @@ CREATE TABLE IF NOT EXISTS "Task" (
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
 
+CREATE TABLE IF NOT EXISTS "MeetingTranscriptSegment" (
+    "id" TEXT NOT NULL,
+    "meetingId" TEXT NOT NULL,
+    "speakerIdentity" TEXT NOT NULL,
+    "speakerName" TEXT,
+    "segmentIndex" INTEGER NOT NULL,
+    "startMs" INTEGER NOT NULL,
+    "endMs" INTEGER NOT NULL,
+    "text" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "MeetingTranscriptSegment_pkey" PRIMARY KEY ("id")
+);
+
 CREATE TABLE IF NOT EXISTS "CallSignal" (
     "id" SERIAL NOT NULL,
     "roomId" TEXT NOT NULL,
@@ -62,6 +75,7 @@ CREATE TABLE IF NOT EXISTS "CallSignal" (
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 CREATE INDEX IF NOT EXISTS "CallSignal_roomId_id_idx" ON "CallSignal"("roomId", "id");
 CREATE INDEX IF NOT EXISTS "CallSignal_createdAt_idx" ON "CallSignal"("createdAt");
+CREATE INDEX IF NOT EXISTS "MeetingTranscriptSegment_meetingId_startMs_idx" ON "MeetingTranscriptSegment"("meetingId", "startMs");
 
 ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "speakerNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
@@ -81,6 +95,15 @@ BEGIN
   ) THEN
     ALTER TABLE "Task"
       ADD CONSTRAINT "Task_meetingId_fkey"
+      FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'MeetingTranscriptSegment_meetingId_fkey'
+  ) THEN
+    ALTER TABLE "MeetingTranscriptSegment"
+      ADD CONSTRAINT "MeetingTranscriptSegment_meetingId_fkey"
       FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id")
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
