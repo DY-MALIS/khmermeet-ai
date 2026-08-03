@@ -337,13 +337,17 @@ export async function transcribeAudio(
   }
 
   if (!hasUsableTranscript(cleanedTranscript)) {
+    // No .catch() here: an OpenRouterApiError (invalid key, no credits, rate
+    // limit) must propagate so the caller reports the real cause instead of
+    // the generic "no clear speech detected" message, which was silently
+    // masking account/billing errors as an audio-quality problem.
     const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
       audioBuffer,
       mimeType,
       filename,
       normalizedLanguageMode,
       timeoutMs
-    ).catch(() => "");
+    );
     const cleanedFallback = addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames);
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
   }
@@ -388,12 +392,17 @@ function normalizeSpeakerNames(speakerNames: string[]) {
   return speakerNames
     .map((name) => name.trim())
     .filter(Boolean)
-    .slice(0, 20);
+    .slice(0, 50);
 }
 
 function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
-  const [speakerName] = normalizeSpeakerNames(speakerNames);
-  if (!speakerName || !text.trim()) return text;
+  const names = normalizeSpeakerNames(speakerNames);
+  // Only safe to stamp a name onto unlabeled lines when exactly one speaker
+  // is known - with multiple participants there is no way to tell which of
+  // them said an unlabeled line, and guessing the first name in the list
+  // mislabels everyone else's speech as that one person's.
+  if (names.length !== 1 || !text.trim()) return text;
+  const [speakerName] = names;
 
   return text
     .split(/\n+/)

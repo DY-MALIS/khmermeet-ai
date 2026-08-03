@@ -7,9 +7,15 @@ import { MeetingTranscriptPanel } from "@/components/meeting-transcript-panel";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
 import { TranscriptTranslationAgent } from "@/components/transcript-translation-agent";
+import { MeetingSmartNote } from "@/components/meeting-smart-note";
+import { MeetingFollowUpEmail } from "@/components/meeting-follow-up-email";
+import { MeetingDocumentGenerator } from "@/components/meeting-document-generator";
+import { MeetingAskChat } from "@/components/meeting-ask-chat";
+import { MeetingTimeline } from "@/components/meeting-timeline";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 
 function meetingLoadErrorMessage(error: unknown) {
   const code =
@@ -96,7 +102,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
       {meeting.audioUrl ? (
         <div className="kh-card p-4">
-          <audio className="w-full" controls src={meeting.audioUrl} />
+          <audio id={AUDIO_PLAYER_ELEMENT_ID} className="w-full" controls src={meeting.audioUrl} />
         </div>
       ) : null}
 
@@ -162,7 +168,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                         <span className="kh-badge bg-sky/10 text-sky">{task.priority}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="kh-badge bg-slate-100 text-slate-700">{task.status}</span>
+                        <span className={`kh-badge ${taskStatusBadgeTone(task)}`}>{taskStatusLabel(task)}</span>
                       </td>
                     </tr>
                   ))}
@@ -193,6 +199,42 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </section>
+
+      <MeetingSmartNote
+        meetingId={meeting.id}
+        smartNote={meeting.smartNote as { problems?: string[]; ideas?: string[]; questions?: string[] } | null}
+        decisions={meeting.decisions}
+        tasks={meeting.tasks}
+        hasTranscript={transcriptIsUsable}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <MeetingTimeline
+          meetingId={meeting.id}
+          initialTimeline={(meeting.timeline as { label: string; startMs: number }[] | null) ?? []}
+          hasAudio={Boolean(meeting.audioUrl)}
+        />
+        <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <MeetingFollowUpEmail meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
+        <MeetingDocumentGenerator meetingId={meeting.id} meetingTitle={meeting.title} hasTranscript={transcriptIsUsable} />
+      </div>
     </div>
   );
+}
+
+function taskStatusLabel(task: { status: string; deadline: Date | null }) {
+  if (task.status !== "completed" && task.deadline && task.deadline < new Date()) return "Overdue";
+  if (task.status === "completed") return "Done";
+  if (task.status === "in_progress") return "In Progress";
+  return "Not started";
+}
+
+function taskStatusBadgeTone(task: { status: string; deadline: Date | null }) {
+  if (task.status !== "completed" && task.deadline && task.deadline < new Date()) return "bg-red-100 text-red-700";
+  if (task.status === "completed") return "bg-emerald-100 text-emerald-700";
+  if (task.status === "in_progress") return "bg-amber-100 text-amber-700";
+  return "bg-slate-100 text-slate-700";
 }

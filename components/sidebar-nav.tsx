@@ -1,12 +1,23 @@
 "use client";
 
-import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
+import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, GraduationCap, History, LayoutGrid, Settings, Sparkles, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/components/ui";
 import { useDisplayLanguage } from "@/lib/display-language";
 import { navigationLabels } from "@/lib/navigation-labels";
 
-type NavigationLabelKey = "dashboard" | "meetings" | "recorder" | "transcript" | "aiSummary" | "tasks" | "history" | "settings";
+type NavigationLabelKey =
+  | "dashboard"
+  | "meetings"
+  | "recorder"
+  | "transcript"
+  | "aiSummary"
+  | "studio"
+  | "tasks"
+  | "history"
+  | "settings"
+  | "aieureka"
+  | "aiWorkspace";
 
 const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarChart3 }> = [
   { href: "/dashboard", labelKey: "dashboard", icon: BarChart3 },
@@ -14,6 +25,9 @@ const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarC
   { href: "/meetings/new", labelKey: "recorder", icon: CalendarPlus },
   { href: "/transcripts", labelKey: "transcript", icon: FileText },
   { href: "/summaries", labelKey: "aiSummary", icon: Bot },
+  { href: "/studio", labelKey: "studio", icon: Sparkles },
+  { href: "/aieureka", labelKey: "aieureka", icon: GraduationCap },
+  { href: "/ai-workspace", labelKey: "aiWorkspace", icon: LayoutGrid },
   { href: "/tasks", labelKey: "tasks", icon: CheckSquare },
   { href: "/meetings", labelKey: "history", icon: History },
   { href: "/settings", labelKey: "settings", icon: Settings }
@@ -32,7 +46,9 @@ export function SidebarNav() {
           (item.href === "/meetings" &&
             pathname.startsWith("/meetings/") &&
             pathname !== "/meetings/new" &&
-            pathname !== "/meetings/call");
+            pathname !== "/meetings/call") ||
+          (item.href === "/studio" && pathname.startsWith("/studio/")) ||
+          (item.href === "/aieureka" && pathname.startsWith("/aieureka/"));
         return (
           <a
             key={item.href}

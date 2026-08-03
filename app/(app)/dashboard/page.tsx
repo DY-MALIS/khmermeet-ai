@@ -3,6 +3,13 @@ import { CheckCircle2, Clock, FileAudio, Mic, ListTodo, Video } from "lucide-rea
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
+import { PersonalAssistant } from "@/components/personal-assistant";
+import {
+  computeAverageMeetingMinutes,
+  computeMeetingQualityScore,
+  computeSpeakingTimeBySpeaker,
+  computeTaskCompletionRate
+} from "@/lib/meeting-analytics";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,12 +17,22 @@ export const revalidate = 0;
 export default async function DashboardPage() {
   const user = await requireUser();
   const data = await Promise.all([
-    prisma.meeting.findMany({ where: { createdById: user.id }, include: { tasks: true }, orderBy: { createdAt: "desc" }, take: 5 }),
-    prisma.task.findMany({ where: { meeting: { createdById: user.id } }, include: { meeting: true }, orderBy: { createdAt: "desc" } })
+    prisma.meeting.findMany({
+      where: { createdById: user.id },
+      include: { tasks: true, decisions: true },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    }),
+    prisma.task.findMany({ where: { meeting: { createdById: user.id } }, include: { meeting: true }, orderBy: { createdAt: "desc" } }),
+    prisma.meetingTranscriptSegment.findMany({
+      where: { meeting: { createdById: user.id } },
+      select: { speakerName: true, speakerIdentity: true, startMs: true, endMs: true },
+      take: 5000
+    })
   ])
-    .then(([meetings, tasks]) => ({ meetings, tasks, dbUnavailable: false }))
-    .catch(() => ({ meetings: [], tasks: [], dbUnavailable: true }));
-  const { meetings, tasks, dbUnavailable } = data;
+    .then(([meetings, tasks, segments]) => ({ meetings, tasks, segments, dbUnavailable: false }))
+    .catch(() => ({ meetings: [], tasks: [], segments: [], dbUnavailable: true }));
+  const { meetings, tasks, segments, dbUnavailable } = data;
   const now = new Date();
   const stats = [
     { label: "ប្រជុំសរុប", value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf" },
@@ -23,6 +40,14 @@ export default async function DashboardPage() {
     { label: "បានបញ្ចប់", value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700" },
     { label: "ហួសកំណត់", value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-red-100 text-red-700" }
   ];
+
+  const qualityScores = meetings
+    .map((meeting) => computeMeetingQualityScore(meeting.tasks, meeting.decisions, Boolean(meeting.summary)))
+    .filter((score): score is number => score !== null);
+  const avgQualityScore = qualityScores.length ? Math.round(qualityScores.reduce((sum, score) => sum + score, 0) / qualityScores.length) : null;
+  const completionRate = computeTaskCompletionRate(tasks);
+  const avgMeetingMinutes = computeAverageMeetingMinutes(meetings);
+  const speakingTime = computeSpeakingTimeBySpeaker(segments).slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -78,12 +103,43 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div> : null}
+      {!dbUnavailable ? (
+        <section className="kh-card p-5">
+          <h2 className="mb-4 text-lg font-bold">AI Meeting Analytics</h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <AnalyticsTile label="Meeting Quality" value={avgQualityScore !== null ? `${avgQualityScore}%` : "-"} />
+            <AnalyticsTile label="Task completion" value={completionRate !== null ? `${completionRate}%` : "-"} />
+            <AnalyticsTile label="Late tasks" value={String(tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length)} />
+            <AnalyticsTile label="Average meeting time" value={avgMeetingMinutes ? `${avgMeetingMinutes} min` : "-"} />
+          </div>
+          {speakingTime.length ? (
+            <div className="mt-5">
+              <p className="mb-2 text-sm font-bold text-ink">Who talks most (Server Rec recordings)</p>
+              <div className="space-y-2">
+                {speakingTime.map((speaker) => {
+                  const maxSeconds = speakingTime[0].seconds || 1;
+                  return (
+                    <div key={speaker.name} className="flex items-center gap-3">
+                      <span className="w-28 shrink-0 truncate text-xs text-slate-600">{speaker.name}</span>
+                      <div className="h-2 flex-1 rounded-full bg-slate-100">
+                        <div className="h-2 rounded-full bg-leaf" style={{ width: `${Math.max(4, (speaker.seconds / maxSeconds) * 100)}%` }} />
+                      </div>
+                      <span className="w-14 shrink-0 text-right text-xs text-slate-500">{Math.round(speaker.seconds / 60)} min</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {!dbUnavailable ? <PersonalAssistant /> : null}
       {!dbUnavailable ? <div className="grid gap-6 xl:grid-cols-2">
         <section className="kh-card p-5">
           <h2 className="mb-4 text-lg font-bold">ប្រជុំថ្មីៗ</h2>
           {meetings.length ? (
             <div className="space-y-3">
-              {meetings.map((meeting) => (
+              {meetings.slice(0, 5).map((meeting) => (
                 <a href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
                   <p className="font-semibold text-ink">{meeting.title}</p>
                   <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} កិច្ចការ</p>
@@ -106,6 +162,15 @@ export default async function DashboardPage() {
           ) : <EmptyState title="គ្មានកិច្ចការរង់ចាំ" description="កិច្ចការថ្មីនឹងបង្ហាញនៅទីនេះ។" />}
         </section>
       </div> : null}
+    </div>
+  );
+}
+
+function AnalyticsTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-100 p-4">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import { Trash2 } from "lucide-react";
 import { ExternalMediaUploadPanel } from "@/components/external-media-upload-panel";
 import { RecordingPanel } from "@/components/recording-panel";
+import { NextMeetingPrep } from "@/components/next-meeting-prep";
 import { deleteMeeting } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
@@ -28,6 +29,7 @@ export default async function NewMeetingPage() {
         <p className="mt-2 text-slate-500">ថតសំឡេងក្នុង browser, ស្តាប់ preview, រួចរក្សាទុក meeting ទៅ local database។</p>
         <a className="kh-button-secondary mt-4" href="/meetings/call">បើកប្រជុំវីដេអូ</a>
       </div>
+      <NextMeetingPrep userId={user.id} />
       <RecordingPanel />
       <ExternalMediaUploadPanel />
       <section className="kh-card p-5">

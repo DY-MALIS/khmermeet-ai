@@ -126,5 +126,5 @@ function normalizeSpeakerNames(value: unknown) {
     rawNames
       .map((name) => (typeof name === "string" ? name.trim() : ""))
       .filter(Boolean)
-  )].slice(0, 20);
+  )].slice(0, 50);
 }

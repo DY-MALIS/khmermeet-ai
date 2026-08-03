@@ -96,13 +96,13 @@ async function readTranscriptionBody(request: Request) {
     ? rawSpeakerNames
         .map((name) => (typeof name === "string" ? name.trim() : ""))
         .filter(Boolean)
-        .slice(0, 20)
+        .slice(0, 50)
     : typeof rawSpeakerNames === "string"
       ? rawSpeakerNames
           .split(/[,，\n]/)
           .map((name) => name.trim())
           .filter(Boolean)
-          .slice(0, 20)
+          .slice(0, 50)
       : [];
 
   return {

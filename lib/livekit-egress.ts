@@ -142,19 +142,32 @@ export async function startLiveKitRoomRecording(room: string, title?: string) {
   const trackJobs: TrackJobInfo[] = [];
   try {
     const participants = await roomServiceClient().listParticipants(room);
-    for (const participant of participants) {
+    const speakers = participants.flatMap((participant) => {
       const micTrack = participant.tracks.find((track) => track.source === TrackSource.MICROPHONE);
-      if (!micTrack) continue;
-      const job = await startTrackEgressJob(
-        client,
-        room,
-        recordingBase,
-        participant.identity,
-        participant.name || participant.identity,
-        micTrack.sid,
-        recordingStartedAt
+      return micTrack ? [{ participant, micTrack }] : [];
+    });
+
+    // Start track-egress jobs in bounded-concurrency batches instead of one at
+    // a time - a meeting can have dozens of participants, and starting jobs
+    // sequentially risks blowing past this route's maxDuration before everyone
+    // is hooked up for recording.
+    const concurrency = 8;
+    for (let i = 0; i < speakers.length; i += concurrency) {
+      const batch = speakers.slice(i, i + concurrency);
+      const jobs = await Promise.all(
+        batch.map(({ participant, micTrack }) =>
+          startTrackEgressJob(
+            client,
+            room,
+            recordingBase,
+            participant.identity,
+            participant.name || participant.identity,
+            micTrack.sid,
+            recordingStartedAt
+          )
+        )
       );
-      if (job) trackJobs.push(job);
+      for (const job of jobs) if (job) trackJobs.push(job);
     }
   } catch {
     // Listing participants failed - the file recording still proceeds. Late
@@ -168,6 +181,7 @@ export async function startLiveKitRoomRecording(room: string, title?: string) {
     storageUrl: storagePlaybackUrl(filepath),
     recordingBase,
     recordingStartedAt,
+    segmentDurationMs: getEgressSegmentDurationSeconds() * 1000,
     trackJobs
   };
 }

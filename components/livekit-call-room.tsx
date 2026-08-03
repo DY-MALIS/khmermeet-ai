@@ -11,7 +11,7 @@ import {
   useTracks
 } from "@livekit/components-react";
 import { RoomEvent, Track } from "livekit-client";
-import type { RemoteParticipant } from "livekit-client";
+import type { Participant, RemoteParticipant } from "livekit-client";
 import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -458,6 +458,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     storageUrl: string;
     recordingBase: string;
     recordingStartedAt: number;
+    segmentDurationMs: number;
     trackJobs: TrackJob[];
   } | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -472,6 +473,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   useEffect(() => {
     serverRecordingRef.current = serverRecording;
   }, [serverRecording]);
+  // Which segment indexes each participant was flagged as an active speaker
+  // during, tracked from LiveKit's free real-time voice-activity detection.
+  // Segments with no recorded activity for a given speaker are skipped at
+  // transcription time instead of paying to run silence through the AI -
+  // most of any given participant's track in a multi-person meeting is silence.
+  const speakingSegmentsRef = useRef<Record<string, Set<number>>>({});
 
   useEffect(() => {
     if (!recording) return;
@@ -536,6 +543,27 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     return () => {
       room.off(RoomEvent.ParticipantConnected, handleConnected);
       room.off(RoomEvent.ParticipantDisconnected, handleDisconnected);
+    };
+  }, [room]);
+
+  // Free voice-activity signal from LiveKit, recorded per segment index so
+  // transcription can skip segments where a participant never spoke.
+  useEffect(() => {
+    function handleActiveSpeakers(speakers: Participant[]) {
+      const current = serverRecordingRef.current;
+      if (!current) return;
+      const elapsedMs = Date.now() - current.recordingStartedAt;
+      const segmentIndex = Math.floor(elapsedMs / current.segmentDurationMs) + 1;
+      for (const speaker of speakers) {
+        const bucket = speakingSegmentsRef.current[speaker.identity] ?? new Set<number>();
+        bucket.add(segmentIndex);
+        speakingSegmentsRef.current[speaker.identity] = bucket;
+      }
+    }
+
+    room.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakers);
+    return () => {
+      room.off(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakers);
     };
   }, [room]);
 
@@ -620,7 +648,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
     return [...new Set(names.map((name) => name?.trim()).filter((name): name is string => Boolean(name)))].slice(
       0,
-      20
+      50
     );
   }
 
@@ -680,6 +708,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         storageUrl?: string;
         recordingBase?: string;
         recordingStartedAt?: number;
+        segmentDurationMs?: number;
         trackJobs?: TrackJob[];
         error?: string;
         hint?: string;
@@ -688,11 +717,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       if (!data.fileEgressId || !data.storageUrl || !data.recordingBase || !data.recordingStartedAt) {
         throw new Error("Server recording did not return a recording id.");
       }
+      speakingSegmentsRef.current = {};
       setServerRecording({
         fileEgressId: data.fileEgressId,
         storageUrl: data.storageUrl,
         recordingBase: data.recordingBase,
         recordingStartedAt: data.recordingStartedAt,
+        segmentDurationMs: data.segmentDurationMs ?? 300000,
         trackJobs: data.trackJobs ?? []
       });
       serverStartedAtRef.current = Date.now();
@@ -765,7 +796,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           const segmentsResponse = await fetch(`/api/livekit-egress/segments?prefix=${encodeURIComponent(job.segmentsPrefix)}`);
           const segmentsJson = await readJsonResponse<{ segments?: string[] }>(segmentsResponse);
           if (segmentsResponse.ok) {
-            await transcribeServerRecordingSegments(saveJson.meetingId, segmentsJson.segments ?? [], job);
+            await transcribeServerRecordingSegments(
+              saveJson.meetingId,
+              segmentsJson.segments ?? [],
+              job,
+              serverRecording.segmentDurationMs
+            );
           }
         }
         const mergeResponse = await fetch(`/api/meetings/${saveJson.meetingId}/merge-transcript`, { method: "POST" });
@@ -788,13 +824,41 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }
   }
 
-  async function transcribeServerRecordingSegments(meetingId: string, segments: string[], job: TrackJob) {
+  // Segments where this speaker was never flagged as actively speaking (per
+  // the free LiveKit voice-activity tracking above) are silence for this
+  // track and are skipped without spending an AI call on them. A segment can
+  // straddle a room-wide activity bucket boundary, so both buckets the
+  // segment's time range touches are checked before treating it as silent.
+  function segmentHadSpeech(job: TrackJob, index: number, segmentDurationMs: number) {
+    const speakingSet = speakingSegmentsRef.current[job.identity];
+    if (!speakingSet) return false;
+    const startMs = job.startOffsetMs + index * segmentDurationMs;
+    const endMs = startMs + segmentDurationMs;
+    const firstBucket = Math.floor(startMs / segmentDurationMs) + 1;
+    const lastBucket = Math.floor(Math.max(startMs, endMs - 1) / segmentDurationMs) + 1;
+    for (let bucket = firstBucket; bucket <= lastBucket; bucket += 1) {
+      if (speakingSet.has(bucket)) return true;
+    }
+    return false;
+  }
+
+  async function transcribeServerRecordingSegments(
+    meetingId: string,
+    segments: string[],
+    job: TrackJob,
+    segmentDurationMs: number
+  ) {
     if (!segments.length) return;
 
     let successfulChunks = 0;
+    let skippedSilentChunks = 0;
     setTranscriptionProgress(`Transcribing ${job.name}: 0/${segments.length} segments...`);
 
     for (let index = 0; index < segments.length; index += 1) {
+      if (!segmentHadSpeech(job, index, segmentDurationMs)) {
+        skippedSilentChunks += 1;
+        continue;
+      }
       setTranscriptionProgress(`Transcribing ${job.name}: ${index + 1}/${segments.length} segments...`);
       const maxAttempts = 3;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -826,7 +890,10 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       }
     }
 
-    setTranscriptionProgress(`${job.name}: ${successfulChunks}/${segments.length} segments produced text.`);
+    setTranscriptionProgress(
+      `${job.name}: ${successfulChunks}/${segments.length} segments produced text` +
+        (skippedSilentChunks ? ` (${skippedSilentChunks} silent segments skipped to save cost).` : ".")
+    );
   }
 
   async function saveRecording(mimeType: string) {
@@ -935,7 +1002,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           </p>
           <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ថត mixed audio ពី LiveKit room រួច upload, transcribe, summarize និងបង្កើត tasks/history។
+            ប្រើ &quot;Server Rec&quot; ដើម្បីថតសំឡេងអ្នកនិយាយម្នាក់ៗដាច់ដោយឡែក ហើយដាក់ឈ្មោះត្រឹមត្រូវស្វ័យប្រវត្តិតាមឈ្មោះចូលរួម (ត្រឹមត្រូវបំផុតសម្រាប់អ្នកនិយាយច្រើននាក់)។ &quot;Start Agent&quot; ថត mixed audio តែមួយ track ដែលងាយច្រឡំឈ្មោះអ្នកនិយាយ ប្រើសម្រាប់ការហៅខ្លីៗតែប៉ុណ្ណោះ។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
@@ -954,32 +1021,38 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording ? `Recording ${formatTime(seconds)}` : "Ready"}
           </span>
-          {!recording ? (
-            <button className="kh-button-primary" type="button" onClick={startRecording} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Start Agent
-            </button>
-          ) : (
-            <button className="kh-button-secondary text-red-600" type="button" onClick={stopRecording}>
-              <Square className="h-4 w-4" />
-              Stop & Save
-            </button>
-          )}
           {!serverRecording ? (
             <button
-              className="kh-button-secondary"
+              className="kh-button-primary"
               type="button"
               onClick={startServerRecording}
               disabled={saving || recording}
-              title="Audio-only server-side recording for long meetings (1-5+ hours)"
+              title="Records each participant's microphone on its own track and labels every transcript line with their real join name - accurate for meetings with many speakers."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Server Rec (audio, long meetings)
+              Server Rec (per-speaker, recommended)
             </button>
           ) : (
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopServerRecording} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
               Stop Server Rec
+            </button>
+          )}
+          {!recording ? (
+            <button
+              className="kh-button-secondary"
+              type="button"
+              onClick={startRecording}
+              disabled={saving || Boolean(serverRecording)}
+              title="Single mixed audio track for everyone - speaker names are guessed, not exact. Use only for short calls."
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Start Agent (quick, single track)
+            </button>
+          ) : (
+            <button className="kh-button-secondary text-red-600" type="button" onClick={stopRecording}>
+              <Square className="h-4 w-4" />
+              Stop & Save
             </button>
           )}
           {savedMeetingId ? <Link className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</Link> : null}

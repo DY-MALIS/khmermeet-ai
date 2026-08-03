@@ -26,12 +26,28 @@ model Meeting {
   duration           Int                        @default(0)
   status             String                     @default("recorded")
   speakerNames       String[]                   @default([])
+  smartNote          Json?
+  timeline           Json?
   createdById        String
   createdBy          User                       @relation(fields: [createdById], references: [id], onDelete: Cascade)
   tasks              Task[]
+  decisions          Decision[]
   transcriptSegments MeetingTranscriptSegment[]
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
+}
+
+model Decision {
+  id         String    @id @default(cuid())
+  meetingId  String
+  meeting    Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title      String
+  ownerName  String?
+  deadline   DateTime?
+  status     String    @default("pending")
+  sourceText String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
 model AudioFile {
@@ -71,6 +87,56 @@ model MeetingTranscriptSegment {
   createdAt       DateTime @default(now())
 
   @@index([meetingId, startMs])
+}
+
+model WorkbenchProject {
+  id               String             @id @default(cuid())
+  meetingId        String?            @unique
+  ownerId          String?
+  title            String
+  mediaUrl         String?
+  mediaName        String?
+  mediaType        String?
+  mediaSize        Int?
+  duration         Int?
+  sourceLanguage   String             @default("auto")
+  targetLanguage   String             @default("km")
+  contentType      String             @default("meeting")
+  status           String             @default("draft")
+  progress         Int                @default(0)
+  rawTranscript    String             @default("")
+  cleanTranscript  String             @default("")
+  translatedText   String             @default("")
+  speakerNames     String[]           @default([])
+  customVocabulary String[]           @default([])
+  tags             String[]           @default([])
+  folder           String?
+  favorite         Boolean            @default(false)
+  archived         Boolean            @default(false)
+  summaryType      String             @default("meeting_minutes")
+  summaryLength    String             @default("medium")
+  summaryLanguage  String             @default("km")
+  summaryResult    String             @default("")
+  meetingMinutes   Json?
+  errorMessage     String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  versions         WorkbenchVersion[]
+
+  @@index([ownerId, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model WorkbenchVersion {
+  id        String           @id @default(cuid())
+  projectId String
+  kind      String
+  content   String
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  project   WorkbenchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
 }
 
 model CallSignal {

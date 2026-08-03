@@ -12,11 +12,14 @@ export const navigationLabels = {
     recorder: "ថតសំឡេង",
     transcript: "អត្ថបទប្រជុំ",
     aiSummary: "សង្ខេបដោយ AI",
+    studio: "Scribe Studio",
     tasks: "កិច្ចការ",
     history: "ប្រវត្តិ",
     settings: "ការកំណត់",
     language: "ភាសា",
-    localMode: "របៀប Local MVP"
+    localMode: "របៀប Local MVP",
+    aieureka: "AiEureka",
+    aiWorkspace: "AI Workspace"
   },
   en: {
     dashboard: "Dashboard",
@@ -24,10 +27,13 @@ export const navigationLabels = {
     recorder: "Recorder",
     transcript: "Transcript",
     aiSummary: "AI Summary",
+    studio: "Scribe Studio",
     tasks: "Tasks",
     history: "History",
     settings: "Settings",
     language: "Language",
-    localMode: "Local MVP mode"
+    localMode: "Local MVP mode",
+    aieureka: "AiEureka",
+    aiWorkspace: "AI Workspace"
   }
 } satisfies Record<DisplayLanguage, Record<string, string>>;

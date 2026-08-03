@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
+import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
+import { buildTimelinePrompt, type TimelineSegmentInput } from "@/lib/ai/prompts/timelinePrompt";
+import { buildFollowUpEmailPrompt } from "@/lib/ai/prompts/followUpEmailPrompt";
+import { buildMeetingDocumentPrompt, type MeetingDocumentType } from "@/lib/ai/prompts/documentPrompt";
+import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
 
 type TextPart = { text: string };
 
@@ -40,6 +45,35 @@ const taskSchema = z.object({
       sourceText: z.string().nullable().optional()
     })
   )
+});
+
+const smartNoteSchema = z.object({
+  decisions: z.array(
+    z.object({
+      title: z.string().min(1),
+      ownerName: z.string().nullable().optional(),
+      deadline: z.string().nullable().optional(),
+      sourceText: z.string().nullable().optional()
+    })
+  ).default([]),
+  problems: z.array(z.string()).default([]),
+  ideas: z.array(z.string()).default([]),
+  questions: z.array(z.string()).default([])
+});
+
+const timelineSchema = z.object({
+  topics: z.array(
+    z.object({
+      segmentNumber: z.number().int().positive(),
+      label: z.string().min(1)
+    })
+  ).default([])
+});
+
+const meetingQaSchema = z.object({
+  answer: z.string().min(1),
+  quote: z.string().nullable().optional(),
+  speakerName: z.string().nullable().optional()
 });
 
 function getOpenRouterKey() {
@@ -218,7 +252,10 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-flash";
+// gemini-2.5-pro over gemini-2.5-flash: costs more per request but is
+// noticeably more accurate on Khmer audio, and transcript quality is
+// central to this product - worth the difference.
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-pro";
 
 function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
@@ -411,4 +448,53 @@ export async function translateMeetingTranscript(transcript: string, targetLangu
     transcript
   ].join("\n");
   return generateOpenRouterContent([{ text: prompt }], { temperature: 0.1 });
+}
+
+export async function extractMeetingSmartNote(transcript: string) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!hasOpenRouterKey()) return { decisions: [], problems: [], ideas: [], questions: [] };
+  const raw = await generateOpenRouterContent([{ text: buildSmartNotePrompt(transcript) }], {
+    json: true,
+    temperature: 0.1
+  });
+  return smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
+}
+
+export async function generateMeetingTimelineTopics(segments: TimelineSegmentInput[]) {
+  if (!segments.length) return [];
+  if (!hasOpenRouterKey()) return [];
+  const raw = await generateOpenRouterContent([{ text: buildTimelinePrompt(segments) }], {
+    json: true,
+    temperature: 0.1
+  });
+  const parsed = timelineSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
+  return parsed.topics.filter((topic) => topic.segmentNumber >= 1 && topic.segmentNumber <= segments.length);
+}
+
+export async function generateFollowUpEmail(meetingTitle: string, transcript: string, summary: string | null) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
+  return generateOpenRouterContent([{ text: buildFollowUpEmailPrompt(meetingTitle, transcript, summary) }], { temperature: 0.2 });
+}
+
+export async function generateMeetingDocument(
+  type: MeetingDocumentType,
+  meetingTitle: string,
+  transcript: string,
+  summary: string | null
+) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
+  return generateOpenRouterContent([{ text: buildMeetingDocumentPrompt(type, meetingTitle, transcript, summary) }], { temperature: 0.2 });
+}
+
+export async function answerMeetingQuestion(transcript: string, question: string) {
+  if (!transcript.trim()) throw new Error("Transcript is empty.");
+  if (!question.trim()) throw new Error("Question is empty.");
+  if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
+  const raw = await generateOpenRouterContent([{ text: buildMeetingQaPrompt(transcript, question) }], {
+    json: true,
+    temperature: 0.1
+  });
+  return meetingQaSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
 }
