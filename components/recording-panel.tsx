@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
@@ -17,10 +18,6 @@ function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
   const s = Math.floor(seconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
-}
-
-function recordingPermissionHelp() {
-  return "មិនអាចបើក microphone បានទេ។ សូមចុច Allow ក្នុង browser permission, ប្រើ Chrome/Edge/Safari ថ្មីៗ, ហើយកុំបើកក្នុង Facebook/Telegram in-app browser។";
 }
 
 function defaultMeetingTitle() {
@@ -201,8 +198,8 @@ export function RecordingPanel() {
       accumulatedMsRef.current = 0;
       setSeconds(0);
       setState("recording");
-    } catch {
-      setError(recordingPermissionHelp());
+    } catch (error) {
+      setError(describeMicError(error));
     }
   }
 
