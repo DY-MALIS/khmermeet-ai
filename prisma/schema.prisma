@@ -138,13 +138,3 @@ model WorkbenchVersion {
 
   @@index([projectId, createdAt])
 }
-
-model CallSignal {
-  id        Int      @id @default(autoincrement())
-  roomId    String
-  message   Json
-  createdAt DateTime @default(now())
-
-  @@index([roomId, id])
-  @@index([createdAt])
-}

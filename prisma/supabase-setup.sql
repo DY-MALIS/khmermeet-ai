@@ -64,17 +64,7 @@ CREATE TABLE IF NOT EXISTS "MeetingTranscriptSegment" (
     CONSTRAINT "MeetingTranscriptSegment_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE IF NOT EXISTS "CallSignal" (
-    "id" SERIAL NOT NULL,
-    "roomId" TEXT NOT NULL,
-    "message" JSONB NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "CallSignal_pkey" PRIMARY KEY ("id")
-);
-
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
-CREATE INDEX IF NOT EXISTS "CallSignal_roomId_id_idx" ON "CallSignal"("roomId", "id");
-CREATE INDEX IF NOT EXISTS "CallSignal_createdAt_idx" ON "CallSignal"("createdAt");
 CREATE INDEX IF NOT EXISTS "MeetingTranscriptSegment_meetingId_startMs_idx" ON "MeetingTranscriptSegment"("meetingId", "startMs");
 
 ALTER TABLE "Meeting" ADD COLUMN IF NOT EXISTS "speakerNames" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

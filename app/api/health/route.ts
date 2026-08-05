@@ -29,8 +29,7 @@ export async function GET() {
       prisma.user.findFirst({ select: { id: true } }),
       prisma.meeting.findFirst({ select: { id: true, speakerNames: true } }),
       prisma.task.findFirst({ select: { id: true } }),
-      prisma.audioFile.findFirst({ select: { id: true } }),
-      prisma.callSignal.findFirst({ select: { id: true } })
+      prisma.audioFile.findFirst({ select: { id: true } })
     ]);
     return NextResponse.json({ ok: true, database: "connected", schema: "ready" });
   } catch (error) {
