@@ -8,13 +8,12 @@ datasource db {
 }
 
 model User {
-  id           String      @id @default(cuid())
+  id           String    @id @default(cuid())
   name         String
-  email        String      @unique
+  email        String    @unique
   passwordHash String
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime  @default(now())
   meetings     Meeting[]
-  recordings   Recording[]
 }
 
 model Meeting {
@@ -49,21 +48,6 @@ model Decision {
   sourceText String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-}
-
-model Recording {
-  id          String   @id @default(cuid())
-  title       String
-  audioUrl    String
-  transcript  String?
-  duration    Int      @default(0)
-  status      String   @default("recorded")
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([createdById, createdAt])
 }
 
 model AudioFile {

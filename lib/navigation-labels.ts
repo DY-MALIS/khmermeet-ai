@@ -18,8 +18,7 @@ export const navigationLabels = {
     settings: "ការកំណត់",
     language: "ភាសា",
     localMode: "របៀប Local MVP",
-    aiWorkspace: "AI Workspace",
-    recordings: "ថតសំឡេងរហ័ស"
+    aiWorkspace: "AI Workspace"
   },
   en: {
     dashboard: "Dashboard",
@@ -33,7 +32,6 @@ export const navigationLabels = {
     settings: "Settings",
     language: "Language",
     localMode: "Local MVP mode",
-    aiWorkspace: "AI Workspace",
-    recordings: "Quick Recorder"
+    aiWorkspace: "AI Workspace"
   }
 } satisfies Record<DisplayLanguage, Record<string, string>>;

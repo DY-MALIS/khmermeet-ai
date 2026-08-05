@@ -253,32 +253,3 @@ export async function deleteMeeting(formData: FormData) {
   revalidateMeetingViews(id);
 }
 
-export async function transcribeRecordingAudio(formData: FormData) {
-  const user = await requireUser();
-  const id = formString(formData, "id");
-  const recording = await prisma.recording.findFirst({ where: { id, createdById: user.id } });
-  if (!recording) throw new Error("No recording found.");
-
-  const audioFile = await loadStoredAudioAsFile(recording.audioUrl);
-  const transcript = await transcribeAudio(audioFile);
-  if (!hasUsableTranscript(transcript)) {
-    throw new Error("No clear speech text was detected. Please check the audio, microphone, or OpenRouter credits/key.");
-  }
-
-  await prisma.recording.update({
-    where: { id },
-    data: { transcript, status: "transcribed" }
-  });
-  revalidatePath("/recordings");
-}
-
-export async function deleteRecording(formData: FormData) {
-  const user = await requireUser();
-  const id = formString(formData, "id");
-  const recording = await prisma.recording.findFirst({ where: { id, createdById: user.id } });
-  if (!recording) throw new Error("No recording found.");
-  await prisma.recording.delete({ where: { id } });
-  await deleteStoredAudio(recording.audioUrl).catch(() => undefined);
-  revalidatePath("/recordings");
-  revalidatePath("/dashboard");
-}
