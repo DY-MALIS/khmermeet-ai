@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AI_WORKSPACE_PENDING_TRANSCRIPT_KEY } from "@/lib/ai-workspace-handoff";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type WorkspaceTask = {
@@ -54,8 +55,19 @@ export function AIWorkspace() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function analyze(nextQuestion?: string) {
-    if (!transcript.trim()) {
+  useEffect(() => {
+    const pendingTranscript = sessionStorage.getItem(AI_WORKSPACE_PENDING_TRANSCRIPT_KEY);
+    if (!pendingTranscript) return;
+    sessionStorage.removeItem(AI_WORKSPACE_PENDING_TRANSCRIPT_KEY);
+    setTranscript(pendingTranscript);
+    void analyze(undefined, pendingTranscript);
+    // Runs once on mount to pick up a transcript handed off from another page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function analyze(nextQuestion?: string, nextTranscript?: string) {
+    const transcriptToAnalyze = nextTranscript ?? transcript;
+    if (!transcriptToAnalyze.trim()) {
       setMessage("Paste a transcript first.");
       return;
     }
@@ -65,7 +77,7 @@ export function AIWorkspace() {
       const response = await fetch("/api/ai/workspace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript, question: nextQuestion ?? question })
+        body: JSON.stringify({ transcript: transcriptToAnalyze, question: nextQuestion ?? question })
       });
       const data = await readJsonResponse<WorkspaceResult & { error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Analysis failed.");

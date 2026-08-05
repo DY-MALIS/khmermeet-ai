@@ -2,6 +2,7 @@ import { FileText, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { AnalyzeInWorkspaceButton } from "@/components/analyze-in-workspace-button";
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -61,7 +62,10 @@ export default async function TranscriptsPage() {
                   </div>
                 ) : null}
                 {usableTranscript ? (
-                  <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
+                  <div className="space-y-3">
+                    <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
+                    <AnalyzeInWorkspaceButton transcript={meeting.transcript ?? ""} />
+                  </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-600">
                     <p className="font-semibold text-ink">មិនទាន់មាន transcript ពិត</p>

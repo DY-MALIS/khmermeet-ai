@@ -1,4 +1,5 @@
 import { Trash2 } from "lucide-react";
+import { AnalyzeInWorkspaceButton } from "@/components/analyze-in-workspace-button";
 import { QuickRecorder } from "@/components/quick-recorder";
 import { deleteRecording, transcribeRecordingAudio } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
@@ -42,10 +43,13 @@ export default async function RecordingsPage() {
                     </p>
                     <audio className="mt-3 w-full" controls src={recording.audioUrl} />
                     {recording.transcript ? (
-                      <details className="mt-3">
-                        <summary className="cursor-pointer text-sm font-semibold text-leaf">មើលអត្ថបទបំលែង</summary>
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{recording.transcript}</p>
-                      </details>
+                      <div className="mt-3 space-y-2">
+                        <AnalyzeInWorkspaceButton transcript={recording.transcript} />
+                        <details>
+                          <summary className="cursor-pointer text-sm font-semibold text-leaf">មើលអត្ថបទបំលែង</summary>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{recording.transcript}</p>
+                        </details>
+                      </div>
                     ) : (
                       <form action={transcribeRecordingAudio} className="mt-3">
                         <input type="hidden" name="id" value={recording.id} />
