@@ -2,8 +2,6 @@ import { z } from "zod";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
-import { buildTimelinePrompt, type TimelineSegmentInput } from "@/lib/ai/prompts/timelinePrompt";
-import { buildFollowUpEmailPrompt } from "@/lib/ai/prompts/followUpEmailPrompt";
 import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 
@@ -59,15 +57,6 @@ const smartNoteSchema = z.object({
   problems: z.array(z.string()).default([]),
   ideas: z.array(z.string()).default([]),
   questions: z.array(z.string()).default([])
-});
-
-const timelineSchema = z.object({
-  topics: z.array(
-    z.object({
-      segmentNumber: z.number().int().positive(),
-      label: z.string().min(1)
-    })
-  ).default([])
 });
 
 const meetingQaSchema = z.object({
@@ -433,23 +422,6 @@ export async function extractMeetingTasks(transcript: string, language: Document
   return taskSchema.parse(parseJsonObject(raw)).tasks;
 }
 
-export type TranscriptTranslationTarget = "km" | "en";
-
-export async function translateMeetingTranscript(transcript: string, targetLanguage: TranscriptTranslationTarget) {
-  if (!transcript.trim()) throw new Error("Transcript is empty.");
-  if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  const target = targetLanguage === "km" ? "natural Khmer only" : "natural English only";
-  const prompt = [
-    "You are the KhmerMeet AI transcript translation agent.",
-    `Translate the entire transcript into ${target}.`,
-    "This is translation, not summarization. Do not add facts or markdown.",
-    "Preserve speaker labels, names, URLs, exact numbers, and line breaks when possible.",
-    "Transcript:",
-    transcript
-  ].join("\n");
-  return generateOpenRouterContent([{ text: prompt }], { temperature: 0.1 });
-}
-
 export async function extractMeetingSmartNote(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) return { decisions: [], problems: [], ideas: [], questions: [] };
@@ -458,31 +430,6 @@ export async function extractMeetingSmartNote(transcript: string, language: Docu
     temperature: 0.1
   });
   return smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
-}
-
-export async function generateMeetingTimelineTopics(segments: TimelineSegmentInput[]) {
-  if (!segments.length) return [];
-  if (!hasOpenRouterKey()) return [];
-  const raw = await generateOpenRouterContent([{ text: buildTimelinePrompt(segments) }], {
-    json: true,
-    temperature: 0.1
-  });
-  const parsed = timelineSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
-  return parsed.topics.filter((topic) => topic.segmentNumber >= 1 && topic.segmentNumber <= segments.length);
-}
-
-export async function generateFollowUpEmail(
-  meetingTitle: string,
-  transcript: string,
-  summary: string | null,
-  language: DocumentLanguageMode = "km"
-) {
-  if (!transcript.trim()) throw new Error("Transcript is empty.");
-  if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  return generateOpenRouterContent(
-    [{ text: buildFollowUpEmailPrompt(meetingTitle, transcript, summary, language) }],
-    { temperature: 0.2 }
-  );
 }
 
 export async function answerMeetingQuestion(transcript: string, question: string) {

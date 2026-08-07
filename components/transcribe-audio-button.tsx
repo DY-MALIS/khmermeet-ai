@@ -64,7 +64,7 @@ export function TranscribeAudioButton({
         </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
           {hasTranscript
-            ? "AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្តងទៀត ហើយជំនួស transcript បច្ចុប្បន្នទាំងស្រុង។ ប្រើពេល transcript មានពាក្យខុសពីអ្វីដែលបាននិយាយ។ (ខុសពី Translation Agent ខាងក្រោមដែលគ្រាន់តែបកប្រែអត្ថបទដែលមានស្រាប់ មិនស្តាប់ audio ទេ)"
+            ? "AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្តងទៀត ហើយជំនួស transcript បច្ចុប្បន្នទាំងស្រុង។ ប្រើពេល transcript មានពាក្យខុសពីអ្វីដែលបាននិយាយ។"
             : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">

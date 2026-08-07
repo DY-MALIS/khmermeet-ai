@@ -6,11 +6,8 @@ import { ExportButton } from "@/components/export-button";
 import { MeetingTranscriptPanel } from "@/components/meeting-transcript-panel";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
-import { TranscriptTranslationAgent } from "@/components/transcript-translation-agent";
 import { MeetingSmartNote } from "@/components/meeting-smart-note";
-import { MeetingFollowUpEmail } from "@/components/meeting-follow-up-email";
 import { MeetingAskChat } from "@/components/meeting-ask-chat";
-import { MeetingTimeline } from "@/components/meeting-timeline";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -133,12 +130,10 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <div className="border-b border-slate-100 p-5">
           <h2 className="text-lg font-bold">Transcript tools</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Translate the transcript first, then create action tasks from a clean transcript.
+            Create action tasks from the transcript.
           </p>
         </div>
         <div className="space-y-5 p-5">
-          <TranscriptTranslationAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
-
           {meeting.tasks.length ? (
             <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
               <div className="border-b border-slate-100 px-4 py-3">
@@ -207,17 +202,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         hasTranscript={transcriptIsUsable}
       />
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <MeetingTimeline
-          meetingId={meeting.id}
-          initialTimeline={(meeting.timeline as { label: string; startMs: number }[] | null) ?? []}
-          hasAudio={Boolean(meeting.audioUrl)}
-          hasSegments={meeting.transcriptSegments.length > 0}
-        />
-        <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
-      </div>
-
-      <MeetingFollowUpEmail meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
+      <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
     </div>
   );
 }
