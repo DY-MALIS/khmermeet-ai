@@ -59,11 +59,13 @@ export function TranscribeAudioButton({
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
       <div>
-        <p className="font-semibold text-ink">{hasTranscript ? "Re-transcribe saved audio" : "Transcribe recorded audio"}</p>
+        <p className="font-semibold text-ink">
+          {hasTranscript ? "ស្តាប់សំឡេងឡើងវិញ (Re-transcribe audio)" : "ថតបំលែងសំឡេងទៅជាអត្ថបទ (Transcribe audio)"}
+        </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
           {hasTranscript
-            ? "Choose the language mode, then let AI replace the current transcript from the saved recording. This also clears the old summary so you can regenerate it from the new text."
-            : "Choose the spoken language, then let AI convert the saved recording into meeting text. If OpenRouter access is blocked, the audio stays saved and you can paste the transcript manually."}
+            ? "AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្តងទៀត ហើយជំនួស transcript បច្ចុប្បន្នទាំងស្រុង។ ប្រើពេល transcript មានពាក្យខុសពីអ្វីដែលបាននិយាយ។ (ខុសពី Translation Agent ខាងក្រោមដែលគ្រាន់តែបកប្រែអត្ថបទដែលមានស្រាប់ មិនស្តាប់ audio ទេ)"
+            : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
           Khmer mode outputs Khmer only. English mode outputs English only. Use mixed mode only when you want to keep both Khmer and English as spoken.

@@ -90,9 +90,9 @@ export function TranscriptTranslationAgent({ meetingId, hasTranscript }: { meeti
             <Languages className="h-4 w-4" />
             Translation Agent
           </p>
-          <h3 className="mt-1 text-xl font-bold text-ink">បកប្រែអត្ថបទប្រជុំ</h3>
+          <h3 className="mt-1 text-xl font-bold text-ink">បកប្រែអត្ថបទប្រជុំ (Text Translation)</h3>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Translate the meeting transcript into Khmer or English.
+            បកប្រែតែ <strong>អត្ថបទ transcript ដែលមានស្រាប់</strong> ទៅជា Khmer ឬ English ដោយមិនស្តាប់ audio ម្តងទៀតទេ (លឿន)។ ប្រសិនបើពាក្យក្នុង transcript ខុសពីអ្វីដែលបាននិយាយ សូមប្រើ &ldquo;Re-transcribe audio&rdquo; នៅផ្នែក Transcript ខាងលើវិញ ដើម្បីឲ្យ AI ស្តាប់ audio ថ្មី។
           </p>
         </div>
         <span className={cn("kh-badge shrink-0", hasTranscript ? "bg-leaf/10 text-leaf" : "bg-saffron/15 text-saffron")}>
