@@ -16,6 +16,7 @@ import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
+import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type TokenPayload = {
@@ -908,34 +909,44 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const blob = new Blob(chunksRef.current, { type: mimeType });
       if (!blob.size) throw new Error("No audio was recorded.");
       setLocalBackup(blob);
-      const uploadData = new FormData();
-      uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
       const speakers = getCurrentSpeakerNames();
-      uploadData.append("speakers", JSON.stringify(speakers));
-      uploadData.append("languageMode", transcriptionLanguage);
-      uploadData.append("skipTranscription", "true");
-      const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
-      const uploadJson = await readJsonResponse<{ transcript?: string; audioUrl?: string; speakerNames?: string[]; error?: string }>(uploadResponse);
-      if (!uploadResponse.ok) {
-        throw new Error(
-          uploadJson.error ??
-            (uploadResponse.status === 413
-              ? "This recording is too large to upload. Download the local backup below, or record a shorter meeting."
-              : "Audio upload failed.")
-        );
+
+      let audioUrl: string;
+      try {
+        // Direct-to-Supabase upload bypasses Vercel's hard 4.5MB
+        // request-body limit, so long (multi-hour) recordings can still be
+        // saved. Falls through to the server-relayed path below when this
+        // isn't available (e.g. Supabase Storage not configured) - that
+        // path is only reliable for shorter clips.
+        audioUrl = await uploadRecordingDirect(blob);
+      } catch {
+        const uploadData = new FormData();
+        uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
+        uploadData.append("speakers", JSON.stringify(speakers));
+        uploadData.append("languageMode", transcriptionLanguage);
+        uploadData.append("skipTranscription", "true");
+        const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
+        const uploadJson = await readJsonResponse<{ audioUrl?: string; error?: string }>(uploadResponse);
+        if (!uploadResponse.ok || !uploadJson.audioUrl) {
+          throw new Error(
+            uploadJson.error ??
+              (uploadResponse.status === 413
+                ? "This recording is too large to upload. Download the local backup below, or record a shorter meeting."
+                : "Audio upload failed.")
+          );
+        }
+        audioUrl = uploadJson.audioUrl;
       }
 
-      const transcript = typeof uploadJson.transcript === "string" ? uploadJson.transcript : "";
-      const audioUrl = typeof uploadJson.audioUrl === "string" ? uploadJson.audioUrl : "";
       const saveResponse = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: meetingTitle,
           audioUrl,
-          transcript,
+          transcript: "",
           duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
-          speakerNames: Array.isArray(uploadJson.speakerNames) && uploadJson.speakerNames.length ? uploadJson.speakerNames : speakers
+          speakerNames: speakers
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);

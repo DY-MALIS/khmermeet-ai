@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -164,28 +165,39 @@ export function RecordingPanel() {
         previewUrlRef.current = localPreview;
         setPreviewUrl(localPreview);
         setUploading(true);
-        const formData = new FormData();
-        formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
-        formData.append("languageMode", transcriptionLanguage);
-        formData.append("skipTranscription", "true");
         try {
-          const response = await fetch("/api/uploads", { method: "POST", body: formData });
-          const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response);
-          if (response.ok) {
-            if (!data.audioUrl) throw new Error("Audio upload did not return a saved file URL.");
-            setAudioUrl(data.audioUrl);
-            setDbUnavailable(false);
-            await saveMeetingAuto(data.audioUrl, blobType);
+          let uploadedAudioUrl: string;
+          try {
+            // Direct-to-Supabase upload bypasses Vercel's hard 4.5MB
+            // request-body limit, so long (multi-hour) recordings can
+            // still be saved. Falls through to the server-relayed path
+            // below when this isn't available (e.g. Supabase Storage not
+            // configured) - that path is only reliable for shorter clips.
+            uploadedAudioUrl = await uploadRecordingDirect(blob);
+          } catch {
+            const formData = new FormData();
+            formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
+            formData.append("languageMode", transcriptionLanguage);
+            formData.append("skipTranscription", "true");
+            const response = await fetch("/api/uploads", { method: "POST", body: formData });
+            const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response);
+            if (!response.ok || !data.audioUrl) {
+              throw new Error(
+                data.error ??
+                  (response.status === 413
+                    ? "សំឡេងធំពេក មិនអាច upload បានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
+                    : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
+              );
+            }
+            uploadedAudioUrl = data.audioUrl;
           }
-          else
-            setError(
-              data.error ??
-                (response.status === 413
-                  ? "សំឡេងធំពេក មិនអាច upload បានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
-                  : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
-            );
-        } catch {
-          setError("មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។");
+          setAudioUrl(uploadedAudioUrl);
+          setDbUnavailable(false);
+          await saveMeetingAuto(uploadedAudioUrl, blobType);
+        } catch (error) {
+          setError(
+            error instanceof Error ? error.message : "មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។"
+          );
         } finally {
           setUploading(false);
           stream.getTracks().forEach((track) => track.stop());

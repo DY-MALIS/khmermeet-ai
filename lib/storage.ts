@@ -228,6 +228,38 @@ export async function listSupabaseStorageFolder(prefix: string) {
     .map((entry) => `${prefix}/${entry.name}`);
 }
 
+// Lets the browser upload the final recording blob directly to Supabase
+// Storage, bypassing Vercel's hard 4.5MB request-body ceiling entirely
+// (see the comment on `databaseAudioLimit` above) - the signed token
+// authorizes that one upload on its own, no RLS policy needed
+// (see @supabase/storage-js's `uploadToSignedUrl` docs: "RLS policy
+// permissions required: none").
+export async function createSupabaseUploadTicket(filename: string) {
+  const config = supabaseStorageConfig();
+  const storage = supabaseStorageClient();
+  if (!config || !storage) return null;
+
+  const objectPath = `audio/${new Date().toISOString().slice(0, 10)}/${filename}`;
+  const { data, error } = await storage.client.storage.from(storage.bucket).createSignedUploadUrl(objectPath);
+  if (error || !data) throw new Error(error?.message || "Could not create an upload ticket.");
+
+  // Best-effort: raise the bucket's file size limit so a multi-hour
+  // recording isn't rejected by whatever default is set on the project.
+  // Not fatal if the service role key can't do this for any reason.
+  // `public: false` matches this app's documented setup (a private bucket
+  // accessed only through signed URLs / the service role key) - passed
+  // explicitly since the SDK requires it on every updateBucket call.
+  await storage.client.storage.updateBucket(storage.bucket, { public: false, fileSizeLimit: "2GB" }).catch(() => undefined);
+
+  return {
+    bucket: storage.bucket,
+    supabaseUrl: config.url,
+    objectPath,
+    token: data.token,
+    audioUrl: `/api/storage/${objectPath.split("/").map(encodeURIComponent).join("/")}`
+  };
+}
+
 export async function createSupabaseSignedUrl(objectPath: string, expiresInSeconds = 3600) {
   const storage = supabaseStorageClient();
   if (!storage) throw new Error("Supabase Storage is not configured.");
