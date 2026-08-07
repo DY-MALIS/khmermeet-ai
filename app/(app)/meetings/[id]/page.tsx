@@ -9,7 +9,6 @@ import { SummaryDisplay } from "@/components/summary-display";
 import { TranscriptTranslationAgent } from "@/components/transcript-translation-agent";
 import { MeetingSmartNote } from "@/components/meeting-smart-note";
 import { MeetingFollowUpEmail } from "@/components/meeting-follow-up-email";
-import { MeetingDocumentGenerator } from "@/components/meeting-document-generator";
 import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { MeetingTimeline } from "@/components/meeting-timeline";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
@@ -217,10 +216,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <MeetingFollowUpEmail meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
-        <MeetingDocumentGenerator meetingId={meeting.id} meetingTitle={meeting.title} hasTranscript={transcriptIsUsable} />
-      </div>
+      <MeetingFollowUpEmail meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
     </div>
   );
 }
