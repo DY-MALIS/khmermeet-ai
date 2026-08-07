@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
+import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 
@@ -140,57 +140,6 @@ export async function extractTasks(formData: FormData) {
       : [])
   ]);
   revalidateMeetingViews(id);
-}
-
-export async function regenerateSmartNote(formData: FormData) {
-  const user = await requireUser();
-  const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
-  if (!meeting) throw new Error("No meeting found.");
-  if (!meeting.transcript?.trim() || !hasUsableTranscript(meeting.transcript)) {
-    throw new Error("Transcript has no clear speech text. Please re-transcribe before generating a smart note.");
-  }
-  const smartNote = await extractMeetingSmartNote(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
-  await prisma.$transaction([
-    prisma.meeting.update({
-      where: { id },
-      data: { smartNote: { problems: smartNote.problems, ideas: smartNote.ideas, questions: smartNote.questions } }
-    }),
-    prisma.decision.deleteMany({ where: { meetingId: id } }),
-    ...(smartNote.decisions.length
-      ? [
-          prisma.decision.createMany({
-            data: smartNote.decisions.map((decision) => ({
-              meetingId: id,
-              title: decision.title,
-              ownerName: decision.ownerName ?? null,
-              deadline: decision.deadline ? new Date(decision.deadline) : null,
-              sourceText: decision.sourceText ?? null
-            }))
-          })
-        ]
-      : [])
-  ]);
-  revalidateMeetingViews(id);
-}
-
-export async function updateDecision(formData: FormData) {
-  const user = await requireUser();
-  const id = formString(formData, "id");
-  const decision = await prisma.decision.findFirst({ where: { id, meeting: { createdById: user.id } } });
-  if (!decision) throw new Error("No decision found.");
-  const status = formString(formData, "status") || "pending";
-  if (!["pending", "in_progress", "done"].includes(status)) throw new Error("Invalid decision status.");
-  const deadlineText = formString(formData, "deadline");
-  await prisma.decision.update({
-    where: { id },
-    data: {
-      status,
-      ownerName: formString(formData, "ownerName") || null,
-      deadline: deadlineText ? new Date(deadlineText) : null
-    }
-  });
-  revalidateMeetingViews(decision.meetingId);
 }
 
 export async function createTask(formData: FormData) {

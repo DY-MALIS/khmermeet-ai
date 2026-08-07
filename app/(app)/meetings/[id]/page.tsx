@@ -6,7 +6,6 @@ import { ExportButton } from "@/components/export-button";
 import { MeetingTranscriptPanel } from "@/components/meeting-transcript-panel";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
 import { SummaryDisplay } from "@/components/summary-display";
-import { MeetingSmartNote } from "@/components/meeting-smart-note";
 import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
@@ -193,14 +192,6 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </section>
-
-      <MeetingSmartNote
-        meetingId={meeting.id}
-        smartNote={meeting.smartNote as { problems?: string[]; ideas?: string[]; questions?: string[] } | null}
-        decisions={meeting.decisions}
-        tasks={meeting.tasks}
-        hasTranscript={transcriptIsUsable}
-      />
 
       <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
     </div>
