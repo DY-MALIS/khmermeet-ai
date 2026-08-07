@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { generateOpenRouterContent, hasOpenRouterKey } from "@/lib/ai/openrouter";
+import { buildLanguageInstruction } from "@/lib/ai/prompts/languageInstruction";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 
 export const maxDuration = 60;
@@ -78,12 +80,22 @@ export async function POST(request: Request) {
     }
 
     const regeneratingSummary = shouldRegenerateSummary(command);
+    // The response must follow the meeting's own language, not the language
+    // the user happened to type their command in - typing a Khmer command
+    // like "សង្ខេបឡើងវិញ" over an English transcript must still answer in
+    // English.
+    const language = normalizeTranscriptionLanguageMode(meeting.language);
+    const sectionLabels =
+      language === "en"
+        ? "Meeting overview, Key points, Decisions, Problems raised, Next steps"
+        : "សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត, បញ្ហាដែលបានលើកឡើង, ជំហានបន្ទាប់";
+    const missingInfoPlaceholder = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
     const prompt = [
       "You are KhmerMeet AI Summary Agent for Cambodian teams.",
       "Your job is to answer the user's command using only the meeting transcript, current summary, and tasks provided below.",
-      "Use natural Khmer by default. If the user writes English, answer in English.",
+      buildLanguageInstruction(language),
       "Do not invent facts, people, dates, decisions, problems, or tasks.",
-      "If the transcript does not contain enough information for a requested section, write: មិនមានព័ត៌មានច្បាស់លាស់.",
+      `If the transcript does not contain enough information for a requested section, write: ${missingInfoPlaceholder}`,
       "Do not use markdown bold markers like **.",
       "Keep the answer clean, readable, and grouped into short sections or bullets.",
       "",
@@ -100,7 +112,7 @@ export async function POST(request: Request) {
       `Action tasks:\n${taskText}`,
       "",
       regeneratingSummary
-        ? "If the user does not specify a format, return exactly these sections: សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត, បញ្ហាដែលបានលើកឡើង, ជំហានបន្ទាប់."
+        ? `If the user does not specify a format, return exactly these sections: ${sectionLabels}.`
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 

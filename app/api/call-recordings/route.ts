@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
     if (transcript) {
       try {
-        const summary = await generateMeetingSummary(transcript);
+        const summary = await generateMeetingSummary(transcript, "km-en");
         await prisma.meeting.update({
           where: { id: meeting.id },
           data: { summary, status: "summarized" }

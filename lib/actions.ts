@@ -107,7 +107,7 @@ export async function generateSummary(formData: FormData) {
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before summarizing.");
-  const summary = await generateMeetingSummary(meeting.transcript);
+  const summary = await generateMeetingSummary(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
   await prisma.meeting.update({ where: { id }, data: { summary, status: "summarized" } });
   revalidateMeetingViews(id);
 }

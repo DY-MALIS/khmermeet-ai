@@ -406,10 +406,10 @@ function parseJsonObject(raw: string) {
   return JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{\"tasks\":[]}");
 }
 
-export async function generateMeetingSummary(transcript: string) {
+export async function generateMeetingSummary(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) return fallbackSummary(transcript);
-  return generateOpenRouterContent([{ text: buildSummaryPrompt(transcript) }], { temperature: 0.2 });
+  return generateOpenRouterContent([{ text: buildSummaryPrompt(transcript, language) }], { temperature: 0.2 });
 }
 
 export async function extractMeetingTasks(transcript: string, language: DocumentLanguageMode = "km") {

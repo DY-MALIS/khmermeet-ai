@@ -28,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     const language = normalizeTranscriptionLanguageMode(meeting.language);
 
     try {
-      const summary = await generateMeetingSummary(meeting.transcript);
+      const summary = await generateMeetingSummary(meeting.transcript, language);
       await prisma.meeting.update({
         where: { id },
         data: { summary, status: "summarized" }
