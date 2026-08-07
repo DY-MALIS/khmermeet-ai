@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { deleteStoredAudio, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
+import { deleteStoredAudio, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -34,15 +34,6 @@ export async function registerUser(formData: FormData) {
   if (!name || !email || password.length < 6) throw new Error("Please enter name, email, and a 6+ character password.");
   await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 10) } });
   redirect("/dashboard");
-}
-
-export async function getMeetings() {
-  const user = await requireUser();
-  return prisma.meeting.findMany({
-    where: { createdById: user.id },
-    include: { tasks: true },
-    orderBy: { createdAt: "desc" }
-  });
 }
 
 export async function getMeetingById(id: string) {
@@ -72,31 +63,6 @@ export async function updateTranscript(formData: FormData) {
       data: { transcript, summary: null, status: "transcribed" }
     })
   ]);
-  revalidateMeetingViews(id);
-}
-
-export async function transcribeMeetingAudio(formData: FormData) {
-  const user = await requireUser();
-  const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
-  if (!meeting) throw new Error("No meeting found.");
-  if (!meeting.audioUrl) throw new Error("No audio file found for this meeting.");
-
-  const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-  const transcript = await transcribeAudio(audioFile);
-  if (!hasUsableTranscript(transcript)) {
-    throw new Error("No clear speech text was detected. Please check the audio, microphone, or OpenRouter credits/key.");
-  }
-
-  await prisma.meeting.update({
-    where: { id },
-    data: {
-      transcript,
-      summary: null,
-      language: "km-en",
-      status: "transcribed"
-    }
-  });
   revalidateMeetingViews(id);
 }
 

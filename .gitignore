@@ -8,3 +8,5 @@ dist
 tsconfig.tsbuildinfo
 prisma/dev.db
 prisma/dev.db-journal
+eslint_errors.txt
+tsc_errors.txt
