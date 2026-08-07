@@ -143,8 +143,36 @@ export function ExportButton({
         summaryPage: isEnglish ? "Summary" : "សង្ខេប",
         tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
         tasksPage: isEnglish ? "Tasks" : "កិច្ចការ",
-        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។"
+        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។",
+        outline: isEnglish ? "Outline" : "មាតិកា (Outline)"
       };
+
+      // The AI summary text already comes back structured as
+      // "heading\n- bullet\n- bullet\n\nheading\n- bullet..." (see
+      // buildSummaryPrompt) - split it into named sections instead of
+      // dumping every line as one flat bullet list, so the deck reads like
+      // a lesson (chapter title + sub-points) instead of a wall of bullets.
+      function parseSummarySections(text: string): { title: string; bullets: string[] }[] {
+        const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+        const sections: { title: string; bullets: string[] }[] = [];
+        let current: { title: string; bullets: string[] } | null = null;
+        for (const line of lines) {
+          const bulletMatch = line.match(/^[-•]\s*(.*)$/);
+          if (bulletMatch) {
+            if (!current) {
+              current = { title: labels.summary, bullets: [] };
+              sections.push(current);
+            }
+            if (bulletMatch[1]) current.bullets.push(bulletMatch[1]);
+          } else {
+            current = { title: line, bullets: [] };
+            sections.push(current);
+          }
+        }
+        return sections.filter((section) => section.bullets.length).length
+          ? sections.filter((section) => section.bullets.length)
+          : [{ title: labels.summary, bullets: [labels.noSummary] }];
+      }
 
       function addLogoMark(slide: PSlide, x: number, y: number, size: number, fill: string, textColor: string) {
         slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.22, fill: { color: fill }, line: { type: "none" } });
@@ -177,20 +205,17 @@ export function ExportButton({
         });
       }
 
-      function addHeader(slide: PSlide, headerTitle: string) {
+      function addHeader(slide: PSlide, headerTitle: string, chapterNumber?: number) {
         slide.background = { color: "FFFFFF" };
         slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.12, fill: { color: BRAND.leaf }, line: { type: "none" } });
         addLogoMark(slide, 0.4, 0.34, 0.45, BRAND.leaf, "FFFFFF");
-        slide.addText(headerTitle, {
-          x: 1.0,
-          y: 0.3,
-          w: 8.4,
-          h: 0.55,
-          fontSize: 22,
-          bold: true,
-          color: BRAND.ink,
-          fontFace: KHMER_FONT
-        });
+        const titleRuns = chapterNumber
+          ? [
+              { text: `${String(chapterNumber).padStart(2, "0")}  `, options: { color: BRAND.saffron, bold: true } },
+              { text: headerTitle, options: { color: BRAND.ink, bold: true } }
+            ]
+          : [{ text: headerTitle, options: { color: BRAND.ink, bold: true } }];
+        slide.addText(titleRuns, { x: 1.0, y: 0.3, w: 8.4, h: 0.55, fontSize: 22, fontFace: KHMER_FONT });
         addFooter(slide);
       }
 
@@ -221,37 +246,65 @@ export function ExportButton({
       });
       titleSlide.addShape("rect", { x: 4.1, y: 3.95, w: 1.8, h: 0.03, fill: { color: BRAND.saffron }, line: { type: "none" } });
 
-      // Summary slides
-      const summaryLines = (summary ?? labels.noSummary).split("\n").map((line) => line.trim()).filter(Boolean);
-      const linesPerSlide = 8;
-      const summaryPageCount = Math.max(1, Math.ceil(summaryLines.length / linesPerSlide));
-      for (let i = 0; i < summaryPageCount; i += 1) {
-        const slide = pptx.addSlide();
-        addHeader(slide, summaryPageCount > 1 ? `${labels.summaryPage} (${i + 1}/${summaryPageCount})` : labels.summary);
-        const pageLines = summaryLines.slice(i * linesPerSlide, (i + 1) * linesPerSlide);
-        slide.addText(
-          (pageLines.length ? pageLines : [labels.noSummary]).map((line) => ({
-            text: line,
+      // Summary sections - each becomes its own "chapter" slide (title +
+      // sub-bullets), lesson-style, instead of one flat bullet dump.
+      const sections = parseSummarySections(summary ?? "");
+      const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
+
+      // Outline slide
+      if (outlineEntries.length > 1) {
+        const outlineSlide = pptx.addSlide();
+        addHeader(outlineSlide, labels.outline);
+        outlineSlide.addText(
+          outlineEntries.map((entryTitle, index) => ({
+            text: `${String(index + 1).padStart(2, "0")}   ${entryTitle}`,
             options: {
-              bullet: { indent: 18, characterCode: "25CF" },
               color: BRAND.ink,
+              bold: true,
               fontFace: KHMER_FONT,
               breakLine: true,
-              paraSpaceAfter: 12,
-              lineSpacing: 22
+              paraSpaceAfter: 14,
+              lineSpacing: 24
             }
           })),
-          { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 15, valign: "top" }
+          { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 16, valign: "top" }
         );
+      }
+
+      let chapter = 0;
+      const bulletsPerSlide = 7;
+      for (const section of sections) {
+        chapter += 1;
+        const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
+        for (let p = 0; p < pageCount; p += 1) {
+          const slide = pptx.addSlide();
+          addHeader(slide, pageCount > 1 ? `${section.title} (${p + 1}/${pageCount})` : section.title, chapter);
+          const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
+          slide.addText(
+            (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
+              text: line,
+              options: {
+                bullet: { indent: 18, characterCode: "25CF" },
+                color: BRAND.ink,
+                fontFace: KHMER_FONT,
+                breakLine: true,
+                paraSpaceAfter: 12,
+                lineSpacing: 22
+              }
+            })),
+            { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 16, valign: "top" }
+          );
+        }
       }
 
       // Tasks slide(s)
       if (tasks.length) {
+        chapter += 1;
         const tasksPerSlide = 8;
         const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
         for (let i = 0; i < taskPageCount; i += 1) {
           const slide = pptx.addSlide();
-          addHeader(slide, taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks);
+          addHeader(slide, taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks, chapter);
           const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
           const taskRuns = pageTasks.flatMap((task) => {
             const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
