@@ -83,7 +83,6 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ExportButton title={meeting.title} transcript={transcriptText} summary={summaryText} />
           <form action={generateSummary}>
             <input type="hidden" name="id" value={meeting.id} />
             <ActionButton>Regenerate summary</ActionButton>
@@ -124,6 +123,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           <MeetingSummaryAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
         </section>
       </div>
+
+      <section className="kh-card p-5">
+        <h2 className="mb-4 text-lg font-bold">រក្សាទុកជាឯកសារ (Export)</h2>
+        <ExportButton title={meeting.title} transcript={transcriptText} summary={summaryText} tasks={meeting.tasks} />
+      </section>
 
       <section className="kh-card overflow-hidden">
         <div className="border-b border-slate-100 p-5">
