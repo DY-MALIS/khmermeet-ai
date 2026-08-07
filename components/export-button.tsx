@@ -247,8 +247,12 @@ export function ExportButton({
       titleSlide.addShape("rect", { x: 4.1, y: 3.95, w: 1.8, h: 0.03, fill: { color: BRAND.saffron }, line: { type: "none" } });
 
       // Summary sections - each becomes its own "chapter" slide (title +
-      // sub-bullets), lesson-style, instead of one flat bullet dump.
+      // sub-bullets), lesson-style, instead of one flat bullet dump. Each
+      // chapter is named after the meeting itself (e.g. "plan"), not a
+      // generic "AI Summary" label - the section name (Summary/Tasks/etc.)
+      // is kept as a secondary label so chapters stay distinguishable.
       const sections = parseSummarySections(summary ?? "");
+      const chapterName = (sectionLabel: string) => `${title} — ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
 
       // Outline slide
@@ -257,7 +261,7 @@ export function ExportButton({
         addHeader(outlineSlide, labels.outline);
         outlineSlide.addText(
           outlineEntries.map((entryTitle, index) => ({
-            text: `${String(index + 1).padStart(2, "0")}   ${entryTitle}`,
+            text: `${String(index + 1).padStart(2, "0")}   ${chapterName(entryTitle)}`,
             options: {
               color: BRAND.ink,
               bold: true,
@@ -278,7 +282,8 @@ export function ExportButton({
         const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
         for (let p = 0; p < pageCount; p += 1) {
           const slide = pptx.addSlide();
-          addHeader(slide, pageCount > 1 ? `${section.title} (${p + 1}/${pageCount})` : section.title, chapter);
+          const sectionLabel = pageCount > 1 ? `${section.title} (${p + 1}/${pageCount})` : section.title;
+          addHeader(slide, chapterName(sectionLabel), chapter);
           const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
           slide.addText(
             (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
@@ -304,7 +309,8 @@ export function ExportButton({
         const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
         for (let i = 0; i < taskPageCount; i += 1) {
           const slide = pptx.addSlide();
-          addHeader(slide, taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks, chapter);
+          const tasksLabel = taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks;
+          addHeader(slide, chapterName(tasksLabel), chapter);
           const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
           const taskRuns = pageTasks.flatMap((task) => {
             const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
