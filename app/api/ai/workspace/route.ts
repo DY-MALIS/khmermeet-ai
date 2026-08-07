@@ -87,7 +87,7 @@ export async function POST(request: Request) {
           {
             role: "system",
             content:
-              "Analyze a Khmer or English meeting transcript. Return JSON with overview, decisions, problems, risks, ideas, questions, tasks, timeline, followUp, and answer. Tasks need title, assignee, deadline, priority, status. Timeline needs second and title. Never invent facts. Use the requested language.",
+              "Analyze a Khmer or English meeting transcript. Return JSON with overview, decisions, problems, risks, ideas, questions, tasks, timeline, followUp, and answer. Tasks need title, assignee, deadline, priority, status. Timeline needs second and title. Never invent facts - if the transcript has no real decisions/tasks/risks/timeline, return empty arrays for those instead of inventing any. The 'question' field may be empty; if it is, set 'answer' to an empty string instead of answering a question that was not asked. Use the requested language.",
           },
           {
             role: "user",
@@ -101,7 +101,18 @@ export async function POST(request: Request) {
     const payload = await response.json();
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) return NextResponse.json({ ...fallback, provider: "local" });
-    return NextResponse.json({ ...fallback, ...JSON.parse(content), provider: "openrouter" });
+    const parsed = JSON.parse(content);
+    const hasQuestion = Boolean(body.question?.trim());
+    return NextResponse.json({
+      ...fallback,
+      ...parsed,
+      // The model is asked to always return an "answer" field, but it has no
+      // question to ground an answer in when the Copilot box is empty - force
+      // it blank here instead of trusting the model not to invent one.
+      answer: hasQuestion && typeof parsed.answer === "string" ? parsed.answer : "",
+      followUp: typeof parsed.followUp === "string" ? parsed.followUp : fallback.followUp,
+      provider: "openrouter"
+    });
   } catch {
     return NextResponse.json({ ...fallback, provider: "local" });
   } finally {
