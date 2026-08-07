@@ -10,6 +10,7 @@ import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 
 function meetingLoadErrorMessage(error: unknown) {
@@ -126,7 +127,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">រក្សាទុកជាឯកសារ (Export)</h2>
-        <ExportButton title={meeting.title} transcript={transcriptText} summary={summaryText} tasks={meeting.tasks} />
+        <ExportButton
+          title={meeting.title}
+          transcript={transcriptText}
+          summary={summaryText}
+          tasks={meeting.tasks}
+          language={normalizeTranscriptionLanguageMode(meeting.language)}
+        />
       </section>
 
       {meeting.tasks.length ? (

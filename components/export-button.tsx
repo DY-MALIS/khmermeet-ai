@@ -24,12 +24,14 @@ export function ExportButton({
   title,
   transcript,
   summary,
-  tasks = []
+  tasks = [],
+  language = "km"
 }: {
   title: string;
   transcript?: string | null;
   summary?: string | null;
   tasks?: ExportTask[];
+  language?: "km" | "en" | "km-en";
 }) {
   const [exportingWord, setExportingWord] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
@@ -120,6 +122,11 @@ export function ExportButton({
       const pptx = new PptxGenJS();
       pptx.defineLayout({ name: "KH_16x9", width: 10, height: 5.63 });
       pptx.layout = "KH_16x9";
+      // Leelawadee UI ships with Windows 10/11 and is one of the few fonts
+      // with proper Khmer glyph coverage - without this, PowerPoint falls
+      // back to its default (Calibri), which can't render Khmer script.
+      const KHMER_FONT = "Leelawadee UI";
+      pptx.theme = { headFontFace: KHMER_FONT, bodyFontFace: KHMER_FONT };
       type PSlide = ReturnType<typeof pptx.addSlide>;
 
       // Brand palette, matching the app's own leaf/saffron/sky/ink colors.
@@ -127,22 +134,63 @@ export function ExportButton({
       const priorityColor: Record<string, string> = { high: "C0392B", medium: BRAND.saffron, low: BRAND.sky };
       let pageNumber = 0;
 
+      // Slide language follows the meeting's own language - "km-en" (mixed,
+      // preserve-as-spoken) defaults to Khmer labels since that's this app's
+      // primary language.
+      const isEnglish = language === "en";
+      const labels = {
+        summary: isEnglish ? "Summary" : "សង្ខេប (Summary)",
+        summaryPage: isEnglish ? "Summary" : "សង្ខេប",
+        tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
+        tasksPage: isEnglish ? "Tasks" : "កិច្ចការ",
+        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។"
+      };
+
       function addLogoMark(slide: PSlide, x: number, y: number, size: number, fill: string, textColor: string) {
         slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.22, fill: { color: fill }, line: { type: "none" } });
-        slide.addText("K", { x, y, w: size, h: size, align: "center", valign: "middle", bold: true, color: textColor, fontSize: size * 34 });
+        slide.addText("K", {
+          x,
+          y,
+          w: size,
+          h: size,
+          align: "center",
+          valign: "middle",
+          bold: true,
+          color: textColor,
+          fontSize: size * 34,
+          fontFace: KHMER_FONT
+        });
       }
 
       function addFooter(slide: PSlide) {
         pageNumber += 1;
-        slide.addText("KhmerMeet AI", { x: 0.4, y: 5.28, w: 4, h: 0.3, fontSize: 9, color: "9AA5B1", italic: true });
-        slide.addText(String(pageNumber), { x: 9.2, y: 5.28, w: 0.5, h: 0.3, fontSize: 9, color: "9AA5B1", align: "right" });
+        slide.addText("KhmerMeet AI", { x: 0.4, y: 5.28, w: 4, h: 0.3, fontSize: 9, color: "9AA5B1", italic: true, fontFace: KHMER_FONT });
+        slide.addText(String(pageNumber), {
+          x: 9.2,
+          y: 5.28,
+          w: 0.5,
+          h: 0.3,
+          fontSize: 9,
+          color: "9AA5B1",
+          align: "right",
+          fontFace: KHMER_FONT
+        });
       }
 
       function addHeader(slide: PSlide, headerTitle: string) {
         slide.background = { color: "FFFFFF" };
         slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.12, fill: { color: BRAND.leaf }, line: { type: "none" } });
         addLogoMark(slide, 0.4, 0.34, 0.45, BRAND.leaf, "FFFFFF");
-        slide.addText(headerTitle, { x: 1.0, y: 0.3, w: 8.4, h: 0.55, fontSize: 22, bold: true, color: BRAND.ink });
+        slide.addText(headerTitle, {
+          x: 1.0,
+          y: 0.3,
+          w: 8.4,
+          h: 0.55,
+          fontSize: 22,
+          bold: true,
+          color: BRAND.ink,
+          fontFace: KHMER_FONT
+        });
         addFooter(slide);
       }
 
@@ -150,7 +198,17 @@ export function ExportButton({
       const titleSlide = pptx.addSlide();
       titleSlide.background = { color: BRAND.leaf };
       addLogoMark(titleSlide, 4.55, 1.15, 0.9, "FFFFFF", BRAND.leaf);
-      titleSlide.addText(title, { x: 0.6, y: 2.3, w: 8.8, h: 1.2, fontSize: 30, bold: true, align: "center", color: "FFFFFF" });
+      titleSlide.addText(title, {
+        x: 0.6,
+        y: 2.3,
+        w: 8.8,
+        h: 1.2,
+        fontSize: 30,
+        bold: true,
+        align: "center",
+        color: "FFFFFF",
+        fontFace: KHMER_FONT
+      });
       titleSlide.addText(new Date().toLocaleDateString(), {
         x: 0.6,
         y: 3.35,
@@ -158,22 +216,30 @@ export function ExportButton({
         h: 0.5,
         fontSize: 14,
         align: "center",
-        color: "D7ECE4"
+        color: "D7ECE4",
+        fontFace: KHMER_FONT
       });
       titleSlide.addShape("rect", { x: 4.1, y: 3.95, w: 1.8, h: 0.03, fill: { color: BRAND.saffron }, line: { type: "none" } });
 
       // Summary slides
-      const summaryLines = (summary ?? "No summary available.").split("\n").map((line) => line.trim()).filter(Boolean);
+      const summaryLines = (summary ?? labels.noSummary).split("\n").map((line) => line.trim()).filter(Boolean);
       const linesPerSlide = 8;
       const summaryPageCount = Math.max(1, Math.ceil(summaryLines.length / linesPerSlide));
       for (let i = 0; i < summaryPageCount; i += 1) {
         const slide = pptx.addSlide();
-        addHeader(slide, summaryPageCount > 1 ? `សង្ខេប (${i + 1}/${summaryPageCount})` : "សង្ខេប (Summary)");
+        addHeader(slide, summaryPageCount > 1 ? `${labels.summaryPage} (${i + 1}/${summaryPageCount})` : labels.summary);
         const pageLines = summaryLines.slice(i * linesPerSlide, (i + 1) * linesPerSlide);
         slide.addText(
-          (pageLines.length ? pageLines : ["No summary available."]).map((line) => ({
+          (pageLines.length ? pageLines : [labels.noSummary]).map((line) => ({
             text: line,
-            options: { bullet: { indent: 18 }, color: BRAND.ink, breakLine: true, paraSpaceAfter: 10 }
+            options: {
+              bullet: { indent: 18, characterCode: "25CF" },
+              color: BRAND.ink,
+              fontFace: KHMER_FONT,
+              breakLine: true,
+              paraSpaceAfter: 12,
+              lineSpacing: 22
+            }
           })),
           { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 15, valign: "top" }
         );
@@ -185,21 +251,40 @@ export function ExportButton({
         const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
         for (let i = 0; i < taskPageCount; i += 1) {
           const slide = pptx.addSlide();
-          addHeader(slide, taskPageCount > 1 ? `កិច្ចការ (${i + 1}/${taskPageCount})` : "កិច្ចការ (Tasks)");
+          addHeader(slide, taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks);
           const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
-          slide.addText(
-            pageTasks.map((task) => ({
-              text: `${task.title}${task.assigneeName ? `  —  ${task.assigneeName}` : ""}${task.deadline ? `  (${task.deadline.toISOString().slice(0, 10)})` : ""}`,
-              options: {
-                bullet: { indent: 18 },
-                color: priorityColor[task.priority] ?? BRAND.ink,
-                bold: true,
-                breakLine: true,
-                paraSpaceAfter: 10
+          const taskRuns = pageTasks.flatMap((task) => {
+            const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
+            const runs: { text: string; options: Record<string, unknown> }[] = [
+              {
+                text: task.title,
+                options: {
+                  bullet: { indent: 18, characterCode: "25CF" },
+                  color: priorityColor[task.priority] ?? BRAND.ink,
+                  bold: true,
+                  fontFace: KHMER_FONT,
+                  breakLine: !meta.length,
+                  paraSpaceAfter: 12,
+                  lineSpacing: 22
+                }
               }
-            })),
-            { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 14, valign: "top" }
-          );
+            ];
+            if (meta.length) {
+              runs.push({
+                text: `   —   ${meta.join(" · ")}`,
+                options: {
+                  color: "64748B",
+                  bold: false,
+                  fontFace: KHMER_FONT,
+                  breakLine: true,
+                  paraSpaceAfter: 12,
+                  lineSpacing: 22
+                }
+              });
+            }
+            return runs;
+          });
+          slide.addText(taskRuns, { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 14, valign: "top" });
         }
       }
 
