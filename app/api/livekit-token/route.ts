@@ -42,7 +42,13 @@ export async function POST(request: Request) {
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
       name,
-      ttl: "4h"
+      // LiveKit only checks the token at connect/reconnect time, not
+      // continuously, so an already-open call survives past its TTL - but
+      // any reconnect after expiry (network blip, laptop sleep, Wi-Fi
+      // hiccup) gets rejected as an expired token, permanently dropping the
+      // participant and cutting off local recording tied to that
+      // connection. 24h comfortably covers any realistic meeting length.
+      ttl: "24h"
     });
 
     token.addGrant({
