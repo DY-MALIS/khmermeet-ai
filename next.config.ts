@@ -1,4 +1,3 @@
-import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -8,16 +7,14 @@ const nextConfig: NextConfig = {
     }
   },
   webpack: (config, { isServer, webpack }) => {
-    // Both pptxgenjs's ESM build and its prebuilt browser bundle contain
-    // guarded `require("node:fs"/"node:https")` calls for a Node-only
-    // codepath that never runs in the browser. Webpack still tries to
-    // statically resolve the "node:" URI scheme and fails, so ignore those
-    // specifiers outright for the client bundle instead of resolving them.
+    // pptxgenjs's ESM build contains guarded `require("node:fs"/"node:https")`
+    // calls for a Node-only codepath that never runs in the browser. Webpack
+    // still tries to statically resolve the "node:" URI scheme and fails, so
+    // ignore those specifiers outright for the client bundle instead of
+    // resolving them. (Do NOT alias to pptxgenjs's prebuilt UMD "browser
+    // bundle" instead - its export shape doesn't match `.default` cleanly
+    // and it silently breaks PptxGenJS's constructor at runtime.)
     if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        pptxgenjs$: path.resolve(__dirname, "node_modules/pptxgenjs/dist/pptxgen.bundle.js")
-      };
       config.plugins.push(new webpack.IgnorePlugin({ resourceRegExp: /^node:/ }));
     }
     return config;

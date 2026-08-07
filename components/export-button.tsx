@@ -74,29 +74,33 @@ export function ExportButton({
     try {
       const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
+      const nonEmptyLines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
-      const summarySheet = XLSX.utils.aoa_to_sheet([
+      const summaryRows: (string | undefined)[][] = [
         ["Meeting", title],
         [],
         ["Summary"],
-        ...(summary ?? "").split("\n").map((line) => [line]),
+        ...nonEmptyLines(summary ?? "(no summary yet)").map((line) => [line]),
         [],
         ["Transcript"],
-        ...(transcript ?? "").split("\n").map((line) => [line])
-      ]);
+        ...nonEmptyLines(transcript ?? "(no transcript yet)").map((line) => [line])
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      // A single wide column reads far better than SheetJS's default ~8-char
+      // width, which truncates every line of transcript/summary text.
+      summarySheet["!cols"] = [{ wch: 110 }];
       XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
 
-      const taskRows = [
-        ["Task", "Assignee", "Deadline", "Priority", "Status"],
-        ...tasks.map((task) => [
-          task.title,
-          task.assigneeName ?? "",
-          task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
-          task.priority,
-          task.status
-        ])
-      ];
-      const tasksSheet = XLSX.utils.aoa_to_sheet(taskRows);
+      const tasksSheet = XLSX.utils.json_to_sheet(
+        tasks.map((task) => ({
+          Task: task.title,
+          Assignee: task.assigneeName ?? "",
+          Deadline: task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
+          Priority: task.priority,
+          Status: task.status
+        }))
+      );
+      tasksSheet["!cols"] = [{ wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(workbook, tasksSheet, "Tasks");
 
       const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
