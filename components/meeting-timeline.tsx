@@ -14,7 +14,17 @@ function formatTimestamp(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function MeetingTimeline({ meetingId, initialTimeline, hasAudio }: { meetingId: string; initialTimeline: TimelineEntry[]; hasAudio: boolean }) {
+export function MeetingTimeline({
+  meetingId,
+  initialTimeline,
+  hasAudio,
+  hasSegments
+}: {
+  meetingId: string;
+  initialTimeline: TimelineEntry[];
+  hasAudio: boolean;
+  hasSegments: boolean;
+}) {
   const [timeline, setTimeline] = useState(initialTimeline);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,7 +51,13 @@ export function MeetingTimeline({ meetingId, initialTimeline, hasAudio }: { meet
           <Clock className="h-4 w-4 text-leaf" />
           AI Timeline
         </p>
-        <button className="kh-button-secondary" type="button" onClick={() => void generate()} disabled={loading}>
+        <button
+          className="kh-button-secondary"
+          type="button"
+          onClick={() => void generate()}
+          disabled={loading || !hasSegments}
+          title={hasSegments ? undefined : "Only available for Server Rec recordings with per-speaker timestamped segments."}
+        >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
           {timeline.length ? "Regenerate" : "Generate"}
         </button>
@@ -65,7 +81,9 @@ export function MeetingTimeline({ meetingId, initialTimeline, hasAudio }: { meet
         </ol>
       ) : (
         <p className="text-sm text-slate-500">
-          Only available for Server Rec recordings (per-speaker timestamped segments). Click Generate to detect topic changes.
+          {hasSegments
+            ? "Click Generate to detect topic changes."
+            : "Only available for Server Rec recordings (per-speaker timestamped segments) - this meeting does not have those, so Generate is disabled."}
         </p>
       )}
     </section>

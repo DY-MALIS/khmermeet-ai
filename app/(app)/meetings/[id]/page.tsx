@@ -212,6 +212,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           meetingId={meeting.id}
           initialTimeline={(meeting.timeline as { label: string; startMs: number }[] | null) ?? []}
           hasAudio={Boolean(meeting.audioUrl)}
+          hasSegments={meeting.transcriptSegments.length > 0}
         />
         <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
       </div>

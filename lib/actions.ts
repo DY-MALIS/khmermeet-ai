@@ -51,7 +51,8 @@ export async function getMeetingById(id: string) {
     where: { id, createdById: user.id },
     include: {
       tasks: { orderBy: { createdAt: "desc" } },
-      decisions: { orderBy: { createdAt: "desc" } }
+      decisions: { orderBy: { createdAt: "desc" } },
+      transcriptSegments: { select: { id: true }, take: 1 }
     }
   });
 }
