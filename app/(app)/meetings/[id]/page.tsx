@@ -129,15 +129,15 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <ExportButton title={meeting.title} transcript={transcriptText} summary={summaryText} tasks={meeting.tasks} />
       </section>
 
-      <section className="kh-card overflow-hidden">
-        <div className="border-b border-slate-100 p-5">
-          <h2 className="text-lg font-bold">Transcript tools</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Create action tasks from the transcript.
-          </p>
-        </div>
-        <div className="space-y-5 p-5">
-          {meeting.tasks.length ? (
+      {meeting.tasks.length ? (
+        <section className="kh-card overflow-hidden">
+          <div className="border-b border-slate-100 p-5">
+            <h2 className="text-lg font-bold">Transcript tools</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Create action tasks from the transcript.
+            </p>
+          </div>
+          <div className="space-y-5 p-5">
             <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
               <div className="border-b border-slate-100 px-4 py-3">
                 <h3 className="font-bold text-ink">Action tasks</h3>
@@ -172,30 +172,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-white p-6">
-              <div className="mx-auto max-w-2xl text-center">
-                <p className="text-lg font-bold text-ink">No action tasks yet</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  Action tasks will appear here after the meeting has a real transcript and you run Extract Action Tasks.
-                </p>
-                <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  {transcriptIsUsable ? (
-                    <form action={extractTasks}>
-                      <input type="hidden" name="id" value={meeting.id} />
-                      <ActionButton className="kh-button-secondary">Extract Action Tasks</ActionButton>
-                    </form>
-                  ) : (
-                    <a className="kh-button-secondary" href="#transcript">
-                      Go to transcript
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      ) : null}
 
       <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
     </div>
