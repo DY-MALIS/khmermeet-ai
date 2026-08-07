@@ -321,8 +321,7 @@ function LiveKitOneScreenConference() {
     ],
     { onlySubscribed: false }
   );
-  // The meeting itself allows up to 100 joined participants (enforced by
-  // the LiveKit room config), but rendering 100 live video tiles at once
+  // Joining is uncapped, but rendering unlimited live video tiles at once
   // would overwhelm the browser - the grid only ever shows the first 20.
   const visibleTracks = tracks.slice(0, 20);
   const grid = getCallGridMetrics(visibleTracks.length);
@@ -331,7 +330,7 @@ function LiveKitOneScreenConference() {
     <section className="bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
         <span>
-          Showing {visibleTracks.length} of {tracks.length} · meeting allows up to 100 participants
+          Showing {visibleTracks.length} of {tracks.length} participants
         </span>
         <span>One-screen grid view</span>
       </div>

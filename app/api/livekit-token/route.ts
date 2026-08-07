@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server";
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken } from "livekit-server-sdk";
 import { requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
-
-// Meeting rooms cap out at 100 participants. LiveKit auto-creates a room on
-// first join with no cap unless one is set explicitly here, so this must
-// run before the room has any participants - calling createRoom again for
-// an already-running room is a harmless no-op (it won't retroactively add
-// a cap to a meeting that's already in progress).
-const MAX_MEETING_PARTICIPANTS = 100;
 
 function cleanRoomName(value: unknown) {
   const room = typeof value === "string" ? value.trim().toUpperCase() : "";
@@ -43,14 +36,6 @@ export async function POST(request: Request) {
         },
         { status: 500 }
       );
-    }
-
-    try {
-      const roomService = new RoomServiceClient(livekitUrl, apiKey, apiSecret);
-      await roomService.createRoom({ name: room, maxParticipants: MAX_MEETING_PARTICIPANTS });
-    } catch {
-      // Room may already exist and be running - not fatal, the join should
-      // still proceed rather than block the meeting over this.
     }
 
     const identity = `${name.replace(/\s+/g, "-").toLowerCase()}-${crypto.randomUUID()}`;
