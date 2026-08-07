@@ -423,10 +423,10 @@ export async function generateMeetingSummary(transcript: string) {
   return generateOpenRouterContent([{ text: buildSummaryPrompt(transcript) }], { temperature: 0.2 });
 }
 
-export async function extractMeetingTasks(transcript: string) {
+export async function extractMeetingTasks(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) return fallbackTasks(transcript);
-  const raw = await generateOpenRouterContent([{ text: buildTaskExtractionPrompt(transcript) }], {
+  const raw = await generateOpenRouterContent([{ text: buildTaskExtractionPrompt(transcript, language) }], {
     json: true,
     temperature: 0.1
   });
@@ -450,10 +450,10 @@ export async function translateMeetingTranscript(transcript: string, targetLangu
   return generateOpenRouterContent([{ text: prompt }], { temperature: 0.1 });
 }
 
-export async function extractMeetingSmartNote(transcript: string) {
+export async function extractMeetingSmartNote(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) return { decisions: [], problems: [], ideas: [], questions: [] };
-  const raw = await generateOpenRouterContent([{ text: buildSmartNotePrompt(transcript) }], {
+  const raw = await generateOpenRouterContent([{ text: buildSmartNotePrompt(transcript, language) }], {
     json: true,
     temperature: 0.1
   });

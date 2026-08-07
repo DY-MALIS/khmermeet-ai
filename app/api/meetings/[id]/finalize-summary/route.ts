@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -24,6 +25,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     let summaryGenerated = false;
     let tasksCreated = 0;
     let aiError = "";
+    const language = normalizeTranscriptionLanguageMode(meeting.language);
 
     try {
       const summary = await generateMeetingSummary(meeting.transcript);
@@ -37,7 +39,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     try {
-      const tasks = await extractMeetingTasks(meeting.transcript);
+      const tasks = await extractMeetingTasks(meeting.transcript, language);
       if (tasks.length) {
         await prisma.task.createMany({
           data: tasks.map((task) => ({
@@ -58,7 +60,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     try {
-      const smartNote = await extractMeetingSmartNote(meeting.transcript);
+      const smartNote = await extractMeetingSmartNote(meeting.transcript, language);
       await prisma.$transaction([
         prisma.meeting.update({
           where: { id },

@@ -1,5 +1,9 @@
-export function buildTaskExtractionPrompt(transcript: string) {
+import { buildLanguageInstruction, type DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
+
+export function buildTaskExtractionPrompt(transcript: string, language: DocumentLanguageMode) {
   return `Extract action tasks from the transcript. Return valid JSON only, no markdown.
+
+Language rule for every text value in the JSON (title, description, assigneeName, sourceText): ${buildLanguageInstruction(language)}
 
 JSON shape:
 {

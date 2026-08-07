@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        const tasks = await extractMeetingTasks(transcript);
+        const tasks = await extractMeetingTasks(transcript, "km-en");
         if (tasks.length) {
           await prisma.task.createMany({
             data: tasks.map((task) => ({

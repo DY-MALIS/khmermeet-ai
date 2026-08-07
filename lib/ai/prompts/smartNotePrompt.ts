@@ -1,5 +1,9 @@
-export function buildSmartNotePrompt(transcript: string) {
+import { buildLanguageInstruction, type DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
+
+export function buildSmartNotePrompt(transcript: string, language: DocumentLanguageMode) {
   return `Read the meeting transcript and split it into structured buckets. Return valid JSON only, no markdown, no code fences.
+
+Language rule for every text value in the JSON (title, ownerName, problems, ideas, questions, sourceText): ${buildLanguageInstruction(language)}
 
 JSON shape:
 {

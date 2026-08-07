@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { deleteStoredAudio, loadStoredAudioAsFile, transcribeAudio } from "@/lib/storage";
+import { deleteStoredAudio, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -119,7 +119,7 @@ export async function extractTasks(formData: FormData) {
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before extracting tasks.");
-  const tasks = await extractMeetingTasks(meeting.transcript);
+  const tasks = await extractMeetingTasks(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
   await prisma.$transaction([
     prisma.task.deleteMany({ where: { meetingId: id } }),
     ...(tasks.length
@@ -150,7 +150,7 @@ export async function regenerateSmartNote(formData: FormData) {
   if (!meeting.transcript?.trim() || !hasUsableTranscript(meeting.transcript)) {
     throw new Error("Transcript has no clear speech text. Please re-transcribe before generating a smart note.");
   }
-  const smartNote = await extractMeetingSmartNote(meeting.transcript);
+  const smartNote = await extractMeetingSmartNote(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
   await prisma.$transaction([
     prisma.meeting.update({
       where: { id },
