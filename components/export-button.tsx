@@ -118,31 +118,89 @@ export function ExportButton({
     try {
       const PptxGenJS = (await import("pptxgenjs")).default;
       const pptx = new PptxGenJS();
+      pptx.defineLayout({ name: "KH_16x9", width: 10, height: 5.63 });
+      pptx.layout = "KH_16x9";
+      type PSlide = ReturnType<typeof pptx.addSlide>;
 
+      // Brand palette, matching the app's own leaf/saffron/sky/ink colors.
+      const BRAND = { leaf: "18745F", saffron: "D8912A", sky: "2E86AB", ink: "17202A", paper: "F7F5F0" };
+      const priorityColor: Record<string, string> = { high: "C0392B", medium: BRAND.saffron, low: BRAND.sky };
+      let pageNumber = 0;
+
+      function addLogoMark(slide: PSlide, x: number, y: number, size: number, fill: string, textColor: string) {
+        slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.22, fill: { color: fill }, line: { type: "none" } });
+        slide.addText("K", { x, y, w: size, h: size, align: "center", valign: "middle", bold: true, color: textColor, fontSize: size * 34 });
+      }
+
+      function addFooter(slide: PSlide) {
+        pageNumber += 1;
+        slide.addText("KhmerMeet AI", { x: 0.4, y: 5.28, w: 4, h: 0.3, fontSize: 9, color: "9AA5B1", italic: true });
+        slide.addText(String(pageNumber), { x: 9.2, y: 5.28, w: 0.5, h: 0.3, fontSize: 9, color: "9AA5B1", align: "right" });
+      }
+
+      function addHeader(slide: PSlide, headerTitle: string) {
+        slide.background = { color: "FFFFFF" };
+        slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.12, fill: { color: BRAND.leaf }, line: { type: "none" } });
+        addLogoMark(slide, 0.4, 0.34, 0.45, BRAND.leaf, "FFFFFF");
+        slide.addText(headerTitle, { x: 1.0, y: 0.3, w: 8.4, h: 0.55, fontSize: 22, bold: true, color: BRAND.ink });
+        addFooter(slide);
+      }
+
+      // Title slide
       const titleSlide = pptx.addSlide();
-      titleSlide.addText(title, { x: 0.5, y: 2, w: 9, h: 1.5, fontSize: 32, bold: true, align: "center" });
+      titleSlide.background = { color: BRAND.leaf };
+      addLogoMark(titleSlide, 4.55, 1.15, 0.9, "FFFFFF", BRAND.leaf);
+      titleSlide.addText(title, { x: 0.6, y: 2.3, w: 8.8, h: 1.2, fontSize: 30, bold: true, align: "center", color: "FFFFFF" });
+      titleSlide.addText(new Date().toLocaleDateString(), {
+        x: 0.6,
+        y: 3.35,
+        w: 8.8,
+        h: 0.5,
+        fontSize: 14,
+        align: "center",
+        color: "D7ECE4"
+      });
+      titleSlide.addShape("rect", { x: 4.1, y: 3.95, w: 1.8, h: 0.03, fill: { color: BRAND.saffron }, line: { type: "none" } });
 
-      const summaryLines = (summary ?? "No summary available.").split("\n").filter(Boolean);
-      const linesPerSlide = 10;
-      for (let i = 0; i < summaryLines.length; i += linesPerSlide) {
+      // Summary slides
+      const summaryLines = (summary ?? "No summary available.").split("\n").map((line) => line.trim()).filter(Boolean);
+      const linesPerSlide = 8;
+      const summaryPageCount = Math.max(1, Math.ceil(summaryLines.length / linesPerSlide));
+      for (let i = 0; i < summaryPageCount; i += 1) {
         const slide = pptx.addSlide();
-        slide.addText("Summary", { x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, bold: true });
+        addHeader(slide, summaryPageCount > 1 ? `សង្ខេប (${i + 1}/${summaryPageCount})` : "សង្ខេប (Summary)");
+        const pageLines = summaryLines.slice(i * linesPerSlide, (i + 1) * linesPerSlide);
         slide.addText(
-          summaryLines.slice(i, i + linesPerSlide).map((line) => ({ text: line, options: { bullet: true, breakLine: true } })),
-          { x: 0.5, y: 1.1, w: 9, h: 5, fontSize: 16 }
+          (pageLines.length ? pageLines : ["No summary available."]).map((line) => ({
+            text: line,
+            options: { bullet: { indent: 18 }, color: BRAND.ink, breakLine: true, paraSpaceAfter: 10 }
+          })),
+          { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 15, valign: "top" }
         );
       }
 
+      // Tasks slide(s)
       if (tasks.length) {
-        const slide = pptx.addSlide();
-        slide.addText("Tasks", { x: 0.5, y: 0.3, w: 9, h: 0.6, fontSize: 24, bold: true });
-        slide.addText(
-          tasks.slice(0, 10).map((task) => ({
-            text: `${task.title}${task.assigneeName ? ` (${task.assigneeName})` : ""}`,
-            options: { bullet: true, breakLine: true }
-          })),
-          { x: 0.5, y: 1.1, w: 9, h: 5, fontSize: 16 }
-        );
+        const tasksPerSlide = 8;
+        const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
+        for (let i = 0; i < taskPageCount; i += 1) {
+          const slide = pptx.addSlide();
+          addHeader(slide, taskPageCount > 1 ? `កិច្ចការ (${i + 1}/${taskPageCount})` : "កិច្ចការ (Tasks)");
+          const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
+          slide.addText(
+            pageTasks.map((task) => ({
+              text: `${task.title}${task.assigneeName ? `  —  ${task.assigneeName}` : ""}${task.deadline ? `  (${task.deadline.toISOString().slice(0, 10)})` : ""}`,
+              options: {
+                bullet: { indent: 18 },
+                color: priorityColor[task.priority] ?? BRAND.ink,
+                bold: true,
+                breakLine: true,
+                paraSpaceAfter: 10
+              }
+            })),
+            { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 14, valign: "top" }
+          );
+        }
       }
 
       const blob = (await pptx.write({ outputType: "blob" })) as Blob;
