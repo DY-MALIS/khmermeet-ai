@@ -6,6 +6,7 @@ import { buildTimelinePrompt, type TimelineSegmentInput } from "@/lib/ai/prompts
 import { buildFollowUpEmailPrompt } from "@/lib/ai/prompts/followUpEmailPrompt";
 import { buildMeetingDocumentPrompt, type MeetingDocumentType } from "@/lib/ai/prompts/documentPrompt";
 import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
+import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 
 type TextPart = { text: string };
 
@@ -471,21 +472,33 @@ export async function generateMeetingTimelineTopics(segments: TimelineSegmentInp
   return parsed.topics.filter((topic) => topic.segmentNumber >= 1 && topic.segmentNumber <= segments.length);
 }
 
-export async function generateFollowUpEmail(meetingTitle: string, transcript: string, summary: string | null) {
+export async function generateFollowUpEmail(
+  meetingTitle: string,
+  transcript: string,
+  summary: string | null,
+  language: DocumentLanguageMode = "km"
+) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  return generateOpenRouterContent([{ text: buildFollowUpEmailPrompt(meetingTitle, transcript, summary) }], { temperature: 0.2 });
+  return generateOpenRouterContent(
+    [{ text: buildFollowUpEmailPrompt(meetingTitle, transcript, summary, language) }],
+    { temperature: 0.2 }
+  );
 }
 
 export async function generateMeetingDocument(
   type: MeetingDocumentType,
   meetingTitle: string,
   transcript: string,
-  summary: string | null
+  summary: string | null,
+  language: DocumentLanguageMode = "km"
 ) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  return generateOpenRouterContent([{ text: buildMeetingDocumentPrompt(type, meetingTitle, transcript, summary) }], { temperature: 0.2 });
+  return generateOpenRouterContent(
+    [{ text: buildMeetingDocumentPrompt(type, meetingTitle, transcript, summary, language) }],
+    { temperature: 0.2 }
+  );
 }
 
 export async function answerMeetingQuestion(transcript: string, question: string) {

@@ -5,6 +5,7 @@ import { generateMeetingDocument } from "@/lib/ai/openrouter";
 import type { MeetingDocumentType } from "@/lib/ai/prompts/documentPrompt";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,7 +28,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Invalid document type." }, { status: 400 });
     }
 
-    const document = await generateMeetingDocument(type as MeetingDocumentType, meeting.title, meeting.transcript, meeting.summary);
+    const document = await generateMeetingDocument(
+      type as MeetingDocumentType,
+      meeting.title,
+      meeting.transcript,
+      meeting.summary,
+      normalizeTranscriptionLanguageMode(meeting.language)
+    );
     return NextResponse.json({ document });
   } catch (error) {
     const publicError = publicAiTranscriptionError(error);
