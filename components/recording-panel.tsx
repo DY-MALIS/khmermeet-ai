@@ -6,17 +6,19 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-// noiseSuppression off: the compressor/gain chain below needs to see the
-// real quiet signal to boost it - the browser's suppressor runs before that
-// chain ever gets a look and can attenuate quiet, non-close-talk speech
-// hard enough that no downstream gain can recover it. (The call feature's
-// mixed-track recording, which handles a similar far-field problem, relies
-// on the same kind of custom compressor/gain chain rather than the
-// browser's built-in processing - its own comments note autoGainControl
-// alone isn't enough to keep a distant speaker intelligible.)
+// noiseSuppression + autoGainControl on: on-screen diagnostics proved (not
+// guessed) that MediaRecorder does not faithfully capture what's sent to a
+// synthesized MediaStreamDestinationNode on this browser/OS - a live level
+// meter tapped from the same processing chain read 0.00551 while the
+// actual decoded recording read 0.00001, ~550x smaller, from the exact same
+// signal. That's not a quiet-audio problem, it's this hand-off losing
+// almost everything. So the custom compressor/gain/limiter chain has been
+// removed for the recorded track; MediaRecorder now gets the raw device
+// track, and the browser's own native processing is the only thing boosting
+// it, since that's what actually reaches MediaRecorder intact.
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
-  noiseSuppression: false,
+  noiseSuppression: true,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
@@ -200,60 +202,27 @@ export function RecordingPanel() {
     updateLevel();
   }
 
-  // Reinstated after comparing against the call feature's mixed-track
-  // recording (components/livekit-call-room.tsx), which handles the same
-  // far-field problem and works: it also routes audio through a custom
-  // AudioContext compressor/gain chain into a synthesized destination, so
-  // that pattern itself isn't what was broken. Removing it here (relying on
-  // the browser's native autoGainControl alone) was a mistake - the call
-  // feature's own comments note native autoGainControl isn't strong enough
-  // for a distant speaker on its own.
-  async function buildRecordingStream(microphoneStream: MediaStream) {
+  // On-screen diagnostics proved this, not a guess: a live analyser tapped
+  // from the processed graph (source -> gain -> compressor -> limiter ->
+  // destination) read a real max level of 0.00551, while the actual decoded
+  // recording from that same destination read 0.00001 - about 550x smaller,
+  // from the identical signal. MediaRecorder does not faithfully capture
+  // what's sent to a synthesized MediaStreamDestinationNode on this
+  // browser/OS. So this only builds a lightweight analyser tap for the
+  // on-screen level meter now - it does not feed the recording at all.
+  // MediaRecorder gets the raw device track directly (see start() below),
+  // with noiseSuppression/autoGainControl as the only processing, since
+  // that's what's actually proven to reach it intact.
+  async function buildLevelAnalyser(microphoneStream: MediaStream) {
     void recordingAudioContextRef.current?.close().catch(() => undefined);
     const audioContext = new AudioContext();
     recordingAudioContextRef.current = audioContext;
     await audioContext.resume().catch(() => undefined);
-
     const source = audioContext.createMediaStreamSource(microphoneStream);
-    // Gain has to come BEFORE the compressor, not after: a
-    // DynamicsCompressorNode only touches signal ABOVE its threshold -
-    // anything quieter passes through completely unchanged, so distant
-    // speech that never reaches the threshold needs the boost applied first.
-    const preGain = audioContext.createGain();
-    preGain.gain.value = 20;
-    const compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.value = -30;
-    compressor.knee.value = 30;
-    compressor.ratio.value = 8;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.25;
-    // Final hard limiter - the clip-safety net for anyone talking close to
-    // the mic, now that preGain can push their signal well past 0dB.
-    const limiter = audioContext.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
-    limiter.release.value = 0.1;
-    const destination = audioContext.createMediaStreamDestination();
-    // Tap the level meter off the same graph feeding the recorder instead of
-    // re-consuming destination.stream through a second AudioContext: handing
-    // one MediaStreamDestinationNode track to two independent consumers is a
-    // known Chromium/Windows footgun where the recorder's copy can end up
-    // starved of samples (silent file) while the other consumer still sees
-    // live levels. (The call feature hit an analogous bug running two
-    // MediaRecorders on the same live track - see the clone in
-    // startSegmentRecorder there.)
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
-
-    source.connect(preGain);
-    preGain.connect(compressor);
-    compressor.connect(limiter);
-    limiter.connect(destination);
-    limiter.connect(analyser);
-
-    return { stream: destination.stream, analyser };
+    source.connect(analyser);
+    return analyser;
   }
 
   async function start() {
@@ -278,13 +247,13 @@ export function RecordingPanel() {
         audio: buildAudioConstraints()
       });
       const [track] = rawStream.getAudioTracks();
-      const { stream: recordingStream, analyser } = await buildRecordingStream(rawStream);
-      streamRef.current = recordingStream;
+      streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
       await loadAudioDevices();
+      const analyser = await buildLevelAnalyser(rawStream);
       startMicMonitor(analyser);
       const mimeType = getMimeType();
-      const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
+      const media = new MediaRecorder(rawStream, getRecorderOptions(mimeType));
       chunks.current = [];
       segmentsRef.current = [];
       media.ondataavailable = (event) => {
@@ -363,7 +332,6 @@ export function RecordingPanel() {
         } finally {
           setUploading(false);
           rawStream.getTracks().forEach((track) => track.stop());
-          recordingStream.getTracks().forEach((track) => track.stop());
           displayStreamRef.current?.getTracks().forEach((track) => track.stop());
           displayStreamRef.current = null;
           void recordingAudioContextRef.current?.close().catch(() => undefined);
