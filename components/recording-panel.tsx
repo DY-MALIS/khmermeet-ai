@@ -199,9 +199,15 @@ export function RecordingPanel() {
     // after it then tame whatever ends up too loud (including speakers close
     // to the mic getting hit by this much gain).
     const preGain = audioContext.createGain();
-    preGain.gain.value = 8;
+    // Only preGain actually helps very quiet/distant speech - the compressor
+    // and limiter below only react to signal that's already loud enough to
+    // cross their thresholds, so genuinely quiet content only ever gets
+    // whatever boost preGain gives it. Pushed up from 8x since that still
+    // wasn't enough headroom for far-mic speech; the limiter downstream is
+    // what keeps this safe for anyone talking close to the mic.
+    preGain.gain.value = 20;
     const compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.value = -24;
+    compressor.threshold.value = -30;
     compressor.knee.value = 30;
     compressor.ratio.value = 8;
     compressor.attack.value = 0.003;
