@@ -79,6 +79,7 @@ export function RecordingPanel() {
     liveMaxLevel: string;
     decoded: string;
   } | null>(null);
+  const [trackDiagnostics, setTrackDiagnostics] = useState("");
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -229,6 +230,7 @@ export function RecordingPanel() {
     setError("");
     setQuietWarning("");
     setDiagnostics(null);
+    setTrackDiagnostics("");
     setAudioUrl("");
     setPreviewUrl("");
     setSavedMeetingId("");
@@ -249,6 +251,21 @@ export function RecordingPanel() {
       const [track] = rawStream.getAudioTracks();
       streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
+      // track.muted reflects the OS/driver silencing the input at the
+      // platform level (distinct from anything JS controls) - if this reads
+      // true, or the settings below don't match what the device picker
+      // shows, that's direct evidence the browser is receiving a live but
+      // empty track rather than anything this app's code could fix.
+      const reportTrackState = () => {
+        if (!track) return;
+        const settings = track.getSettings();
+        setTrackDiagnostics(
+          `label="${track.label}" enabled=${track.enabled} muted=${track.muted} readyState=${track.readyState} deviceId=${settings.deviceId ?? "?"} groupId=${settings.groupId ?? "?"} sampleRate=${settings.sampleRate ?? "?"} channelCount=${settings.channelCount ?? "?"}`
+        );
+      };
+      reportTrackState();
+      track?.addEventListener("mute", reportTrackState);
+      track?.addEventListener("unmute", reportTrackState);
       await loadAudioDevices();
       const analyser = await buildLevelAnalyser(rawStream);
       startMicMonitor(analyser);
@@ -480,6 +497,12 @@ export function RecordingPanel() {
       {quietWarning ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
           {quietWarning}
+        </div>
+      ) : null}
+      {trackDiagnostics ? (
+        <div className="mb-4 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-600">
+          <p>mic track state (screenshot this):</p>
+          <p>{trackDiagnostics}</p>
         </div>
       ) : null}
       {diagnostics ? (
