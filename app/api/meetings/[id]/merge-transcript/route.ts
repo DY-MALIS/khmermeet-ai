@@ -26,9 +26,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     const transcript = segments.map((segment) => `${segment.speakerName || segment.speakerIdentity}: ${segment.text}`).join("\n");
     if (hasUsableTranscript(transcript)) {
+      // Don't overwrite `language` here: segments were already transcribed
+      // using the language mode the user picked when recording, set on the
+      // meeting when it was created. Forcing "km-en" here discarded that
+      // choice and made summary/task generation ignore it downstream.
       await prisma.meeting.update({
         where: { id },
-        data: { transcript, summary: null, language: "km-en", status: "transcribed" }
+        data: { transcript, summary: null, status: "transcribed" }
       });
     }
 

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
 export const maxDuration = 60;
 
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
     const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
     const speakerNames = normalizeSpeakerNames(body.speakerNames);
+    const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
 
     await prisma.user.upsert({
       where: { id: user.id },
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
         transcript: transcript || null,
         summary: null,
         duration,
-        language: "km-en",
+        language: languageMode,
         status: transcript ? "transcribed" : "recorded",
         speakerNames,
         createdById: user.id
@@ -49,7 +51,7 @@ export async function POST(request: Request) {
 
     if (transcript) {
       try {
-        const summary = await generateMeetingSummary(transcript, "km-en");
+        const summary = await generateMeetingSummary(transcript, languageMode);
         await prisma.meeting.update({
           where: { id: meeting.id },
           data: { summary, status: "summarized" }
@@ -60,7 +62,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        const tasks = await extractMeetingTasks(transcript, "km-en");
+        const tasks = await extractMeetingTasks(transcript, languageMode);
         if (tasks.length) {
           await prisma.task.createMany({
             data: tasks.map((task) => ({

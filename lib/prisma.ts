@@ -7,7 +7,13 @@ function databaseUrl() {
   if (!url || !process.env.VERCEL) return url;
   if (!url.includes("pooler.supabase.com")) return url;
 
-  const parsed = new URL(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
   parsed.searchParams.set("pgbouncer", "true");
   parsed.searchParams.set("connection_limit", "1");
   parsed.searchParams.set("connect_timeout", "10");

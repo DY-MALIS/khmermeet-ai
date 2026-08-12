@@ -395,7 +395,7 @@ export async function transcribeAudio(
   ).catch(() => cleanedTranscript);
 
   const cleanedRefinedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames);
-  const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript);
+  const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
   assertUsableSavedTranscript(bestTranscript);
   return bestTranscript;
 }
@@ -444,13 +444,32 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .join("\n");
 }
 
-function chooseBetterSavedTranscript(rawTranscript: string, refinedTranscript: string) {
+function chooseBetterSavedTranscript(
+  rawTranscript: string,
+  refinedTranscript: string,
+  languageMode: TranscriptionLanguageMode
+) {
   if (!refinedTranscript.trim()) return rawTranscript;
   if (isLikelyIncompleteTranscript(refinedTranscript)) return rawTranscript;
 
   const rawScore = transcriptTokenScore(rawTranscript);
   const refinedScore = transcriptTokenScore(refinedTranscript);
   if (rawScore >= 6 && refinedScore < rawScore * 0.6) return rawTranscript;
+
+  // The refine pass is a text-only proofreading step with no access to the
+  // audio - for km-en mode it's instructed to keep each phrase in whichever
+  // language it was actually spoken in, but a text LLM can silently
+  // translate English portions into Khmer instead of preserving them
+  // (a known LLM failure mode, distinct from dropping content, so the
+  // length-based check above doesn't catch it). A steep drop in Latin/English
+  // word count between the raw (audio-grounded) and refined transcript is a
+  // reliable signal that happened, so fall back to the raw transcript rather
+  // than silently changing what the audio actually said.
+  if (languageMode === "km-en") {
+    const rawLatinWords = countLatinWords(rawTranscript);
+    const refinedLatinWords = countLatinWords(refinedTranscript);
+    if (rawLatinWords >= 4 && refinedLatinWords < rawLatinWords * 0.4) return rawTranscript;
+  }
 
   return refinedTranscript;
 }
@@ -482,8 +501,12 @@ function isLikelyIncompleteTranscript(transcript: string) {
   return false;
 }
 
+function countLatinWords(transcript: string) {
+  return transcript.match(/[A-Za-z0-9][A-Za-z0-9'_-]*/g)?.length ?? 0;
+}
+
 function transcriptTokenScore(transcript: string) {
-  const latinWords = transcript.match(/[A-Za-z0-9][A-Za-z0-9'_-]*/g)?.length ?? 0;
+  const latinWords = countLatinWords(transcript);
   const khmerChars = transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
   return latinWords + Math.ceil(khmerChars / 6);
 }

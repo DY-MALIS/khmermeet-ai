@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       data: {
         transcript: nextTranscript,
         summary: null,
-        language: "km-en",
+        language: languageMode,
         status: "transcribed"
       }
     });

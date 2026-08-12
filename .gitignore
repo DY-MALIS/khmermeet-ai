@@ -1,6 +1,8 @@
 node_modules
 .next
+.vercel
 .env
+*.local
 vercel-env.txt
 /uploads
 *.log

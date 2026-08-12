@@ -84,9 +84,9 @@ export function TranscribeAudioButton({
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km">Khmer output</option>
-          <option value="en">English output</option>
-          <option value="km-en">Keep Khmer + English</option>
+          <option value="km">លទ្ធផលជាភាសាខ្មែរ</option>
+          <option value="en">លទ្ធផលជាភាសាអង់គ្លេស</option>
+          <option value="km-en">រក្សាទាំងខ្មែរ និងអង់គ្លេស</option>
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

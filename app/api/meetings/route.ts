@@ -4,6 +4,7 @@ import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
     const rawTranscript = cleanString(body.transcript);
     const duration = Number(body.duration ?? 0);
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
+    const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
 
     if (!audioUrl) {
       return NextResponse.json({ error: "Missing uploaded audio or video URL." }, { status: 400 });
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
       audioUrl,
       transcript: transcript || null,
       summary: null,
-      language: transcript ? "km-en" : "km",
+      language: languageMode,
       status: transcript ? "transcribed" : "recorded",
       duration: Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : 0,
       createdById: user.id
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
 
     if (transcript) {
     try {
-      const summary = await generateMeetingSummary(transcript, "km-en");
+      const summary = await generateMeetingSummary(transcript, languageMode);
       await prisma.meeting.update({
         where: { id: meeting.id },
         data: { summary, status: "summarized" }
@@ -72,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      const tasks = await extractMeetingTasks(transcript, "km-en");
+      const tasks = await extractMeetingTasks(transcript, languageMode);
       if (tasks.length) {
         await prisma.task.createMany({
           data: tasks.map((task) => ({

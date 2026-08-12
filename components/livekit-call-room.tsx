@@ -173,7 +173,7 @@ export function LiveKitCallRoom() {
   async function copyInvite() {
     const url = inviteLink();
     await navigator.clipboard?.writeText(url).catch(() => undefined);
-    setNotice("Invite link copied. Participants only need to enter their name, then join.");
+    setNotice("បានចម្លង Invite link ។ អ្នកចូលរួមគ្រាន់តែវាយឈ្មោះ រួចចូលរួមបាន។");
   }
 
   async function shareInvite() {
@@ -198,19 +198,19 @@ export function LiveKitCallRoom() {
         {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
         <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-600">Invite participants</p>
+            <p className="text-sm font-semibold text-slate-600">អញ្ជើញអ្នកចូលរួម</p>
             <p className="text-sm text-slate-500">
-              Share this link so others can join <span className="font-semibold text-ink">{meetingTitle()}</span>. They only enter their name.
+              ចែករំលែក link នេះ ដើម្បីឲ្យអ្នកដទៃចូលរួម <span className="font-semibold text-ink">{meetingTitle()}</span> បាន។ ពួកគេគ្រាន់តែវាយឈ្មោះ។
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button className="kh-button-secondary" type="button" onClick={copyInvite}>
               <Copy className="h-4 w-4" />
-              Copy link
+              ចម្លង Link
             </button>
             <button className="kh-button-primary" type="button" onClick={shareInvite}>
               <Share2 className="h-4 w-4" />
-              Share invite
+              ចែករំលែក Invite
             </button>
           </div>
         </div>
@@ -222,19 +222,19 @@ export function LiveKitCallRoom() {
           video={callMedia.video}
           onDisconnected={() => setTokenPayload(null)}
           onError={(error) => {
-            const message = error.message || "Could not connect camera/microphone.";
+            const message = error.message || "មិនអាចភ្ជាប់ camera/microphone បានទេ។";
             if (/camera|video|device|permission/i.test(message) && callMedia.video) {
               setCameraOn(false);
               setCallMedia((current) => ({ ...current, video: false }));
               setTokenPayload(null);
-              setError(`${message} Please join again with camera off for audio-only mode.`);
+              setError(`${message} សូមចូលរួមម្តងទៀតដោយបិទ camera សម្រាប់ audio-only mode។`);
               return;
             }
             if (/microphone|audio|device|permission/i.test(message) && callMedia.audio) {
               setMicrophoneOn(false);
               setCallMedia((current) => ({ ...current, audio: false }));
               setTokenPayload(null);
-              setError(`${message} Please join again with microphone off for listen-only mode, or allow microphone permission to speak.`);
+              setError(`${message} សូមចូលរួមម្តងទៀតដោយបិទ microphone សម្រាប់ listen-only mode ឬអនុញ្ញាត microphone ដើម្បីនិយាយបាន។`);
               return;
             }
             setError(message);
@@ -272,15 +272,15 @@ export function LiveKitCallRoom() {
           </label>
           {isInviteGuest ? (
             <div className="space-y-1">
-              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <span className="text-sm font-semibold text-slate-600">លេខកូដ Room</span>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{room}</div>
             </div>
           ) : (
             <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <span className="text-sm font-semibold text-slate-600">លេខកូដ Room</span>
               <div className="flex gap-2">
                 <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
-                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="Copy invite">
+                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="ចម្លង Invite">
                   <Copy className="h-4 w-4" />
                 </button>
               </div>
@@ -331,9 +331,9 @@ function LiveKitOneScreenConference() {
     <section className="bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
         <span>
-          Showing {visibleTracks.length} of {tracks.length} participants
+          កំពុងបង្ហាញ {visibleTracks.length} នៃ {tracks.length} អ្នកចូលរួម
         </span>
-        <span>One-screen grid view</span>
+        <span>ទិដ្ឋភាព Grid តែមួយអេក្រង់</span>
       </div>
       <div className="kh-livekit-stage h-[52svh] min-h-[300px] max-h-[680px] p-2 md:h-[calc(100svh-22rem)] md:min-h-[380px]">
         <div
@@ -344,7 +344,7 @@ function LiveKitOneScreenConference() {
           }}
         >
           {visibleTracks.map((trackRef) => {
-            const participantName = trackRef.participant.name || trackRef.participant.identity || "Participant";
+            const participantName = trackRef.participant.name || trackRef.participant.identity || "អ្នកចូលរួម";
             const trackKey = `${trackRef.participant.sid}-${trackRef.source}`;
             const hasVideo = Boolean(trackRef.publication?.track);
 
@@ -362,7 +362,7 @@ function LiveKitOneScreenConference() {
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
                     <Camera className="h-8 w-8" />
-                    <span className="text-sm font-semibold">Camera off</span>
+                    <span className="text-sm font-semibold">បិទកាមេរ៉ា</span>
                   </div>
                 )}
                 <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
@@ -408,7 +408,7 @@ function LiveKitCallControls() {
         onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}
       >
         <Mic className="mr-2 inline h-4 w-4" />
-        {isMicrophoneEnabled ? "Microphone" : "Mic off"}
+        {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
       </button>
       <button
         className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
@@ -417,7 +417,7 @@ function LiveKitCallControls() {
         onClick={() => runControl("camera", () => localParticipant.setCameraEnabled(!isCameraEnabled))}
       >
         <Camera className="mr-2 inline h-4 w-4" />
-        {isCameraEnabled ? "Camera" : "Camera off"}
+        {isCameraEnabled ? "កាមេរ៉ា" : "បិទកាមេរ៉ា"}
       </button>
       <button
         className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
@@ -426,7 +426,7 @@ function LiveKitCallControls() {
         onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
       >
         <Share2 className="mr-2 inline h-4 w-4" />
-        {isScreenShareEnabled ? "Stop share" : "Share screen"}
+        {isScreenShareEnabled ? "បញ្ឈប់ការចែករំលែក" : "ចែករំលែកអេក្រង់"}
       </button>
       <button
         className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
@@ -435,7 +435,7 @@ function LiveKitCallControls() {
         onClick={() => runControl("leave", () => room.disconnect())}
       >
         <Phone className="mr-2 inline h-4 w-4" />
-        Leave
+        ចាកចេញ
       </button>
     </div>
   );
@@ -469,11 +469,16 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const segmentRecorderRef = useRef<MediaRecorder | null>(null);
+  const segmentStreamRef = useRef<MediaStream | null>(null);
   const segmentsRef = useRef<Blob[]>([]);
   const segmentingRef = useRef(false);
   const startedAtRef = useRef(0);
   const serverStartedAtRef = useRef(0);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const mixAudioContextRef = useRef<AudioContext | null>(null);
+  const mixDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const mixInputRef = useRef<AudioNode | null>(null);
+  const mixNodesRef = useRef<Map<string, MediaStreamAudioSourceNode>>(new Map());
   const serverRecordingRef = useRef(serverRecording);
   useEffect(() => {
     serverRecordingRef.current = serverRecording;
@@ -492,6 +497,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }, 250);
     return () => window.clearInterval(timer);
   }, [recording]);
+
+  // buildMixedAudioStream() only wires up whatever microphone tracks are
+  // already live when "Start Agent" is clicked. Without this, anyone who
+  // joins (or whose mic finishes subscribing) after that moment is silently
+  // missing from the recording even though they're audible live via
+  // RoomAudioRenderer - this keeps the mix in sync with the room for as
+  // long as recording stays active.
+  useEffect(() => {
+    if (!recording) return;
+    connectAvailableAudioTracks();
+  }, [audioTracks, recording]);
 
   useEffect(() => {
     return () => {
@@ -579,29 +595,74 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     return url;
   }
 
-  function buildMixedAudioStream() {
-    const audioContext = new AudioContext();
-    const destination = audioContext.createMediaStreamDestination();
-    const nodes: MediaStreamAudioSourceNode[] = [];
-    const seen = new Set<string>();
+  // Adds any live microphone tracks not already in the mix (new
+  // participants joining, or a track finishing subscription) to the shared
+  // AudioContext destination. Safe to call repeatedly - already-connected
+  // tracks are skipped.
+  function connectAvailableAudioTracks() {
+    const audioContext = mixAudioContextRef.current;
+    const input = mixInputRef.current;
+    if (!audioContext || !input) return;
+    const nodes = mixNodesRef.current;
 
     for (const ref of audioTracks) {
       const track = ref.publication?.track?.mediaStreamTrack;
-      if (!track || track.readyState !== "live" || seen.has(track.id)) continue;
-      seen.add(track.id);
+      if (!track || track.readyState !== "live" || nodes.has(track.id)) continue;
       const source = audioContext.createMediaStreamSource(new MediaStream([track]));
-      source.connect(destination);
-      nodes.push(source);
+      source.connect(input);
+      nodes.set(track.id, source);
     }
+  }
 
-    if (!destination.stream.getAudioTracks().length) {
+  function stopMixedAudioContext() {
+    mixNodesRef.current.forEach((node) => node.disconnect());
+    mixNodesRef.current = new Map();
+    const audioContext = mixAudioContextRef.current;
+    mixAudioContextRef.current = null;
+    mixDestinationRef.current = null;
+    mixInputRef.current = null;
+    if (audioContext) void audioContext.close().catch(() => undefined);
+  }
+
+  function buildMixedAudioStream() {
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+    // Compressor + gain before the destination: getUserMedia's
+    // autoGainControl per-track isn't enough to keep a participant seated
+    // far from their microphone as intelligible as one talking right into
+    // it, especially once several tracks are mixed together. This raises
+    // quiet/distant speech and caps loud/close speech instead.
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = -50;
+    compressor.knee.value = 40;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0;
+    compressor.release.value = 0.25;
+    const gain = audioContext.createGain();
+    gain.gain.value = 1.8;
+    compressor.connect(gain);
+    gain.connect(destination);
+
+    mixAudioContextRef.current = audioContext;
+    mixDestinationRef.current = destination;
+    mixInputRef.current = compressor;
+    mixNodesRef.current = new Map();
+
+    connectAvailableAudioTracks();
+
+    // A MediaStreamAudioDestinationNode's .stream always reports exactly one
+    // (silent) audio track from the moment it's created, even with zero
+    // sources connected - checking destination.stream.getAudioTracks().length
+    // here never actually catches the "no mic available" case it was meant
+    // to guard against, so recording silently started and produced a
+    // completely silent file instead of surfacing an error. Check how many
+    // sources were actually wired up instead.
+    if (mixNodesRef.current.size === 0) {
+      stopMixedAudioContext();
       throw new Error("No microphone tracks are available yet. Please unmute microphone first.");
     }
 
-    cleanupRef.current = () => {
-      nodes.forEach((node) => node.disconnect());
-      void audioContext.close().catch(() => undefined);
-    };
+    cleanupRef.current = stopMixedAudioContext;
 
     return destination.stream;
   }
@@ -610,11 +671,19 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     const segmentMs = 10000;
     segmentingRef.current = true;
     segmentsRef.current = [];
+    // Cloned tracks instead of the live mixed stream the main recorder is
+    // attached to: running two MediaRecorder instances on the exact same
+    // MediaStreamTrack has been observed to starve the older recorder of
+    // audio data in some browsers, producing a fully silent main recording
+    // while this segment recorder (restarted every 10s) keeps capturing
+    // audio fine.
+    const segmentStream = new MediaStream(stream.getAudioTracks().map((track) => track.clone()));
+    segmentStreamRef.current = segmentStream;
 
     const recordNextSegment = () => {
       if (!segmentingRef.current) return;
       const media = new MediaRecorder(
-        stream,
+        segmentStream,
         mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
       );
       const parts: Blob[] = [];
@@ -643,6 +712,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     segmentingRef.current = false;
     const media = segmentRecorderRef.current;
     if (media && media.state !== "inactive") media.stop();
+    segmentStreamRef.current?.getTracks().forEach((track) => track.stop());
+    segmentStreamRef.current = null;
   }
 
   function getCurrentSpeakerNames() {
@@ -681,7 +752,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       setRecording(true);
       setNotice("Meeting Agent កំពុងថតសំឡេងពី LiveKit room។");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not start meeting recording.");
+      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើមថតកិច្ចប្រជុំបានទេ។");
     }
   }
 
@@ -718,9 +789,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         error?: string;
         hint?: string;
       }>(response);
-      if (!response.ok) throw new Error(data.error ?? data.hint ?? "Server recording failed.");
+      if (!response.ok) throw new Error(data.error ?? data.hint ?? "ការថត Server មិនជោគជ័យទេ។");
       if (!data.fileEgressId || !data.storageUrl || !data.recordingBase || !data.recordingStartedAt) {
-        throw new Error("Server recording did not return a recording id.");
+        throw new Error("ការថត Server មិនបានផ្តល់លេខសម្គាល់ត្រឡប់មកវិញទេ។");
       }
       speakingSegmentsRef.current = {};
       setServerRecording({
@@ -732,9 +803,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         trackJobs: data.trackJobs ?? []
       });
       serverStartedAtRef.current = Date.now();
-      setNotice("Server recording started. LiveKit Egress is recording each participant's audio separately (for accurate long-meeting transcription).");
+      setNotice("បានចាប់ផ្តើម Server recording ។ LiveKit Egress កំពុងថតសំឡេងអ្នកចូលរួមម្នាក់ៗដាច់ដោយឡែក (ដើម្បីបំលែងជាអក្សរបានត្រឹមត្រូវសម្រាប់ការប្រជុំវែង)។");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not start server recording.");
+      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម Server recording បានទេ។");
     } finally {
       setSaving(false);
     }
@@ -748,21 +819,21 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     });
     type TrackResult = { egressId: string; status?: string; error?: string };
     const stopData = await readJsonResponse<{ recordingStatus?: string; trackResults?: TrackResult[]; error?: string }>(stopResponse);
-    if (!stopResponse.ok) throw new Error(stopData.error ?? "Could not stop server recording.");
+    if (!stopResponse.ok) throw new Error(stopData.error ?? "មិនអាចបញ្ឈប់ Server recording បានទេ។");
     if (stopData.recordingStatus === "complete") return stopData.trackResults ?? [];
 
     const deadline = Date.now() + 5 * 60 * 1000;
     while (Date.now() < deadline) {
-      setNotice("Finalizing recording upload...");
+      setNotice("កំពុងបញ្ចប់ការ upload ការថត...");
       await new Promise((resolve) => window.setTimeout(resolve, 3000));
       const query = new URLSearchParams({ fileEgressId });
       trackEgressIds.forEach((id) => query.append("trackEgressId", id));
       const statusResponse = await fetch(`/api/livekit-egress/status?${query.toString()}`);
       const statusData = await readJsonResponse<{ recordingStatus?: string; trackResults?: TrackResult[]; error?: string }>(statusResponse);
-      if (!statusResponse.ok) throw new Error(statusData.error ?? "Server recording failed to finalize.");
+      if (!statusResponse.ok) throw new Error(statusData.error ?? "ការថត Server បរាជ័យក្នុងការបញ្ចប់។");
       if (statusData.recordingStatus === "complete") return statusData.trackResults ?? [];
     }
-    throw new Error("Server recording is taking too long to finalize. Please check back later.");
+    throw new Error("ការថត Server ចំណាយពេលយូរពេកក្នុងការបញ្ចប់។ សូមពិនិត្យមើលនៅពេលក្រោយ។");
   }
 
   async function stopServerRecording() {
@@ -782,7 +853,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           audioUrl: serverRecording.storageUrl,
           transcript: "",
           duration,
-          speakerNames: getCurrentSpeakerNames()
+          speakerNames: getCurrentSpeakerNames(),
+          languageMode: transcriptionLanguage
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);
@@ -946,7 +1018,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           audioUrl,
           transcript: "",
           duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
-          speakerNames: speakers
+          speakerNames: speakers,
+          languageMode: transcriptionLanguage
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);

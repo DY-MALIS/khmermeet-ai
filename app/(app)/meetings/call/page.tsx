@@ -1,5 +1,10 @@
 import { VideoCallClient } from "@/components/video-call-client";
 
+// Forced dynamic: as a fully static sibling of the dynamic /meetings/[id]
+// route, prerendering this page confuses Vercel's builder into losing the
+// lambda mapping for it ("Unable to find lambda for route: /meetings/call").
+export const dynamic = "force-dynamic";
+
 export default function MeetingCallPage() {
   const provider = process.env.NEXT_PUBLIC_VIDEO_PROVIDER === "jitsi" ? "jitsi" : "livekit";
 

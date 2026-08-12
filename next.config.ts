@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+if (process.env.NEXTAUTH_URL?.includes("[SENSITIVE]")) {
+  process.env.NEXTAUTH_URL = "https://khmermeet-ai.vercel.app";
+}
+
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
@@ -16,6 +20,15 @@ const nextConfig: NextConfig = {
     // and it silently breaks PptxGenJS's constructor at runtime.)
     if (!isServer) {
       config.plugins.push(new webpack.IgnorePlugin({ resourceRegExp: /^node:/ }));
+      // Vercel CLI masks sensitive pulled env vars as "[SENSITIVE]" for local
+      // builds. next-auth/react parses NEXTAUTH_URL at import time, so keep the
+      // browser bundle on same-origin auth URLs and let the server use the real
+      // runtime value.
+      config.plugins.push(
+        new webpack.DefinePlugin({
+          "process.env.NEXTAUTH_URL": JSON.stringify(process.env.NEXTAUTH_URL ?? "https://khmermeet-ai.vercel.app")
+        })
+      );
     }
     return config;
   },

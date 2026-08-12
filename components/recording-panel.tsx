@@ -15,7 +15,11 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleSize: { ideal: 16 }
 };
 
-const silentInputThreshold = 0.0025;
+// Recordings pick up speakers away from the device (an ambient room mic,
+// not someone talking directly into it), so quiet voices sit closer to the
+// noise floor than a close-talk mic would - keep this low to avoid flagging
+// legitimate far-field audio as silent.
+const silentInputThreshold = 0.0012;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -36,7 +40,6 @@ export function RecordingPanel() {
   const accumulatedMsRef = useRef(0);
   const chunks = useRef<Blob[]>([]);
   const segmentsRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
   const maxMicLevelRef = useRef(0);
@@ -125,8 +128,6 @@ export function RecordingPanel() {
       cancelAnimationFrame(micMonitorFrameRef.current);
       micMonitorFrameRef.current = null;
     }
-    void audioContextRef.current?.close().catch(() => undefined);
-    audioContextRef.current = null;
     setMicLevel(0);
   }
 
@@ -148,16 +149,9 @@ export function RecordingPanel() {
     }
   }
 
-  async function startMicMonitor(stream: MediaStream) {
+  function startMicMonitor(analyser: AnalyserNode) {
     stopMicMonitor();
     maxMicLevelRef.current = 0;
-    const audioContext = new AudioContext();
-    audioContextRef.current = audioContext;
-    await audioContext.resume().catch(() => undefined);
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024;
-    source.connect(analyser);
 
     const data = new Uint8Array(analyser.fftSize);
     const updateLevel = () => {
@@ -183,20 +177,45 @@ export function RecordingPanel() {
 
     const source = audioContext.createMediaStreamSource(microphoneStream);
     const compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.value = -55;
+    // Tuned for capturing speakers across a room rather than someone talking
+    // directly into the mic: a lower threshold and higher ratio pull quiet,
+    // distant voices up closer to the loud ones instead of leaving them near
+    // the noise floor.
+    compressor.threshold.value = -60;
     compressor.knee.value = 35;
-    compressor.ratio.value = 8;
+    compressor.ratio.value = 12;
     compressor.attack.value = 0.003;
     compressor.release.value = 0.25;
     const gain = audioContext.createGain();
-    gain.gain.value = 3;
+    gain.gain.value = 4.5;
+    // A round table has speakers at different distances from the mic, so the
+    // gain above that helps a far voice will over-drive anyone sitting close
+    // to it. This limiter catches those peaks (fast attack, near-0dB
+    // threshold, high ratio) so close speakers stay clean while distant ones
+    // still get the boost.
+    const limiter = audioContext.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.1;
     const destination = audioContext.createMediaStreamDestination();
+    // Tap the level meter off the same graph feeding the recorder instead of
+    // re-consuming destination.stream through a second AudioContext: handing
+    // one MediaStreamDestinationNode track to two independent consumers is a
+    // known Chromium/Windows footgun where the recorder's copy can end up
+    // starved of samples (silent file) while the other consumer still sees
+    // live levels.
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
 
     source.connect(compressor);
     compressor.connect(gain);
-    gain.connect(destination);
+    gain.connect(limiter);
+    limiter.connect(destination);
+    limiter.connect(analyser);
 
-    return destination.stream;
+    return { stream: destination.stream, analyser };
   }
 
   async function start() {
@@ -219,11 +238,11 @@ export function RecordingPanel() {
         audio: buildAudioConstraints()
       });
       const [track] = rawStream.getAudioTracks();
-      const recordingStream = await buildRecordingStream(rawStream);
+      const { stream: recordingStream, analyser } = await buildRecordingStream(rawStream);
       streamRef.current = recordingStream;
       setActiveMicLabel(track?.label || "Default microphone");
       await loadAudioDevices();
-      void startMicMonitor(recordingStream);
+      startMicMonitor(analyser);
       const mimeType = getMimeType();
       const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
       chunks.current = [];
