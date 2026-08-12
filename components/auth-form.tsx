@@ -1,78 +1,69 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getCsrfToken } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import { registerUser } from "@/lib/actions";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
-  ]);
-}
+const errorMessages: Record<string, string> = {
+  CredentialsSignin: "រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។"
+};
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [csrfToken, setCsrfToken] = useState("");
+  const [csrfFailed, setCsrfFailed] = useState(false);
   const justRegistered = searchParams.get("registered") === "1";
+  const errorCode = searchParams.get("error");
+  const callbackUrl = searchParams.get("from") || "/dashboard";
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError("");
-    // Without a try/catch here, any thrown/rejected step (a network hiccup, a
-    // slow cold start) left the button stuck on "កំពុងចូល..." forever with no
-    // way to recover except a manual page refresh - confirmed live. The
-    // timeout below also caps how long a genuinely hung request can block the
-    // form instead of waiting indefinitely.
-    try {
-      const health = await withTimeout(fetch("/api/health", { cache: "no-store" }), 15000, "health check");
-      if (!health.ok) {
-        setError("Database មិនទាន់ដំណើរការ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិច។");
-        return;
-      }
-      const formData = new FormData(event.currentTarget);
-      const result = await withTimeout(
-        signIn("credentials", {
-          email: formData.get("email"),
-          password: formData.get("password"),
-          redirect: false
-        }),
-        20000,
-        "sign-in"
-      );
-      if (result?.error) {
-        setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។");
-        return;
-      }
-      router.push(searchParams.get("from") || "/dashboard");
-      router.refresh();
-    } catch (caughtError) {
-      // Surface the raw error text in the UI itself (not just the console) -
-      // this is the only diagnostic signal available for users who can't
-      // navigate browser dev tools, and it's what actually revealed real
-      // causes here (a blocked request, a timeout, etc.) versus a generic
-      // message that hides which of those it was.
-      const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
-      setError(`ចូលប្រើមិនបានទេ។ លម្អិត technical: ${detail}`);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    let cancelled = false;
+    getCsrfToken()
+      .then((token) => {
+        if (!cancelled) setCsrfToken(token ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) setCsrfFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
+  // Submitting is a plain browser form POST straight to NextAuth's own
+  // endpoint - deliberately NOT a JS fetch()/signIn({redirect:false}) call.
+  // A real user got stuck with every fetch-based sign-in attempt silently
+  // never reaching the server at all (confirmed in server logs: the GET for
+  // this CSRF token always arrived, the POST never did), which matches
+  // exactly what a browser extension or network filter blocking XHR/fetch
+  // while allowing normal navigations looks like. A native form submission
+  // can't be caught by that class of problem. NextAuth handles this
+  // non-JS flow natively: redirects to callbackUrl on success, or back here
+  // with ?error=... on failure.
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form method="POST" action="/api/auth/callback/credentials" className="space-y-4">
+      <input type="hidden" name="csrfToken" value={csrfToken} />
+      <input type="hidden" name="callbackUrl" value={callbackUrl} />
       {justRegistered ? (
         <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">បានបង្កើតគណនីរួចរាល់! សូមចូលប្រើដោយប្រើអ៊ីមែល និងពាក្យសម្ងាត់ដែលទើបបង្កើត។</p>
       ) : null}
-      {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {csrfFailed ? (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          មិនអាចត្រៀមទំព័រ login បានទេ (មិនអាចទាញ security token)។ សូម refresh ទំព័រ ហើយសាកល្បងម្ដងទៀត។
+        </p>
+      ) : null}
+      {errorCode ? (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {errorMessages[errorCode] ?? `ចូលប្រើមិនបានទេ។ លម្អិត technical: ${errorCode}`}
+        </p>
+      ) : null}
       <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
       <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់" required />
-      <button className="kh-button-primary w-full" disabled={loading}>{loading ? "កំពុងចូល..." : "ចូលប្រើ"}</button>
+      <button className="kh-button-primary w-full" type="submit" disabled={!csrfToken}>
+        {csrfToken ? "ចូលប្រើ" : "កំពុងត្រៀម..."}
+      </button>
       <p className="text-center text-sm text-slate-500">
         មិនទាន់មានគណនី? <Link className="font-semibold text-leaf" href="/register">បង្កើតគណនី</Link>
       </p>

@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
-  pages: { signIn: "/login" },
+  // Without an explicit error page, a failed non-JS credentials sign-in
+  // redirects to NextAuth's own generic /api/auth/error page instead of
+  // back to our /login form - confirmed live, the ?error= query param the
+  // login page reads never actually reached it because of this gap.
+  pages: { signIn: "/login", error: "/login" },
   providers: [
     CredentialsProvider({
       name: "Email",
