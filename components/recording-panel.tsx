@@ -6,18 +6,15 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-// noiseSuppression back off: confirmed live (repeatedly) that quiet
-// far-mic recordings were still coming back silent even after fixing the
-// stream-graph bug below. The browser's suppressor runs before our own
-// processing chain ever sees the signal, and it can attenuate quiet,
-// non-close-talk speech hard enough that no amount of gain downstream can
-// recover it - it doesn't just remove noise, it can remove the only signal
-// there is. Our own gain/compressor/limiter chain amplifying background
-// noise along with speech is a real trade-off, but a noisier-but-audible
-// recording beats a clean-but-silent one.
+// The recording no longer goes through a custom compressor/gain chain (see
+// buildLevelAnalyser below) - it's the raw device track handed straight to
+// MediaRecorder, so noiseSuppression and autoGainControl are now the only
+// things doing any loudness/noise handling at all. Both on: this is exactly
+// what they're for, and they're far more battle-tested than a custom Web
+// Audio graph.
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
-  noiseSuppression: false,
+  noiseSuppression: true,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
@@ -181,62 +178,28 @@ export function RecordingPanel() {
     updateLevel();
   }
 
-  async function buildRecordingStream(microphoneStream: MediaStream) {
+  // Four rounds of tuning a custom compressor/gain/limiter chain routed
+  // through a synthesized MediaStreamDestinationNode still didn't fix real
+  // silent-recording reports. Routing audio through that many chained Web
+  // Audio nodes into a synthesized destination track is a much less
+  // battle-tested code path than just handing MediaRecorder the raw device
+  // track directly - and is exactly the kind of thing prone to
+  // Chromium/Windows audio-driver quirks. Recording the raw track directly
+  // and trusting the browser's own (extremely well-tested) autoGainControl/
+  // noiseSuppression instead removes that whole custom pipeline as a
+  // possible point of failure. This analyser is a separate, read-only tap
+  // on the same raw track purely for the on-screen level meter - it doesn't
+  // feed back into what gets recorded at all.
+  async function buildLevelAnalyser(microphoneStream: MediaStream) {
     void recordingAudioContextRef.current?.close().catch(() => undefined);
     const audioContext = new AudioContext();
     recordingAudioContextRef.current = audioContext;
     await audioContext.resume().catch(() => undefined);
-
     const source = audioContext.createMediaStreamSource(microphoneStream);
-    // Gain has to come BEFORE the compressor, not after: a DynamicsCompressorNode
-    // only touches signal ABOVE its threshold - anything quieter passes through
-    // completely unchanged. With gain applied after compression, distant speech
-    // that never reaches the threshold got no help at all beyond a flat +13dB,
-    // which measured out close to the same order of magnitude as the silence
-    // cutoff below - explaining why "quiet but real" recordings kept getting
-    // flagged as silent even after the stream-graph bug fix. Boosting first
-    // means quiet speech actually gets pulled up; the compressor and limiter
-    // after it then tame whatever ends up too loud (including speakers close
-    // to the mic getting hit by this much gain).
-    const preGain = audioContext.createGain();
-    // Only preGain actually helps very quiet/distant speech - the compressor
-    // and limiter below only react to signal that's already loud enough to
-    // cross their thresholds, so genuinely quiet content only ever gets
-    // whatever boost preGain gives it. Pushed up from 8x since that still
-    // wasn't enough headroom for far-mic speech; the limiter downstream is
-    // what keeps this safe for anyone talking close to the mic.
-    preGain.gain.value = 20;
-    const compressor = audioContext.createDynamicsCompressor();
-    compressor.threshold.value = -30;
-    compressor.knee.value = 30;
-    compressor.ratio.value = 8;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.25;
-    // Final hard limiter - the actual clip-safety net now that preGain can
-    // push a close speaker's signal well past 0dB.
-    const limiter = audioContext.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
-    limiter.release.value = 0.1;
-    const destination = audioContext.createMediaStreamDestination();
-    // Tap the level meter off the same graph feeding the recorder instead of
-    // re-consuming destination.stream through a second AudioContext: handing
-    // one MediaStreamDestinationNode track to two independent consumers is a
-    // known Chromium/Windows footgun where the recorder's copy can end up
-    // starved of samples (silent file) while the other consumer still sees
-    // live levels.
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
-
-    source.connect(preGain);
-    preGain.connect(compressor);
-    compressor.connect(limiter);
-    limiter.connect(destination);
-    limiter.connect(analyser);
-
-    return { stream: destination.stream, analyser };
+    source.connect(analyser);
+    return analyser;
   }
 
   async function start() {
@@ -260,13 +223,13 @@ export function RecordingPanel() {
         audio: buildAudioConstraints()
       });
       const [track] = rawStream.getAudioTracks();
-      const { stream: recordingStream, analyser } = await buildRecordingStream(rawStream);
-      streamRef.current = recordingStream;
+      streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
       await loadAudioDevices();
+      const analyser = await buildLevelAnalyser(rawStream);
       startMicMonitor(analyser);
       const mimeType = getMimeType();
-      const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
+      const media = new MediaRecorder(rawStream, getRecorderOptions(mimeType));
       chunks.current = [];
       segmentsRef.current = [];
       media.ondataavailable = (event) => {
@@ -338,7 +301,6 @@ export function RecordingPanel() {
         } finally {
           setUploading(false);
           rawStream.getTracks().forEach((track) => track.stop());
-          recordingStream.getTracks().forEach((track) => track.stop());
           displayStreamRef.current?.getTracks().forEach((track) => track.stop());
           displayStreamRef.current = null;
           void recordingAudioContextRef.current?.close().catch(() => undefined);
