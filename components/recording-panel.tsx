@@ -7,13 +7,15 @@ import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true,
+  echoCancellation: false,
+  noiseSuppression: false,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
   sampleSize: { ideal: 16 }
 };
+
+const silentInputThreshold = 0.0025;
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60).toString().padStart(2, "0");
@@ -28,17 +30,24 @@ function defaultMeetingTitle() {
 export function RecordingPanel() {
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const startedAtRef = useRef(0);
   const accumulatedMsRef = useRef(0);
   const chunks = useRef<Blob[]>([]);
-  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
   const segmentsRef = useRef<Blob[]>([]);
-  const segmentingRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const micMonitorFrameRef = useRef<number | null>(null);
+  const maxMicLevelRef = useRef(0);
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
   const [title, setTitle] = useState("");
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [activeMicLabel, setActiveMicLabel] = useState("");
+  const [micLevel, setMicLevel] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -58,6 +67,7 @@ export function RecordingPanel() {
     fetch("/api/health", { cache: "no-store" })
       .then((response) => setDbUnavailable(!response.ok))
       .catch(() => setDbUnavailable(true));
+    void loadAudioDevices();
 
     return () => cleanupRecording();
     // cleanupRecording only touches refs and should run once on unmount.
@@ -84,50 +94,109 @@ export function RecordingPanel() {
     return mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 };
   }
 
+  async function loadAudioDevices() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    setAudioDevices(devices.filter((device) => device.kind === "audioinput"));
+  }
+
+  function buildAudioConstraints(): MediaTrackConstraints {
+    return selectedDeviceId
+      ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
+      : clearVoiceAudioConstraints;
+  }
+
   function cleanupRecording() {
-    stopSegmentRecorder();
+    stopMicMonitor();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    displayStreamRef.current?.getTracks().forEach((track) => track.stop());
+    displayStreamRef.current = null;
+    void recordingAudioContextRef.current?.close().catch(() => undefined);
+    recordingAudioContextRef.current = null;
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
     }
   }
 
-  function startSegmentRecorder(stream: MediaStream, mimeType: string) {
-    const segmentMs = 10000;
-    segmentingRef.current = true;
-    segmentsRef.current = [];
-
-    const recordNextSegment = () => {
-      if (!segmentingRef.current) return;
-      const media = new MediaRecorder(stream, getRecorderOptions(mimeType));
-      const parts: Blob[] = [];
-      segmentRecorderRef.current = media;
-
-      media.ondataavailable = (event) => {
-        if (event.data.size > 0) parts.push(event.data);
-      };
-      media.onstop = () => {
-        const segmentType = media.mimeType || mimeType || "audio/webm";
-        const segment = new Blob(parts, { type: segmentType });
-        if (segment.size > 1000) segmentsRef.current.push(segment);
-        if (segmentingRef.current) window.setTimeout(recordNextSegment, 0);
-      };
-
-      media.start();
-      window.setTimeout(() => {
-        if (media.state !== "inactive") media.stop();
-      }, segmentMs);
-    };
-
-    recordNextSegment();
+  function stopMicMonitor() {
+    if (micMonitorFrameRef.current !== null) {
+      cancelAnimationFrame(micMonitorFrameRef.current);
+      micMonitorFrameRef.current = null;
+    }
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    setMicLevel(0);
   }
 
-  function stopSegmentRecorder() {
-    segmentingRef.current = false;
-    const media = segmentRecorderRef.current;
-    if (media && media.state !== "inactive") media.stop();
+  async function measureRecordedAudioPeak(blob: Blob) {
+    try {
+      const audioContext = new AudioContext();
+      const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+      let peak = 0;
+      for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
+        const samples = audioBuffer.getChannelData(channel);
+        for (let index = 0; index < samples.length; index += 1) {
+          peak = Math.max(peak, Math.abs(samples[index]));
+        }
+      }
+      await audioContext.close().catch(() => undefined);
+      return peak;
+    } catch {
+      return null;
+    }
+  }
+
+  async function startMicMonitor(stream: MediaStream) {
+    stopMicMonitor();
+    maxMicLevelRef.current = 0;
+    const audioContext = new AudioContext();
+    audioContextRef.current = audioContext;
+    await audioContext.resume().catch(() => undefined);
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+
+    const data = new Uint8Array(analyser.fftSize);
+    const updateLevel = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (const value of data) {
+        const centered = (value - 128) / 128;
+        sum += centered * centered;
+      }
+      const rms = Math.sqrt(sum / data.length);
+      maxMicLevelRef.current = Math.max(maxMicLevelRef.current, rms);
+      setMicLevel(Math.min(1, rms * 12));
+      micMonitorFrameRef.current = requestAnimationFrame(updateLevel);
+    };
+    updateLevel();
+  }
+
+  async function buildRecordingStream(microphoneStream: MediaStream) {
+    void recordingAudioContextRef.current?.close().catch(() => undefined);
+    const audioContext = new AudioContext();
+    recordingAudioContextRef.current = audioContext;
+    await audioContext.resume().catch(() => undefined);
+
+    const source = audioContext.createMediaStreamSource(microphoneStream);
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = -55;
+    compressor.knee.value = 35;
+    compressor.ratio.value = 8;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.25;
+    const gain = audioContext.createGain();
+    gain.gain.value = 3;
+    const destination = audioContext.createMediaStreamDestination();
+
+    source.connect(compressor);
+    compressor.connect(gain);
+    gain.connect(destination);
+
+    return destination.stream;
   }
 
   async function start() {
@@ -146,16 +215,24 @@ export function RecordingPanel() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: clearVoiceAudioConstraints
+      const rawStream = await navigator.mediaDevices.getUserMedia({
+        audio: buildAudioConstraints()
       });
+      const [track] = rawStream.getAudioTracks();
+      const recordingStream = await buildRecordingStream(rawStream);
+      streamRef.current = recordingStream;
+      setActiveMicLabel(track?.label || "Default microphone");
+      await loadAudioDevices();
+      void startMicMonitor(recordingStream);
       const mimeType = getMimeType();
-      const media = new MediaRecorder(stream, getRecorderOptions(mimeType));
-      streamRef.current = stream;
+      const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
       chunks.current = [];
       segmentsRef.current = [];
       media.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.current.push(event.data);
+        if (event.data.size > 0) {
+          chunks.current.push(event.data);
+          if (event.data.size > 1000) segmentsRef.current.push(event.data);
+        }
       };
       media.onstop = async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 350));
@@ -164,6 +241,33 @@ export function RecordingPanel() {
         const localPreview = URL.createObjectURL(blob);
         previewUrlRef.current = localPreview;
         setPreviewUrl(localPreview);
+        if (maxMicLevelRef.current < silentInputThreshold) {
+          setError(
+            "No microphone sound was detected while recording. Choose the correct microphone, unmute it in Windows/browser settings, then record again."
+          );
+          rawStream.getTracks().forEach((track) => track.stop());
+          recordingStream.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current?.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current = null;
+          void recordingAudioContextRef.current?.close().catch(() => undefined);
+          recordingAudioContextRef.current = null;
+          stopMicMonitor();
+          return;
+        }
+        const recordedPeak = await measureRecordedAudioPeak(blob);
+        if (recordedPeak !== null && recordedPeak < silentInputThreshold) {
+          setError(
+            "The browser detected microphone activity, but the saved audio file is silent. Please switch microphone, restart the browser, then record again."
+          );
+          rawStream.getTracks().forEach((track) => track.stop());
+          recordingStream.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current?.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current = null;
+          void recordingAudioContextRef.current?.close().catch(() => undefined);
+          recordingAudioContextRef.current = null;
+          stopMicMonitor();
+          return;
+        }
         setUploading(true);
         try {
           let uploadedAudioUrl: string;
@@ -200,12 +304,17 @@ export function RecordingPanel() {
           );
         } finally {
           setUploading(false);
-          stream.getTracks().forEach((track) => track.stop());
+          rawStream.getTracks().forEach((track) => track.stop());
+          recordingStream.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current?.getTracks().forEach((track) => track.stop());
+          displayStreamRef.current = null;
+          void recordingAudioContextRef.current?.close().catch(() => undefined);
+          recordingAudioContextRef.current = null;
+          stopMicMonitor();
         }
       };
       recorder.current = media;
-      startSegmentRecorder(stream, mimeType);
-      media.start(5000);
+      media.start(10000);
       startedAtRef.current = Date.now();
       accumulatedMsRef.current = 0;
       setSeconds(0);
@@ -226,11 +335,12 @@ export function RecordingPanel() {
           title: title.trim() || defaultMeetingTitle(),
           audioUrl: savedAudioUrl,
           transcript: "",
-          duration: seconds
+          duration: seconds,
+          languageMode: transcriptionLanguage
         })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
-      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? "Could not save the meeting.");
+      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
       setSavedMeetingId(data.meetingId);
       void transcribeAndAttachSegments(data.meetingId, blobType);
     } catch (error) {
@@ -246,7 +356,7 @@ export function RecordingPanel() {
 
     let successfulChunks = 0;
     let lastErrorMessage = "";
-    setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
+    setTranscriptionProgress(`កំពុងបំលែងសំឡេងជាអក្សរ 0/${audioSegments.length} ចម្រៀក...`);
 
     for (let index = 0; index < audioSegments.length; index += 1) {
       const chunk = audioSegments[index];
@@ -255,7 +365,7 @@ export function RecordingPanel() {
       formData.append("audio", chunk, `meeting-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
       formData.append("languageMode", transcriptionLanguage);
       formData.append("index", String(index + 1));
-      setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
+      setTranscriptionProgress(`កំពុងបំលែងសំឡេងជាអក្សរ ${index + 1}/${audioSegments.length} ចម្រៀក...`);
 
       const maxAttempts = 3;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -279,16 +389,15 @@ export function RecordingPanel() {
 
     setTranscriptionProgress(
       successfulChunks
-        ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review.`
+        ? `បំលែងជាអក្សររួចរាល់៖ ${successfulChunks}/${audioSegments.length} ចម្រៀកមានអត្ថបទ។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។`
         : lastErrorMessage
-          ? `Audio saved, but transcription failed: ${lastErrorMessage}`
-          : "Audio saved, but no clear speech text was detected in the audio segments."
+          ? `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${lastErrorMessage}`
+          : "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែរកមិនឃើញអត្ថបទសំឡេងច្បាស់លាស់ក្នុងចម្រៀកសំឡេងទាំងនោះទេ។"
     );
   }
 
   function pause() {
     recorder.current?.pause();
-    if (segmentRecorderRef.current?.state === "recording") segmentRecorderRef.current.pause();
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
@@ -297,7 +406,6 @@ export function RecordingPanel() {
 
   function resume() {
     recorder.current?.resume();
-    if (segmentRecorderRef.current?.state === "paused") segmentRecorderRef.current.resume();
     startedAtRef.current = Date.now();
     setState("recording");
   }
@@ -306,7 +414,6 @@ export function RecordingPanel() {
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
-    stopSegmentRecorder();
     recorder.current?.stop();
     setState("stopped");
   }
@@ -314,11 +421,11 @@ export function RecordingPanel() {
   return (
     <div className="kh-card p-5">
       <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
-        Please make sure all participants agree before recording this meeting.
+        សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          Database status could not be checked from this browser. You can still record and try saving; the server will confirm when it saves.
+          មិនអាចត្រួតពិនិត្យស្ថានភាព database ពី browser នេះបានទេ។ អ្នកនៅតែអាចថត ហើយសាកល្បងរក្សាទុកបាន server នឹងបញ្ជាក់នៅពេលរក្សាទុកជោគជ័យ។
         </div>
       ) : null}
       {error ? (
@@ -347,18 +454,50 @@ export function RecordingPanel() {
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">Transcript language</span>
+          <span className="text-sm font-semibold text-slate-600">ភាសាបំលែងជាអក្សរ</span>
           <select
             className="kh-input"
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="km">Khmer output</option>
-            <option value="en">English output</option>
-            <option value="km-en">Keep Khmer + English</option>
+            <option value="km">លទ្ធផលជាភាសាខ្មែរ</option>
+            <option value="en">លទ្ធផលជាភាសាអង់គ្លេស</option>
+            <option value="km-en">រក្សាទាំងខ្មែរ និងអង់គ្លេស</option>
           </select>
         </label>
+      </div>
+      <div className="mb-4 grid gap-4 sm:grid-cols-[1fr_220px]">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold text-slate-600">Microphone</span>
+          <select
+            className="kh-input"
+            value={selectedDeviceId}
+            onChange={(event) => setSelectedDeviceId(event.target.value)}
+            disabled={state === "recording" || state === "paused" || uploading}
+          >
+            <option value="">Default microphone</option>
+            {audioDevices.map((device, index) => (
+              <option key={device.deviceId || index} value={device.deviceId}>
+                {device.label || `Microphone ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
+          <p className="text-xs text-slate-500">Records from the selected microphone only.</p>
+        </label>
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-slate-600">Input level</p>
+          <div className="h-10 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+            <div
+              className={`h-full rounded-md transition-all ${micLevel > 0.08 ? "bg-leaf" : "bg-saffron"}`}
+              style={{ width: `${Math.max(4, Math.round(micLevel * 100))}%` }}
+            />
+          </div>
+          <p className="text-xs text-slate-500">
+            {state === "recording" ? (micLevel > 0.08 ? "Sound detected" : "Speak now - level is low") : "Start recording to test the mic"}
+          </p>
+        </div>
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
