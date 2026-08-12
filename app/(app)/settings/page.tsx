@@ -1,5 +1,6 @@
 import { PlugZap } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ChangePasswordForm } from "@/components/change-password-form";
 import { requireUser } from "@/lib/session";
 
 const integrations = [
@@ -30,6 +31,10 @@ export default async function SettingsPage() {
           <div><p className="text-sm text-slate-500">Name</p><p className="font-semibold">{user.name}</p></div>
           <div><p className="text-sm text-slate-500">Email</p><p className="font-semibold">{user.email}</p></div>
         </div>
+      </section>
+      <section className="kh-card p-5">
+        <h2 className="mb-4 text-lg font-bold">ប្តូរពាក្យសម្ងាត់</h2>
+        <ChangePasswordForm />
       </section>
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">Integrations</h2>

@@ -6,6 +6,13 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { registerUser } from "@/lib/actions";
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+  ]);
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,25 +24,37 @@ export function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError("");
-    const health = await fetch("/api/health", { cache: "no-store" });
-    if (!health.ok) {
+    // Without a try/catch here, any thrown/rejected step (a network hiccup, a
+    // slow cold start) left the button stuck on "កំពុងចូល..." forever with no
+    // way to recover except a manual page refresh - confirmed live. The
+    // timeout below also caps how long a genuinely hung request can block the
+    // form instead of waiting indefinitely.
+    try {
+      const health = await withTimeout(fetch("/api/health", { cache: "no-store" }), 15000);
+      if (!health.ok) {
+        setError("Database មិនទាន់ដំណើរការ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិច។");
+        return;
+      }
+      const formData = new FormData(event.currentTarget);
+      const result = await withTimeout(
+        signIn("credentials", {
+          email: formData.get("email"),
+          password: formData.get("password"),
+          redirect: false
+        }),
+        20000
+      );
+      if (result?.error) {
+        setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។");
+        return;
+      }
+      router.push(searchParams.get("from") || "/dashboard");
+      router.refresh();
+    } catch {
+      setError("ចូលប្រើមិនបានទេ (ប្រហែលជាបញ្ហាបណ្តាញ)។ សូមព្យាយាមម្ដងទៀត។");
+    } finally {
       setLoading(false);
-      setError("Database មិនទាន់ដំណើរការ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិច។");
-      return;
     }
-    const formData = new FormData(event.currentTarget);
-    const result = await signIn("credentials", {
-      email: formData.get("email"),
-      password: formData.get("password"),
-      redirect: false
-    });
-    setLoading(false);
-    if (result?.error) {
-      setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។");
-      return;
-    }
-    router.push(searchParams.get("from") || "/dashboard");
-    router.refresh();
   }
 
   return (
