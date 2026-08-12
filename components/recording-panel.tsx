@@ -6,17 +6,18 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-// noiseSuppression back on: this records an ambient room mic picking up a
-// group conversation, not a close-talk mic, so steady background noise (AC
-// hum, fan, room tone) sits much closer to speech level than in a headset
-// recording. Without it, the compressor/gain chain below amplifies that
-// noise floor right along with distant voices, which can hurt intelligibility
-// more than it helps. The browser's built-in suppressor runs before our own
-// processing and targets stationary noise specifically, so it shouldn't cut
-// into quiet speech the way a hard noise gate would.
+// noiseSuppression back off: confirmed live (repeatedly) that quiet
+// far-mic recordings were still coming back silent even after fixing the
+// stream-graph bug below. The browser's suppressor runs before our own
+// processing chain ever sees the signal, and it can attenuate quiet,
+// non-close-talk speech hard enough that no amount of gain downstream can
+// recover it - it doesn't just remove noise, it can remove the only signal
+// there is. Our own gain/compressor/limiter chain amplifying background
+// noise along with speech is a real trade-off, but a noisier-but-audible
+// recording beats a clean-but-silent one.
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
-  noiseSuppression: true,
+  noiseSuppression: false,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
@@ -186,23 +187,26 @@ export function RecordingPanel() {
     await audioContext.resume().catch(() => undefined);
 
     const source = audioContext.createMediaStreamSource(microphoneStream);
+    // Gain has to come BEFORE the compressor, not after: a DynamicsCompressorNode
+    // only touches signal ABOVE its threshold - anything quieter passes through
+    // completely unchanged. With gain applied after compression, distant speech
+    // that never reaches the threshold got no help at all beyond a flat +13dB,
+    // which measured out close to the same order of magnitude as the silence
+    // cutoff below - explaining why "quiet but real" recordings kept getting
+    // flagged as silent even after the stream-graph bug fix. Boosting first
+    // means quiet speech actually gets pulled up; the compressor and limiter
+    // after it then tame whatever ends up too loud (including speakers close
+    // to the mic getting hit by this much gain).
+    const preGain = audioContext.createGain();
+    preGain.gain.value = 8;
     const compressor = audioContext.createDynamicsCompressor();
-    // Tuned for capturing speakers across a room rather than someone talking
-    // directly into the mic: a lower threshold and higher ratio pull quiet,
-    // distant voices up closer to the loud ones instead of leaving them near
-    // the noise floor.
-    compressor.threshold.value = -60;
-    compressor.knee.value = 35;
-    compressor.ratio.value = 12;
+    compressor.threshold.value = -24;
+    compressor.knee.value = 30;
+    compressor.ratio.value = 8;
     compressor.attack.value = 0.003;
     compressor.release.value = 0.25;
-    const gain = audioContext.createGain();
-    gain.gain.value = 4.5;
-    // A round table has speakers at different distances from the mic, so the
-    // gain above that helps a far voice will over-drive anyone sitting close
-    // to it. This limiter catches those peaks (fast attack, near-0dB
-    // threshold, high ratio) so close speakers stay clean while distant ones
-    // still get the boost.
+    // Final hard limiter - the actual clip-safety net now that preGain can
+    // push a close speaker's signal well past 0dB.
     const limiter = audioContext.createDynamicsCompressor();
     limiter.threshold.value = -3;
     limiter.knee.value = 0;
@@ -219,9 +223,9 @@ export function RecordingPanel() {
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
 
-    source.connect(compressor);
-    compressor.connect(gain);
-    gain.connect(limiter);
+    source.connect(preGain);
+    preGain.connect(compressor);
+    compressor.connect(limiter);
     limiter.connect(destination);
     limiter.connect(analyser);
 
