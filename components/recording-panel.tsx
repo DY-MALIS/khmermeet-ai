@@ -68,6 +68,7 @@ export function RecordingPanel() {
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
+  const [quietWarning, setQuietWarning] = useState("");
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -234,6 +235,7 @@ export function RecordingPanel() {
 
   async function start() {
     setError("");
+    setQuietWarning("");
     setAudioUrl("");
     setPreviewUrl("");
     setSavedMeetingId("");
@@ -274,32 +276,24 @@ export function RecordingPanel() {
         const localPreview = URL.createObjectURL(blob);
         previewUrlRef.current = localPreview;
         setPreviewUrl(localPreview);
+        setQuietWarning("");
+        // This check has been wrong before (flagged real, audible recordings
+        // as silent) and there is no way to verify audio DSP tuning without
+        // actually hearing it. So it must never be the only thing standing
+        // between the user and their recording: warn, but always still save
+        // it - the preview player above lets them judge for themselves, and
+        // a save that turns out fine beats a block that turns out wrong.
         if (maxMicLevelRef.current < silentInputThreshold) {
-          setError(
-            "No microphone sound was detected while recording. Choose the correct microphone, unmute it in Windows/browser settings, then record again."
+          setQuietWarning(
+            "សំឡេងហាក់ស្ងាត់ខ្លាំងកំឡុងពេលថត។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
           );
-          rawStream.getTracks().forEach((track) => track.stop());
-          recordingStream.getTracks().forEach((track) => track.stop());
-          displayStreamRef.current?.getTracks().forEach((track) => track.stop());
-          displayStreamRef.current = null;
-          void recordingAudioContextRef.current?.close().catch(() => undefined);
-          recordingAudioContextRef.current = null;
-          stopMicMonitor();
-          return;
-        }
-        const recordedPeak = await measureRecordedAudioPeak(blob);
-        if (recordedPeak !== null && recordedPeak < silentInputThreshold) {
-          setError(
-            "The browser detected microphone activity, but the saved audio file is silent. Please switch microphone, restart the browser, then record again."
-          );
-          rawStream.getTracks().forEach((track) => track.stop());
-          recordingStream.getTracks().forEach((track) => track.stop());
-          displayStreamRef.current?.getTracks().forEach((track) => track.stop());
-          displayStreamRef.current = null;
-          void recordingAudioContextRef.current?.close().catch(() => undefined);
-          recordingAudioContextRef.current = null;
-          stopMicMonitor();
-          return;
+        } else {
+          const recordedPeak = await measureRecordedAudioPeak(blob);
+          if (recordedPeak !== null && recordedPeak < silentInputThreshold) {
+            setQuietWarning(
+              "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
+            );
+          }
         }
         setUploading(true);
         try {
@@ -473,6 +467,11 @@ export function RecordingPanel() {
               សាកល្បងរក្សាទុកម្តងទៀត
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {quietWarning ? (
+        <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
+          {quietWarning}
         </div>
       ) : null}
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
