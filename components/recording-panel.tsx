@@ -68,6 +68,15 @@ export function RecordingPanel() {
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
   const [quietWarning, setQuietWarning] = useState("");
+  // Shown on-screen (not just logged) so it can be screenshotted - real
+  // numbers instead of guessing were needed after several rounds of DSP
+  // tuning didn't fix reports of fully silent recordings.
+  const [diagnostics, setDiagnostics] = useState<{
+    blobSizeKb: string;
+    mimeType: string;
+    liveMaxLevel: string;
+    decoded: string;
+  } | null>(null);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -142,21 +151,32 @@ export function RecordingPanel() {
     setMicLevel(0);
   }
 
-  async function measureRecordedAudioPeak(blob: Blob) {
+  async function analyzeRecordedAudio(blob: Blob) {
     try {
       const audioContext = new AudioContext();
       const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
       let peak = 0;
+      let sumSquares = 0;
+      let sampleCount = 0;
       for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
         const samples = audioBuffer.getChannelData(channel);
         for (let index = 0; index < samples.length; index += 1) {
-          peak = Math.max(peak, Math.abs(samples[index]));
+          const value = samples[index];
+          peak = Math.max(peak, Math.abs(value));
+          sumSquares += value * value;
+          sampleCount += 1;
         }
       }
       await audioContext.close().catch(() => undefined);
-      return peak;
-    } catch {
-      return null;
+      return {
+        peak,
+        rms: sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0,
+        durationSec: audioBuffer.duration,
+        channels: audioBuffer.numberOfChannels,
+        sampleRate: audioBuffer.sampleRate
+      };
+    } catch (error) {
+      return { decodeError: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -239,6 +259,7 @@ export function RecordingPanel() {
   async function start() {
     setError("");
     setQuietWarning("");
+    setDiagnostics(null);
     setAudioUrl("");
     setPreviewUrl("");
     setSavedMeetingId("");
@@ -286,17 +307,24 @@ export function RecordingPanel() {
         // between the user and their recording: warn, but always still save
         // it - the preview player above lets them judge for themselves, and
         // a save that turns out fine beats a block that turns out wrong.
+        const analysis = await analyzeRecordedAudio(blob);
+        setDiagnostics({
+          blobSizeKb: (blob.size / 1024).toFixed(1),
+          mimeType: blobType,
+          liveMaxLevel: maxMicLevelRef.current.toFixed(5),
+          decoded:
+            "decodeError" in analysis
+              ? `decode failed: ${analysis.decodeError}`
+              : `peak=${analysis.peak.toFixed(5)} rms=${analysis.rms.toFixed(5)} duration=${analysis.durationSec.toFixed(1)}s channels=${analysis.channels} sampleRate=${analysis.sampleRate}`
+        });
         if (maxMicLevelRef.current < silentInputThreshold) {
           setQuietWarning(
             "សំឡេងហាក់ស្ងាត់ខ្លាំងកំឡុងពេលថត។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
           );
-        } else {
-          const recordedPeak = await measureRecordedAudioPeak(blob);
-          if (recordedPeak !== null && recordedPeak < silentInputThreshold) {
-            setQuietWarning(
-              "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
-            );
-          }
+        } else if (!("decodeError" in analysis) && analysis.peak < silentInputThreshold) {
+          setQuietWarning(
+            "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
+          );
         }
         setUploading(true);
         try {
@@ -358,6 +386,15 @@ export function RecordingPanel() {
     setSavingMeeting(true);
     setError("");
     try {
+      // Not the `seconds` state: media.onstop (which calls this) is a closure
+      // created back when start() first ran, when `seconds` was just reset to
+      // 0 - later setSeconds() calls from stop() don't retroactively update
+      // that already-created closure, so it always sent the stale value from
+      // recording start (confirmed live: minutes-long recordings saved as
+      // "0 seconds"). accumulatedMsRef is a ref, not state, so reading
+      // .current here always gets the true final elapsed time regardless of
+      // when this closure was created.
+      const durationSeconds = Math.max(1, Math.floor(accumulatedMsRef.current / 1000));
       const response = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -365,7 +402,7 @@ export function RecordingPanel() {
           title: title.trim() || defaultMeetingTitle(),
           audioUrl: savedAudioUrl,
           transcript: "",
-          duration: seconds,
+          duration: durationSeconds,
           languageMode: transcriptionLanguage
         })
       });
@@ -475,6 +512,14 @@ export function RecordingPanel() {
       {quietWarning ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
           {quietWarning}
+        </div>
+      ) : null}
+      {diagnostics ? (
+        <div className="mb-4 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-600">
+          <p>diagnostics (screenshot this):</p>
+          <p>blob: {diagnostics.blobSizeKb} KB, mime: {diagnostics.mimeType}</p>
+          <p>live analyser max level: {diagnostics.liveMaxLevel}</p>
+          <p>decoded file: {diagnostics.decoded}</p>
         </div>
       ) : null}
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
