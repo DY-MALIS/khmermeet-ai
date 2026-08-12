@@ -6,10 +6,10 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { registerUser } from "@/lib/actions";
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
   ]);
 }
 
@@ -30,7 +30,7 @@ export function LoginForm() {
     // timeout below also caps how long a genuinely hung request can block the
     // form instead of waiting indefinitely.
     try {
-      const health = await withTimeout(fetch("/api/health", { cache: "no-store" }), 15000);
+      const health = await withTimeout(fetch("/api/health", { cache: "no-store" }), 15000, "health check");
       if (!health.ok) {
         setError("Database មិនទាន់ដំណើរការ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិច។");
         return;
@@ -42,7 +42,8 @@ export function LoginForm() {
           password: formData.get("password"),
           redirect: false
         }),
-        20000
+        20000,
+        "sign-in"
       );
       if (result?.error) {
         setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។");
@@ -50,8 +51,14 @@ export function LoginForm() {
       }
       router.push(searchParams.get("from") || "/dashboard");
       router.refresh();
-    } catch {
-      setError("ចូលប្រើមិនបានទេ (ប្រហែលជាបញ្ហាបណ្តាញ)។ សូមព្យាយាមម្ដងទៀត។");
+    } catch (caughtError) {
+      // Surface the raw error text in the UI itself (not just the console) -
+      // this is the only diagnostic signal available for users who can't
+      // navigate browser dev tools, and it's what actually revealed real
+      // causes here (a blocked request, a timeout, etc.) versus a generic
+      // message that hides which of those it was.
+      const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setError(`ចូលប្រើមិនបានទេ។ លម្អិត technical: ${detail}`);
     } finally {
       setLoading(false);
     }
