@@ -15,7 +15,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  // getToken() needs to be told explicitly whether to look for the
+  // "__Secure-" prefixed cookie name - its own HTTPS auto-detection isn't
+  // reliable inside Vercel's Edge Middleware runtime (confirmed live: a
+  // valid session that /api/auth/session recognized was still invisible
+  // here without this flag, silently sending every logged-in user back to
+  // /login).
+  const token = await getToken({
+    req: request,
+    secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: process.env.NODE_ENV === "production"
+  });
   if (token) return NextResponse.next();
 
   // API routes are called via fetch() from client components expecting JSON -
