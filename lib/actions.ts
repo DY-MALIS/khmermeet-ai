@@ -33,7 +33,9 @@ export async function registerUser(formData: FormData) {
   const password = formString(formData, "password");
   if (!name || !email || password.length < 6) throw new Error("Please enter name, email, and a 6+ character password.");
   await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 10) } });
-  redirect("/dashboard");
+  // Creating the row here isn't a session - send them to log in with the
+  // credentials they just chose rather than a /dashboard they have no access to.
+  redirect("/login?registered=1");
 }
 
 export async function getMeetingById(id: string) {

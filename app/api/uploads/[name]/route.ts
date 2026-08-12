@@ -3,10 +3,21 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { getLocalAudioPath } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   const safeName = path.basename(name);
+
+  const user = await requireUser();
+  const owned = await prisma.meeting.findFirst({
+    where: { audioUrl: `/api/uploads/${safeName}`, createdById: user.id },
+    select: { id: true }
+  });
+  if (!owned) {
+    return NextResponse.json({ error: "Audio file not found." }, { status: 404 });
+  }
+
   const dbAudio = await prisma.audioFile.findUnique({
     where: { id: safeName }
   }).catch(() => null);

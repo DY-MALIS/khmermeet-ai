@@ -6,9 +6,17 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { readJsonResponse } from "@/lib/read-json-response";
 
+// noiseSuppression back on: this records an ambient room mic picking up a
+// group conversation, not a close-talk mic, so steady background noise (AC
+// hum, fan, room tone) sits much closer to speech level than in a headset
+// recording. Without it, the compressor/gain chain below amplifies that
+// noise floor right along with distant voices, which can hurt intelligibility
+// more than it helps. The browser's built-in suppressor runs before our own
+// processing and targets stationary noise specifically, so it shouldn't cut
+// into quiet speech the way a hard noise gate would.
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
-  noiseSuppression: false,
+  noiseSuppression: true,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
@@ -59,7 +67,9 @@ export function RecordingPanel() {
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km");
+  // Default to km-en so mixed Khmer/English meetings are captured as spoken
+  // instead of English getting silently translated into Khmer under "km" mode.
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
 
   useEffect(() => {
     setSupported(

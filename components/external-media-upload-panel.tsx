@@ -39,7 +39,9 @@ export function ExternalMediaUploadPanel() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
+  // Default to km-en so mixed Khmer/English meetings are captured as spoken
+  // instead of English getting silently translated into Khmer under "km" mode.
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
   const [status, setStatus] = useState("");
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");

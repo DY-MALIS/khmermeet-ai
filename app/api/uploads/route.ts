@@ -7,7 +7,12 @@ export const maxDuration = 300;
 
 export async function POST(request: Request) {
   await requireUser();
-  const formData = await request.formData();
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json({ error: "Could not read the uploaded file. Please try again." }, { status: 400 });
+  }
   const file = formData.get("audio");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing audio file." }, { status: 400 });

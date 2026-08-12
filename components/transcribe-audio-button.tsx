@@ -24,7 +24,9 @@ export function TranscribeAudioButton({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("km");
+  // Default to km-en so mixed Khmer/English meetings are captured as spoken
+  // instead of English getting silently translated into Khmer under "km" mode.
+  const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
 
   async function transcribe() {
     setPending(true);

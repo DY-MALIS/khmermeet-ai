@@ -453,7 +453,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km");
+  // Default to km-en so mixed Khmer/English meetings are captured as spoken
+  // instead of English getting silently translated into Khmer under "km" mode.
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");

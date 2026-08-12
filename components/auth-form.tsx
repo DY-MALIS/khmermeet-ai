@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { registerUser } from "@/lib/actions";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const justRegistered = searchParams.get("registered") === "1";
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -18,7 +20,7 @@ export function LoginForm() {
     const health = await fetch("/api/health", { cache: "no-store" });
     if (!health.ok) {
       setLoading(false);
-      setError("Database មិនទាន់ដំណើរការ។ សូមបើក PostgreSQL រួច run migration/seed មុនពេល login។");
+      setError("Database មិនទាន់ដំណើរការ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិច។");
       return;
     }
     const formData = new FormData(event.currentTarget);
@@ -28,12 +30,19 @@ export function LoginForm() {
       redirect: false
     });
     setLoading(false);
-    if (result?.error) setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ឬប្រើ demo account បន្ទាប់ពី seed database។");
-    else router.push("/dashboard");
+    if (result?.error) {
+      setError("រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។");
+      return;
+    }
+    router.push(searchParams.get("from") || "/dashboard");
+    router.refresh();
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {justRegistered ? (
+        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">បានបង្កើតគណនីរួចរាល់! សូមចូលប្រើដោយប្រើអ៊ីមែល និងពាក្យសម្ងាត់ដែលទើបបង្កើត។</p>
+      ) : null}
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
       <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់" required />
