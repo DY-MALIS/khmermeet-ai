@@ -670,7 +670,14 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   }
 
   function startSegmentRecorder(stream: MediaStream, mimeType: string) {
-    const segmentMs = 10000;
+    // Longer than the original 10s: a fixed-time cut regardless of natural
+    // speech pauses splits some sentences across two segments, and whichever
+    // half lands in a chunk gets transcribed without the rest of the
+    // sentence for context - scattered wrong sentences, confirmed live in
+    // the standalone recorder's identical segment-recording pattern
+    // (components/recording-panel.tsx). Fewer cut points per minute means
+    // fewer split sentences.
+    const segmentMs = 25000;
     segmentingRef.current = true;
     segmentsRef.current = [];
     // Cloned tracks instead of the live mixed stream the main recorder is

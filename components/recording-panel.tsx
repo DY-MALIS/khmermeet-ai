@@ -220,7 +220,17 @@ export function RecordingPanel() {
   // already avoids this correctly by starting a fresh MediaRecorder for each
   // segment instead of relying on timeslice chunks - same fix here.
   function startSegmentRecorder(stream: MediaStream, mimeType: string) {
-    const segmentMs = 10000;
+    // Cutting a segment at a fixed time mark regardless of where natural
+    // speech pauses fall means some sentences land split across two
+    // segments - whichever half lands in a chunk gets fed to the model
+    // without the rest of the sentence for context, and that specific
+    // sentence comes back wrong while sentences that happened to land
+    // fully inside one segment transcribe fine. Confirmed live: errors were
+    // scattered ("some sentences right, some wrong") rather than
+    // concentrated at the end, which is the signature of this rather than
+    // the header-corruption bug fixed earlier. Longer segments mean fewer
+    // cut points per minute of speech, so fewer sentences get split.
+    const segmentMs = 25000;
     segmentingRef.current = true;
     segmentsRef.current = [];
     // Cloned tracks so this independent recorder isn't sharing the exact
