@@ -39,6 +39,21 @@ export function normalizeTranscriptionLanguageMode(value: unknown): Transcriptio
   return "km";
 }
 
+// Standard Khmer writing has no spaces between the letters of a word (only
+// between phrases/clauses); speech-recognition output routinely comes back
+// with every syllable space-separated instead. Asking the refine LLM to fix
+// this via prompt instructions alone proved unreliable in testing (real
+// output: it left spacing untouched even when explicitly told to rejoin
+// it). This is a mechanical Unicode-range fact, not a judgment call, so fix
+// it deterministically instead: collapse whitespace strictly between two
+// Khmer letter/vowel-sign characters (U+1780-U+17D3), which excludes Khmer
+// punctuation (។ etc., U+17D4+) and digits so sentence breaks and numbers
+// keep their spacing. Applied here so every transcription path gets it,
+// not just the ones that go through the refine LLM pass.
+function rejoinKhmerWordSpacing(text: string) {
+  return text.replace(/([ក-៓])[ \t]+(?=[ក-៓])/g, "$1");
+}
+
 function cleanTranscriptionText(text: string) {
   const noSpeechPatterns = [
     /no clear speech detected/i,
@@ -65,7 +80,7 @@ function cleanTranscriptionText(text: string) {
 
   if (noSpeechPatterns.some((pattern) => pattern.test(cleaned))) return "";
   if (isTimestampOnlyTranscript(cleaned)) return "";
-  return cleaned;
+  return rejoinKhmerWordSpacing(cleaned);
 }
 
 export function getLocalAudioPath(name: string) {

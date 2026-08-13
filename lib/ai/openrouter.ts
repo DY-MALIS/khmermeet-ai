@@ -367,6 +367,7 @@ export async function refineOpenRouterTranscript(
     "- For Khmer mode, normalize every clear spoken phrase into Khmer script only.",
     "- For English mode, normalize every clear spoken phrase into English only.",
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
+    "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
     "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
