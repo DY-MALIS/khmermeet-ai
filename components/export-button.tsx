@@ -129,9 +129,23 @@ export function ExportButton({
       pptx.theme = { headFontFace: KHMER_FONT, bodyFontFace: KHMER_FONT };
       type PSlide = ReturnType<typeof pptx.addSlide>;
 
-      // Brand palette, matching the app's own leaf/saffron/sky/ink colors.
-      const BRAND = { leaf: "18745F", saffron: "D8912A", sky: "2E86AB", ink: "17202A", paper: "F7F5F0" };
+      // Brand palette, matching the app's own leaf/saffron/sky/ink colors,
+      // plus light tints for card/pill backgrounds so accents read as flat
+      // modern fills instead of the old plain-bullet look.
+      const BRAND = {
+        leaf: "18745F",
+        leafLight: "E7F3EF",
+        saffron: "D8912A",
+        saffronLight: "FBF0DE",
+        sky: "2E86AB",
+        skyLight: "E7F1F7",
+        ink: "17202A",
+        slate: "5B6672",
+        line: "E7EAED",
+        paper: "F7F5F0"
+      };
       const priorityColor: Record<string, string> = { high: "C0392B", medium: BRAND.saffron, low: BRAND.sky };
+      const priorityTint: Record<string, string> = { high: "FBEAE8", medium: BRAND.saffronLight, low: BRAND.skyLight };
       let pageNumber = 0;
 
       // Slide language follows the meeting's own language - "km-en" (mixed,
@@ -175,7 +189,7 @@ export function ExportButton({
       }
 
       function addLogoMark(slide: PSlide, x: number, y: number, size: number, fill: string, textColor: string) {
-        slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.22, fill: { color: fill }, line: { type: "none" } });
+        slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.28, fill: { color: fill }, line: { type: "none" } });
         slide.addText("K", {
           x,
           y,
@@ -192,87 +206,153 @@ export function ExportButton({
 
       function addFooter(slide: PSlide) {
         pageNumber += 1;
-        slide.addText("KhmerMeet AI", { x: 0.4, y: 5.28, w: 4, h: 0.3, fontSize: 9, color: "9AA5B1", italic: true, fontFace: KHMER_FONT });
-        slide.addText(String(pageNumber), {
-          x: 9.2,
-          y: 5.28,
-          w: 0.5,
-          h: 0.3,
+        slide.addShape("line", { x: 0.4, y: 5.22, w: 9.2, h: 0, line: { color: BRAND.line, width: 0.75 } });
+        slide.addShape("ellipse", { x: 0.4, y: 5.33, w: 0.07, h: 0.07, fill: { color: BRAND.saffron }, line: { type: "none" } });
+        slide.addText("KhmerMeet AI", { x: 0.54, y: 5.28, w: 3, h: 0.28, fontSize: 9, color: BRAND.slate, fontFace: KHMER_FONT });
+        slide.addShape("roundRect", { x: 9.05, y: 5.27, w: 0.45, h: 0.24, rectRadius: 0.12, fill: { color: BRAND.leafLight }, line: { type: "none" } });
+        slide.addText(String(pageNumber).padStart(2, "0"), {
+          x: 9.05,
+          y: 5.27,
+          w: 0.45,
+          h: 0.24,
           fontSize: 9,
-          color: "9AA5B1",
-          align: "right",
+          bold: true,
+          color: BRAND.leaf,
+          align: "center",
+          valign: "middle",
           fontFace: KHMER_FONT
         });
       }
 
-      function addHeader(slide: PSlide, headerTitle: string, chapterNumber?: number) {
+      // Chapter slides carry a small colored "eyebrow" pill above the title
+      // instead of the old inline "01  Title" run - reads as a modern deck,
+      // and the title itself gets room to be bigger and bolder on its own line.
+      function addHeader(slide: PSlide, headerTitle: string, chapterNumber?: number, eyebrow?: string) {
         slide.background = { color: "FFFFFF" };
-        slide.addShape("rect", { x: 0, y: 0, w: 10, h: 0.12, fill: { color: BRAND.leaf }, line: { type: "none" } });
-        addLogoMark(slide, 0.4, 0.34, 0.45, BRAND.leaf, "FFFFFF");
-        const titleRuns = chapterNumber
-          ? [
-              { text: `${String(chapterNumber).padStart(2, "0")}  `, options: { color: BRAND.saffron, bold: true } },
-              { text: headerTitle, options: { color: BRAND.ink, bold: true } }
-            ]
-          : [{ text: headerTitle, options: { color: BRAND.ink, bold: true } }];
-        slide.addText(titleRuns, { x: 1.0, y: 0.3, w: 8.4, h: 0.55, fontSize: 22, fontFace: KHMER_FONT });
+        slide.addShape("rect", { x: 0, y: 0, w: 6.2, h: 0.09, fill: { color: BRAND.leaf }, line: { type: "none" } });
+        slide.addShape("rect", { x: 6.2, y: 0, w: 3.8, h: 0.09, fill: { color: BRAND.saffron }, line: { type: "none" } });
+        addLogoMark(slide, 0.4, 0.32, 0.4, BRAND.leaf, "FFFFFF");
+
+        if (chapterNumber) {
+          const pillLabel = `${String(chapterNumber).padStart(2, "0")}${eyebrow ? `   ·   ${eyebrow}` : ""}`;
+          const pillWidth = Math.min(6.5, 0.55 + pillLabel.length * 0.09);
+          slide.addShape("roundRect", {
+            x: 0.95,
+            y: 0.32,
+            w: pillWidth,
+            h: 0.3,
+            rectRadius: 0.15,
+            fill: { color: BRAND.saffronLight },
+            line: { type: "none" }
+          });
+          slide.addText(pillLabel, {
+            x: 0.95,
+            y: 0.32,
+            w: pillWidth,
+            h: 0.3,
+            fontSize: 11,
+            bold: true,
+            color: BRAND.saffron,
+            align: "center",
+            valign: "middle",
+            fontFace: KHMER_FONT
+          });
+          slide.addText(headerTitle, { x: 0.95, y: 0.68, w: 8.5, h: 0.55, fontSize: 25, bold: true, color: BRAND.ink, fontFace: KHMER_FONT });
+        } else {
+          slide.addText(headerTitle, { x: 0.95, y: 0.34, w: 8.5, h: 0.55, fontSize: 25, bold: true, color: BRAND.ink, fontFace: KHMER_FONT, valign: "middle" });
+        }
         addFooter(slide);
       }
 
-      // Title slide
+      // Title slide - large centered title over the brand color with a
+      // couple of soft geometric accents instead of a flat block of color,
+      // and a small date pill instead of plain floating text.
       const titleSlide = pptx.addSlide();
       titleSlide.background = { color: BRAND.leaf };
-      addLogoMark(titleSlide, 4.55, 1.15, 0.9, "FFFFFF", BRAND.leaf);
+      titleSlide.addShape("ellipse", { x: 7.6, y: -1.4, w: 3.6, h: 3.6, fill: { color: "FFFFFF", transparency: 92 }, line: { type: "none" } });
+      titleSlide.addShape("ellipse", { x: -1.2, y: 3.9, w: 2.6, h: 2.6, fill: { color: "FFFFFF", transparency: 92 }, line: { type: "none" } });
+      addLogoMark(titleSlide, 4.55, 0.95, 0.9, "FFFFFF", BRAND.leaf);
       titleSlide.addText(title, {
         x: 0.6,
-        y: 2.3,
+        y: 2.15,
         w: 8.8,
-        h: 1.2,
-        fontSize: 30,
+        h: 1.3,
+        fontSize: 32,
         bold: true,
         align: "center",
+        valign: "middle",
         color: "FFFFFF",
         fontFace: KHMER_FONT
       });
+      titleSlide.addShape("rect", { x: 4.55, y: 3.55, w: 0.9, h: 0.025, fill: { color: BRAND.saffron }, line: { type: "none" } });
+      titleSlide.addShape("roundRect", { x: 3.75, y: 3.75, w: 2.5, h: 0.4, rectRadius: 0.2, fill: { color: "FFFFFF", transparency: 88 }, line: { type: "none" } });
       titleSlide.addText(new Date().toLocaleDateString(), {
-        x: 0.6,
-        y: 3.35,
-        w: 8.8,
-        h: 0.5,
-        fontSize: 14,
+        x: 3.75,
+        y: 3.75,
+        w: 2.5,
+        h: 0.4,
+        fontSize: 13,
         align: "center",
-        color: "D7ECE4",
+        valign: "middle",
+        color: "FFFFFF",
         fontFace: KHMER_FONT
       });
-      titleSlide.addShape("rect", { x: 4.1, y: 3.95, w: 1.8, h: 0.03, fill: { color: BRAND.saffron }, line: { type: "none" } });
 
       // Summary sections - each becomes its own "chapter" slide (title +
       // sub-bullets), lesson-style, instead of one flat bullet dump. Each
       // chapter is named after the meeting itself (e.g. "plan"), not a
       // generic "AI Summary" label - the section name (Summary/Tasks/etc.)
-      // is kept as a secondary label so chapters stay distinguishable.
+      // is kept as the eyebrow pill so chapters stay distinguishable.
       const sections = parseSummarySections(summary ?? "");
       const chapterName = (sectionLabel: string) => `${title} — ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
+      const contentTop = 1.55;
+      const contentHeight = 3.6;
 
-      // Outline slide
+      // Outline slide - numbered pill badges per row instead of a flat
+      // "01  text" string, so it reads like a modern deck's table of contents.
       if (outlineEntries.length > 1) {
         const outlineSlide = pptx.addSlide();
         addHeader(outlineSlide, labels.outline);
-        outlineSlide.addText(
-          outlineEntries.map((entryTitle, index) => ({
-            text: `${String(index + 1).padStart(2, "0")}   ${chapterName(entryTitle)}`,
-            options: {
-              color: BRAND.ink,
-              bold: true,
-              fontFace: KHMER_FONT,
-              breakLine: true,
-              paraSpaceAfter: 14,
-              lineSpacing: 24
-            }
-          })),
-          { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 16, valign: "top" }
-        );
+        const rowHeight = Math.min(0.62, contentHeight / outlineEntries.length);
+        outlineEntries.forEach((entryTitle, index) => {
+          const y = contentTop + index * rowHeight;
+          outlineSlide.addShape("roundRect", {
+            x: 0.5,
+            y: y + 0.03,
+            w: 0.42,
+            h: 0.42,
+            rectRadius: 0.1,
+            fill: { color: index % 2 === 0 ? BRAND.leafLight : BRAND.saffronLight },
+            line: { type: "none" }
+          });
+          outlineSlide.addText(String(index + 1).padStart(2, "0"), {
+            x: 0.5,
+            y: y + 0.03,
+            w: 0.42,
+            h: 0.42,
+            fontSize: 13,
+            bold: true,
+            align: "center",
+            valign: "middle",
+            color: index % 2 === 0 ? BRAND.leaf : BRAND.saffron,
+            fontFace: KHMER_FONT
+          });
+          outlineSlide.addText(chapterName(entryTitle), {
+            x: 1.1,
+            y,
+            w: 8.1,
+            h: 0.48,
+            fontSize: 16,
+            bold: true,
+            valign: "middle",
+            color: BRAND.ink,
+            fontFace: KHMER_FONT
+          });
+          if (index < outlineEntries.length - 1) {
+            outlineSlide.addShape("line", { x: 1.1, y: y + rowHeight - 0.03, w: 8.1, h: 0, line: { color: BRAND.line, width: 0.75 } });
+          }
+        });
       }
 
       let chapter = 0;
@@ -282,68 +362,72 @@ export function ExportButton({
         const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
         for (let p = 0; p < pageCount; p += 1) {
           const slide = pptx.addSlide();
-          const sectionLabel = pageCount > 1 ? `${section.title} (${p + 1}/${pageCount})` : section.title;
-          addHeader(slide, chapterName(sectionLabel), chapter);
+          const sectionLabel = pageCount > 1 ? `(${p + 1}/${pageCount})` : "";
+          addHeader(slide, chapterName(section.title), chapter, sectionLabel || labels.summaryPage);
           const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
           slide.addText(
             (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
               text: line,
               options: {
-                bullet: { indent: 18, characterCode: "25CF" },
+                bullet: { indent: 20, characterCode: "25AA", color: BRAND.saffron },
                 color: BRAND.ink,
                 fontFace: KHMER_FONT,
                 breakLine: true,
-                paraSpaceAfter: 12,
-                lineSpacing: 22
+                paraSpaceAfter: 14,
+                lineSpacing: 25
               }
             })),
-            { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 16, valign: "top" }
+            { x: 0.55, y: contentTop, w: 8.9, h: contentHeight, fontSize: 17, valign: "top" }
           );
         }
       }
 
-      // Tasks slide(s)
+      // Tasks slide(s) - each task is its own rounded card with a colored
+      // priority stripe instead of a plain colored bullet line, closer to a
+      // kanban row than a text dump.
       if (tasks.length) {
         chapter += 1;
-        const tasksPerSlide = 8;
+        const tasksPerSlide = 7;
         const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
         for (let i = 0; i < taskPageCount; i += 1) {
           const slide = pptx.addSlide();
-          const tasksLabel = taskPageCount > 1 ? `${labels.tasksPage} (${i + 1}/${taskPageCount})` : labels.tasks;
-          addHeader(slide, chapterName(tasksLabel), chapter);
+          const tasksLabel = taskPageCount > 1 ? `(${i + 1}/${taskPageCount})` : "";
+          addHeader(slide, chapterName(labels.tasksPage), chapter, tasksLabel || labels.tasksPage);
           const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
-          const taskRuns = pageTasks.flatMap((task) => {
+          const cardGap = 0.09;
+          const cardHeight = Math.min(0.5, (contentHeight - (pageTasks.length - 1) * cardGap) / pageTasks.length);
+          pageTasks.forEach((task, index) => {
+            const y = contentTop + index * (cardHeight + cardGap);
+            const tint = priorityTint[task.priority] ?? "F1F3F5";
+            const accent = priorityColor[task.priority] ?? BRAND.ink;
             const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
-            const runs: { text: string; options: Record<string, unknown> }[] = [
-              {
-                text: task.title,
-                options: {
-                  bullet: { indent: 18, characterCode: "25CF" },
-                  color: priorityColor[task.priority] ?? BRAND.ink,
-                  bold: true,
-                  fontFace: KHMER_FONT,
-                  breakLine: !meta.length,
-                  paraSpaceAfter: 12,
-                  lineSpacing: 22
-                }
-              }
-            ];
+
+            slide.addShape("roundRect", { x: 0.55, y, w: 8.9, h: cardHeight, rectRadius: 0.08, fill: { color: tint }, line: { type: "none" } });
+            slide.addShape("roundRect", { x: 0.55, y, w: 0.09, h: cardHeight, rectRadius: 0.045, fill: { color: accent }, line: { type: "none" } });
+            slide.addText(task.title, {
+              x: 0.85,
+              y: y + (meta.length ? 0.04 : 0),
+              w: 8.3,
+              h: meta.length ? cardHeight * 0.6 : cardHeight,
+              fontSize: 14,
+              bold: true,
+              valign: meta.length ? "bottom" : "middle",
+              color: BRAND.ink,
+              fontFace: KHMER_FONT
+            });
             if (meta.length) {
-              runs.push({
-                text: `   —   ${meta.join(" · ")}`,
-                options: {
-                  color: "64748B",
-                  bold: false,
-                  fontFace: KHMER_FONT,
-                  breakLine: true,
-                  paraSpaceAfter: 12,
-                  lineSpacing: 22
-                }
+              slide.addText(meta.join("   ·   "), {
+                x: 0.85,
+                y: y + cardHeight * 0.55,
+                w: 8.3,
+                h: cardHeight * 0.4,
+                fontSize: 10.5,
+                valign: "top",
+                color: BRAND.slate,
+                fontFace: KHMER_FONT
               });
             }
-            return runs;
           });
-          slide.addText(taskRuns, { x: 0.5, y: 1.05, w: 9, h: 4.1, fontSize: 14, valign: "top" });
         }
       }
 
