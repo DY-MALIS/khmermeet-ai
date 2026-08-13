@@ -50,6 +50,9 @@ export function RecordingPanel() {
   const accumulatedMsRef = useRef(0);
   const chunks = useRef<Blob[]>([]);
   const segmentsRef = useRef<Blob[]>([]);
+  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
+  const segmentStreamRef = useRef<MediaStream | null>(null);
+  const segmentingRef = useRef(false);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
   const maxMicLevelRef = useRef(0);
@@ -124,6 +127,7 @@ export function RecordingPanel() {
 
   function cleanupRecording() {
     stopMicMonitor();
+    stopSegmentRecorder();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     displayStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -205,6 +209,60 @@ export function RecordingPanel() {
     return analyser;
   }
 
+  // The main recorder's ondataavailable chunks used to be pushed directly
+  // into segmentsRef and sent to transcribe-chunk as if each were a
+  // standalone file. They aren't: with a timesliced MediaRecorder, only the
+  // FIRST chunk contains the WebM container header - every chunk after that
+  // is a headerless fragment that isn't independently decodable. Confirmed
+  // live: transcripts were accurate for the first ~10s of a recording, then
+  // wrong and hallucinated for everything after, exactly matching "later
+  // segments are malformed audio fed to the model." livekit-call-room.tsx
+  // already avoids this correctly by starting a fresh MediaRecorder for each
+  // segment instead of relying on timeslice chunks - same fix here.
+  function startSegmentRecorder(stream: MediaStream, mimeType: string) {
+    const segmentMs = 10000;
+    segmentingRef.current = true;
+    segmentsRef.current = [];
+    // Cloned tracks so this independent recorder isn't sharing the exact
+    // same live MediaStreamTrack as the main recorder (a different,
+    // previously-confirmed bug where two MediaRecorders on one track can
+    // starve one of them of data).
+    const segmentStream = new MediaStream(stream.getAudioTracks().map((track) => track.clone()));
+    segmentStreamRef.current = segmentStream;
+
+    const recordNextSegment = () => {
+      if (!segmentingRef.current) return;
+      const media = new MediaRecorder(segmentStream, getRecorderOptions(mimeType));
+      const parts: Blob[] = [];
+      segmentRecorderRef.current = media;
+
+      media.ondataavailable = (event) => {
+        if (event.data.size > 0) parts.push(event.data);
+      };
+      media.onstop = () => {
+        const segmentType = media.mimeType || mimeType || "audio/webm";
+        const segment = new Blob(parts, { type: segmentType });
+        if (segment.size > 1000) segmentsRef.current.push(segment);
+        if (segmentingRef.current) window.setTimeout(recordNextSegment, 0);
+      };
+
+      media.start();
+      window.setTimeout(() => {
+        if (media.state !== "inactive") media.stop();
+      }, segmentMs);
+    };
+
+    recordNextSegment();
+  }
+
+  function stopSegmentRecorder() {
+    segmentingRef.current = false;
+    const media = segmentRecorderRef.current;
+    if (media && media.state !== "inactive") media.stop();
+    segmentStreamRef.current?.getTracks().forEach((track) => track.stop());
+    segmentStreamRef.current = null;
+  }
+
   async function start() {
     setError("");
     setQuietWarning("");
@@ -234,13 +292,10 @@ export function RecordingPanel() {
       const mimeType = getMimeType();
       const media = new MediaRecorder(rawStream, getRecorderOptions(mimeType));
       chunks.current = [];
-      segmentsRef.current = [];
       media.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.current.push(event.data);
-          if (event.data.size > 1000) segmentsRef.current.push(event.data);
-        }
+        if (event.data.size > 0) chunks.current.push(event.data);
       };
+      startSegmentRecorder(rawStream, mimeType);
       media.onstop = async () => {
         await new Promise((resolve) => window.setTimeout(resolve, 350));
         const blobType = media.mimeType || "audio/webm";
@@ -307,6 +362,7 @@ export function RecordingPanel() {
           void recordingAudioContextRef.current?.close().catch(() => undefined);
           recordingAudioContextRef.current = null;
           stopMicMonitor();
+          stopSegmentRecorder();
         }
       };
       recorder.current = media;
@@ -419,6 +475,7 @@ export function RecordingPanel() {
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
+    stopSegmentRecorder();
     recorder.current?.stop();
     setState("stopped");
   }
