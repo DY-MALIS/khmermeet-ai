@@ -458,6 +458,15 @@ export function RecordingPanel() {
       }
     }
 
+    // Live per-chunk transcription skips the refine/cleanup pass for
+    // latency (each chunk needs to come back fast while still recording),
+    // so the accumulated transcript comes back with raw, unrefined spacing.
+    // One pass over the whole thing now that recording is done.
+    if (successfulChunks > 0) {
+      setTranscriptionProgress("កំពុងសម្អាតអត្ថបទ...");
+      await fetch(`/api/meetings/${meetingId}/finalize-transcript`, { method: "POST" }).catch(() => undefined);
+    }
+
     setTranscriptionProgress(
       successfulChunks
         ? `បំលែងជាអក្សររួចរាល់៖ ${successfulChunks}/${audioSegments.length} ចម្រៀកមានអត្ថបទ។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។`

@@ -400,6 +400,36 @@ export async function transcribeAudio(
   return bestTranscript;
 }
 
+// The live per-chunk transcription path (transcribeAudio with mode:"live",
+// used while a recording is in progress) intentionally skips the refine
+// pass below for latency - each chunk needs to come back fast while the
+// user is still talking. That means the transcript accumulated during a
+// normal recording never gets cleaned up: raw STT output for Khmer comes
+// back with every syllable space-separated ("សួស្តី ថ្ងៃ នេះ...") instead
+// of properly joined words, confirmed in testing. Call this once after all
+// chunks are in to run the same refine + quality-guard pass transcribeAudio
+// already does for non-live transcriptions, applied to the whole
+// accumulated transcript instead of per-chunk.
+export async function refineSavedTranscript(
+  transcript: string,
+  languageMode: TranscriptionLanguageMode,
+  speakerNames: string[] = []
+) {
+  const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
+  const cleanedTranscript = cleanTranscriptionText(transcript);
+  if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
+
+  const refinedTranscript = await refineOpenRouterTranscript(
+    cleanedTranscript,
+    normalizedLanguageMode,
+    normalizeSpeakerNames(speakerNames),
+    55000
+  ).catch(() => cleanedTranscript);
+
+  const cleanedRefinedTranscript = cleanTranscriptionText(refinedTranscript);
+  return chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
+}
+
 export async function transcribeAudioChunks(
   audioChunks: File[],
   speakerNames: string[] = [],
