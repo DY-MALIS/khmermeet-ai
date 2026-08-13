@@ -2,6 +2,7 @@
 
 import { Download, FileSpreadsheet, FileText, Presentation } from "lucide-react";
 import { useState } from "react";
+import { summaryHeadings } from "@/lib/ai/prompts/summaryPrompt";
 
 type ExportTask = {
   title: string;
@@ -191,22 +192,28 @@ export function ExportButton({
       // buildSummaryPrompt) - split it into named sections instead of
       // dumping every line as one flat bullet list, so the deck reads like
       // a lesson (chapter title + sub-points) instead of a wall of bullets.
+      // A line only starts a new section if it's one of the prompt's own
+      // known heading strings - anything else (including the overview's
+      // plain paragraph, which has no "- " prefix) is content for whichever
+      // section is currently open, not a new section title of its own.
+      const knownHeadings = new Set(Object.values(summaryHeadings[language === "en" ? "en" : "km"]));
       function parseSummarySections(text: string): { title: string; bullets: string[] }[] {
         const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
         const sections: { title: string; bullets: string[] }[] = [];
         let current: { title: string; bullets: string[] } | null = null;
         for (const line of lines) {
-          const bulletMatch = line.match(/^[-•]\s*(.*)$/);
-          if (bulletMatch) {
-            if (!current) {
-              current = { title: labels.summary, bullets: [] };
-              sections.push(current);
-            }
-            if (bulletMatch[1]) current.bullets.push(bulletMatch[1]);
-          } else {
+          if (knownHeadings.has(line)) {
             current = { title: line, bullets: [] };
             sections.push(current);
+            continue;
           }
+          if (!current) {
+            current = { title: labels.summary, bullets: [] };
+            sections.push(current);
+          }
+          const bulletMatch = line.match(/^[-•]\s*(.*)$/);
+          const content = bulletMatch ? bulletMatch[1] : line;
+          if (content) current.bullets.push(content);
         }
         return sections.filter((section) => section.bullets.length).length
           ? sections.filter((section) => section.bullets.length)
