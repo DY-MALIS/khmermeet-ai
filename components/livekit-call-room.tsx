@@ -504,12 +504,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const pendingTrackUploadsRef = useRef<Promise<unknown>[]>([]);
 
   useEffect(() => {
-    if (!recording) return;
+    if (!recording && !serverRecording) return;
+    const startedAt = serverRecording ? serverRecording.recordingStartedAt : startedAtRef.current;
     const timer = window.setInterval(() => {
-      setSeconds(Math.max(1, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+      setSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
     }, 250);
     return () => window.clearInterval(timer);
-  }, [recording]);
+  }, [recording, serverRecording]);
 
   // buildMixedAudioStream() only wires up whatever microphone tracks are
   // already live when "Start Agent" is clicked. Without this, anyone who
@@ -1087,8 +1088,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             <option value="en">English output</option>
             <option value="km-en">Keep Khmer + English</option>
           </select>
-          <span className={cn("kh-badge", recording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
-            {recording ? `Recording ${formatTime(seconds)}` : "Ready"}
+          <span className={cn("kh-badge", recording || serverRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
+            {recording || serverRecording ? `Recording ${formatTime(seconds)}` : "Ready"}
           </span>
           {remoteRecordingActive && !serverRecording ? (
             <span className="kh-badge bg-red-100 text-red-700" title="Someone in this meeting started recording - your microphone is being captured automatically.">
