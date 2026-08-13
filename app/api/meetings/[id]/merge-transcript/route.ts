@@ -8,7 +8,7 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
     const { id } = await params;
@@ -17,11 +17,21 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     }
 
+    const body = await request.json().catch(() => ({}));
+    const duration = Number.isFinite(Number(body.duration)) && Number(body.duration) > 0 ? Math.round(Number(body.duration)) : undefined;
+
     const segments = await prisma.meetingTranscriptSegment.findMany({
       where: { meetingId: id },
       orderBy: [{ startMs: "asc" }, { segmentIndex: "asc" }, { id: "asc" }]
     });
     if (!segments.length) {
+      // Closes out the transient "recording" status (set by
+      // /api/meetings/start-live for the client-mesh per-speaker recording
+      // path) even when nobody's audio produced usable speech, so the
+      // meeting doesn't stay stuck accepting track-chunk uploads forever.
+      if (meeting.status === "recording") {
+        await prisma.meeting.update({ where: { id }, data: { status: "recorded", duration: duration ?? meeting.duration } });
+      }
       return NextResponse.json({ transcript: "", merged: false });
     }
 
@@ -42,7 +52,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       // choice and made summary/task generation ignore it downstream.
       await prisma.meeting.update({
         where: { id },
-        data: { transcript, summary: null, status: "transcribed" }
+        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration }
       });
     }
 

@@ -16,6 +16,29 @@ function requiredEnv(name: string) {
   return value;
 }
 
+const liveKitEgressEnvNames = [
+  "NEXT_PUBLIC_LIVEKIT_URL",
+  "LIVEKIT_API_KEY",
+  "LIVEKIT_API_SECRET",
+  "LIVEKIT_EGRESS_S3_ENDPOINT",
+  "LIVEKIT_EGRESS_S3_ACCESS_KEY",
+  "LIVEKIT_EGRESS_S3_SECRET"
+] as const;
+
+export function getLiveKitEgressSetupStatus() {
+  const missingVariables: string[] = liveKitEgressEnvNames.filter((name) => !process.env[name]?.trim());
+  if (!process.env.LIVEKIT_EGRESS_S3_BUCKET?.trim() && !process.env.SUPABASE_STORAGE_BUCKET?.trim()) {
+    missingVariables.push("LIVEKIT_EGRESS_S3_BUCKET");
+  }
+
+  return {
+    ready: missingVariables.length === 0,
+    missingVariables,
+    setupHint:
+      "Server Rec needs LiveKit Egress plus S3-compatible storage. In Vercel, add Supabase Storage S3 endpoint, access key, secret, and bucket variables, then redeploy."
+  };
+}
+
 function liveKitHttpUrl() {
   const url = (process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || "").trim();
   if (!url) throw new Error("NEXT_PUBLIC_LIVEKIT_URL is not configured.");

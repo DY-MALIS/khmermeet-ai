@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
-import { startLiveKitRoomRecording } from "@/lib/livekit-egress";
+import { getLiveKitEgressSetupStatus, startLiveKitRoomRecording } from "@/lib/livekit-egress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,6 +22,18 @@ export async function POST(request: Request) {
 
     if (!room) {
       return NextResponse.json({ error: "Room code is required." }, { status: 400 });
+    }
+
+    const setup = getLiveKitEgressSetupStatus();
+    if (!setup.ready) {
+      return NextResponse.json(
+        {
+          error: `Server Rec is not configured. Missing: ${setup.missingVariables.join(", ")}.`,
+          hint: setup.setupHint,
+          missingVariables: setup.missingVariables
+        },
+        { status: 503 }
+      );
     }
 
     const recording = await startLiveKitRoomRecording(room, title);
