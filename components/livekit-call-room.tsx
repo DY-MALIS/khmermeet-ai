@@ -1134,10 +1134,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               type="button"
               onClick={startRecording}
               disabled={saving || Boolean(serverRecording)}
-              title="Single mixed audio track for everyone - speaker names are guessed, not exact. Use only for short calls."
+              // Mixes all participants through a synthesized
+              // MediaStreamDestinationNode into a single client-side
+              // MediaRecorder - confirmed live (via components/recording-panel.tsx's
+              // identical pattern) that this hand-off can lose almost all of
+              // the signal on some browser/OS/driver combinations, producing
+              // a silent recording with no error. Server Rec doesn't touch
+              // this code path at all - it's the reliable option.
+              title="Single mixed audio track for everyone - speaker names are guessed, not exact. Known issue: on some computers this can silently record no audio at all. Use Server Rec above unless you need a very quick, short recording."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Start Agent (quick, single track)
+              Start Agent (quick, single track - may record silently on some PCs)
             </button>
           ) : (
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopRecording}>
