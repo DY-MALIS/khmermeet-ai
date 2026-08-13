@@ -11,6 +11,12 @@ type ExportTask = {
   status: string;
 };
 
+// Leelawadee UI ships with Windows 10/11 and is one of the few fonts with
+// proper Khmer glyph coverage - without setting this explicitly, both Word
+// and PowerPoint fall back to their default (Calibri), which can't render
+// Khmer script at all.
+const KHMER_FONT = "Leelawadee UI";
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -46,18 +52,41 @@ export function ExportButton({
   async function exportWord() {
     setExportingWord(true);
     try {
-      const { Document, HeadingLevel, Packer, Paragraph } = await import("docx");
-      const toParagraphs = (text: string) => (text || "").split("\n").map((line) => new Paragraph({ text: line }));
+      const { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } = await import("docx");
+      // docx's `size` is in half-points (24 = 12pt). Paragraph's plain
+      // `text:` shorthand and the Title/Heading styles both default to a
+      // small ~10-11pt body size, which read as too small on screen - every
+      // run below sets its size and font explicitly instead of relying on
+      // those defaults.
+      const bodySize = 26; // 13pt
+      const toParagraphs = (text: string) =>
+        (text || "").split("\n").map(
+          (line) =>
+            new Paragraph({
+              children: [new TextRun({ text: line, size: bodySize, font: KHMER_FONT })],
+              spacing: { after: 160 }
+            })
+        );
+      const heading = (text: string) =>
+        new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 320, after: 200 },
+          children: [new TextRun({ text, size: 32, bold: true, font: KHMER_FONT, color: "18745F" })]
+        });
 
       const doc = new Document({
         sections: [
           {
             children: [
-              new Paragraph({ text: title, heading: HeadingLevel.TITLE }),
-              new Paragraph({ text: "Transcript", heading: HeadingLevel.HEADING_1 }),
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 320 },
+                children: [new TextRun({ text: title, size: 48, bold: true, font: KHMER_FONT, color: "18745F" })]
+              }),
+              heading("Transcript"),
               ...toParagraphs(transcript ?? ""),
               new Paragraph({ text: "" }),
-              new Paragraph({ text: "Summary", heading: HeadingLevel.HEADING_1 }),
+              heading("Summary"),
               ...toParagraphs(summary ?? "")
             ]
           }
@@ -122,10 +151,6 @@ export function ExportButton({
       const pptx = new PptxGenJS();
       pptx.defineLayout({ name: "KH_16x9", width: 10, height: 5.63 });
       pptx.layout = "KH_16x9";
-      // Leelawadee UI ships with Windows 10/11 and is one of the few fonts
-      // with proper Khmer glyph coverage - without this, PowerPoint falls
-      // back to its default (Calibri), which can't render Khmer script.
-      const KHMER_FONT = "Leelawadee UI";
       pptx.theme = { headFontFace: KHMER_FONT, bodyFontFace: KHMER_FONT };
       type PSlide = ReturnType<typeof pptx.addSlide>;
 
