@@ -60,6 +60,7 @@ export function RecordingPanel() {
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
   const [title, setTitle] = useState("");
+  const [speakerNamesInput, setSpeakerNamesInput] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [activeMicLabel, setActiveMicLabel] = useState("");
@@ -399,6 +400,16 @@ export function RecordingPanel() {
       // .current here always gets the true final elapsed time regardless of
       // when this closure was created.
       const durationSeconds = Math.max(1, Math.floor(accumulatedMsRef.current / 1000));
+      // Passed through to the transcription prompt as a vocabulary hint (see
+      // lib/ai/openrouter.ts's transcriptionChatPrompt) so the model has a
+      // chance to correctly recognize a name from the audio itself - a
+      // misheard name can't be recovered by the later text-only refine pass,
+      // which has no access to the audio to re-check against.
+      const speakerNames = speakerNamesInput
+        .split(/[,，\n]/)
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .slice(0, 50);
       const response = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -407,7 +418,8 @@ export function RecordingPanel() {
           audioUrl: savedAudioUrl,
           transcript: "",
           duration: durationSeconds,
-          languageMode: transcriptionLanguage
+          languageMode: transcriptionLanguage,
+          speakerNames
         })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
@@ -551,6 +563,21 @@ export function RecordingPanel() {
             <option value="en">លទ្ធផលជាភាសាអង់គ្លេស</option>
             <option value="km-en">រក្សាទាំងខ្មែរ និងអង់គ្លេស</option>
           </select>
+        </label>
+      </div>
+      <div className="mb-4">
+        <label className="block space-y-1">
+          <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម (ស្រេចចិត្ត)</span>
+          <input
+            className="kh-input"
+            value={speakerNamesInput}
+            onChange={(event) => setSpeakerNamesInput(event.target.value)}
+            placeholder="ឧទាហរណ៍៖ ដារ៉ា, ចាន់ថា, សុខា"
+            disabled={state === "recording" || state === "paused"}
+          />
+          <p className="text-xs text-slate-500">
+            ជួយឲ្យការបំលែងជាអក្សរស្គាល់ឈ្មោះត្រឹមត្រូវជាងមុន (ដាក់ក្បាច់ខណ្ឌដោយសញ្ញា ,)
+          </p>
         </label>
       </div>
       <div className="mb-4 grid gap-4 sm:grid-cols-[1fr_220px]">

@@ -393,7 +393,8 @@ export async function transcribeAudio(
       mimeType,
       filename,
       normalizedLanguageMode,
-      timeoutMs
+      timeoutMs,
+      normalizeSpeakerNames(speakerNames)
     );
     const cleanedFallback = addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames);
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;

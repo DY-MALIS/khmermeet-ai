@@ -250,17 +250,26 @@ function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
 }
 
-function transcriptionChatPrompt(language: "km" | "en" | "km-en") {
+function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: string[] = []) {
   const languageInstruction =
     language === "km"
       ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form."
       : language === "en"
         ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
+  // Speaker names used to only reach the later text-only refine pass, which
+  // can't re-listen to the audio - by then a misheard name (confirmed live:
+  // "ដារ៉ា" heard as "តារា") is already locked into the transcript as wrong
+  // text no amount of text-only cleanup can recover. Giving the model this
+  // as a hint before it actually listens gives it a real chance to
+  // recognize a name correctly from the audio itself.
+  const vocabularyHint = speakerNames.length
+    ? ` People who may be speaking in this recording, in case a name is hard to make out: ${speakerNames.join(", ")}.`
+    : "";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
-    languageInstruction,
+    languageInstruction + vocabularyHint,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
@@ -281,7 +290,8 @@ export async function transcribeOpenRouterAudioViaChat(
   mimeType: string,
   filename: string,
   language: "km" | "en" | "km-en",
-  timeoutMs = 55000
+  timeoutMs = 55000,
+  speakerNames: string[] = []
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
@@ -299,7 +309,7 @@ export async function transcribeOpenRouterAudioViaChat(
           {
             role: "user",
             content: [
-              { type: "text", text: transcriptionChatPrompt(language) },
+              { type: "text", text: transcriptionChatPrompt(language, speakerNames) },
               {
                 type: "input_audio",
                 input_audio: {
