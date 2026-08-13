@@ -167,6 +167,102 @@ export function RecordingPanel() {
     }
   }
 
+  function encodeAudioBufferAsWav(audioBuffer: AudioBuffer) {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const bitsPerSample = 16;
+    const blockAlign = numChannels * (bitsPerSample / 8);
+    const dataLength = audioBuffer.length * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataLength);
+    const view = new DataView(buffer);
+
+    const writeString = (offset: number, text: string) => {
+      for (let index = 0; index < text.length; index += 1) view.setUint8(offset + index, text.charCodeAt(index));
+    };
+
+    writeString(0, "RIFF");
+    view.setUint32(4, 36 + dataLength, true);
+    writeString(8, "WAVE");
+    writeString(12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(36, "data");
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    const channelData = Array.from({ length: numChannels }, (_, channel) => audioBuffer.getChannelData(channel));
+    for (let sampleIndex = 0; sampleIndex < audioBuffer.length; sampleIndex += 1) {
+      for (let channel = 0; channel < numChannels; channel += 1) {
+        const sample = Math.max(-1, Math.min(1, channelData[channel][sampleIndex]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  // Boosts quiet/distant speech for transcription ONLY - does not touch the
+  // recording/upload path at all. Earlier testing proved MediaRecorder does
+  // not faithfully capture what's routed through a real-time
+  // MediaStreamDestinationNode on this browser/OS (a live analyser read real
+  // signal while the actual recorded file read ~0), which is why the
+  // recorder now uses the raw device track directly with no custom
+  // processing. OfflineAudioContext is a different, non-realtime rendering
+  // path with no such issue - it decodes an already-recorded (faithfully
+  // captured) blob and renders a boosted copy entirely in-memory, never
+  // touching MediaRecorder. Used only for the copy sent to the
+  // transcription API; the original blob is still what gets uploaded/saved/
+  // played back.
+  async function boostAudioForTranscription(blob: Blob): Promise<Blob> {
+    try {
+      const decodeContext = new AudioContext();
+      const audioBuffer = await decodeContext.decodeAudioData(await blob.arrayBuffer());
+      await decodeContext.close().catch(() => undefined);
+
+      const offlineContext = new OfflineAudioContext(
+        audioBuffer.numberOfChannels,
+        audioBuffer.length,
+        audioBuffer.sampleRate
+      );
+      const source = offlineContext.createBufferSource();
+      source.buffer = audioBuffer;
+
+      const preGain = offlineContext.createGain();
+      preGain.gain.value = 8;
+      const compressor = offlineContext.createDynamicsCompressor();
+      compressor.threshold.value = -30;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 8;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+      const limiter = offlineContext.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.001;
+      limiter.release.value = 0.1;
+
+      source.connect(preGain);
+      preGain.connect(compressor);
+      compressor.connect(limiter);
+      limiter.connect(offlineContext.destination);
+      source.start();
+
+      const renderedBuffer = await offlineContext.startRendering();
+      return encodeAudioBufferAsWav(renderedBuffer);
+    } catch {
+      // If boosting fails for any reason, fall back to the original audio
+      // rather than losing the segment entirely.
+      return blob;
+    }
+  }
+
   function startMicMonitor(analyser: AnalyserNode) {
     stopMicMonitor();
     maxMicLevelRef.current = 0;
@@ -443,9 +539,17 @@ export function RecordingPanel() {
 
     for (let index = 0; index < audioSegments.length; index += 1) {
       const chunk = audioSegments[index];
+      // Boost this segment's copy before sending it for transcription (does
+      // not affect the saved recording at all - see boostAudioForTranscription).
+      const boosted = await boostAudioForTranscription(chunk);
       const formData = new FormData();
-      const chunkType = chunk.type || blobType;
-      formData.append("audio", chunk, `meeting-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
+      const isWav = boosted.type === "audio/wav";
+      const chunkType = isWav ? "audio/wav" : chunk.type || blobType;
+      formData.append(
+        "audio",
+        boosted,
+        isWav ? `meeting-part-${index + 1}.wav` : `meeting-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`
+      );
       formData.append("languageMode", transcriptionLanguage);
       formData.append("index", String(index + 1));
       setTranscriptionProgress(`កំពុងបំលែងសំឡេងជាអក្សរ ${index + 1}/${audioSegments.length} ចម្រៀក...`);
