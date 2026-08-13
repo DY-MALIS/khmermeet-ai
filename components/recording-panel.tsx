@@ -70,16 +70,6 @@ export function RecordingPanel() {
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
   const [quietWarning, setQuietWarning] = useState("");
-  // Shown on-screen (not just logged) so it can be screenshotted - real
-  // numbers instead of guessing were needed after several rounds of DSP
-  // tuning didn't fix reports of fully silent recordings.
-  const [diagnostics, setDiagnostics] = useState<{
-    blobSizeKb: string;
-    mimeType: string;
-    liveMaxLevel: string;
-    decoded: string;
-  } | null>(null);
-  const [trackDiagnostics, setTrackDiagnostics] = useState("");
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -159,25 +149,14 @@ export function RecordingPanel() {
       const audioContext = new AudioContext();
       const audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
       let peak = 0;
-      let sumSquares = 0;
-      let sampleCount = 0;
       for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
         const samples = audioBuffer.getChannelData(channel);
         for (let index = 0; index < samples.length; index += 1) {
-          const value = samples[index];
-          peak = Math.max(peak, Math.abs(value));
-          sumSquares += value * value;
-          sampleCount += 1;
+          peak = Math.max(peak, Math.abs(samples[index]));
         }
       }
       await audioContext.close().catch(() => undefined);
-      return {
-        peak,
-        rms: sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0,
-        durationSec: audioBuffer.duration,
-        channels: audioBuffer.numberOfChannels,
-        sampleRate: audioBuffer.sampleRate
-      };
+      return { peak };
     } catch (error) {
       return { decodeError: error instanceof Error ? error.message : String(error) };
     }
@@ -229,8 +208,6 @@ export function RecordingPanel() {
   async function start() {
     setError("");
     setQuietWarning("");
-    setDiagnostics(null);
-    setTrackDiagnostics("");
     setAudioUrl("");
     setPreviewUrl("");
     setSavedMeetingId("");
@@ -251,21 +228,6 @@ export function RecordingPanel() {
       const [track] = rawStream.getAudioTracks();
       streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
-      // track.muted reflects the OS/driver silencing the input at the
-      // platform level (distinct from anything JS controls) - if this reads
-      // true, or the settings below don't match what the device picker
-      // shows, that's direct evidence the browser is receiving a live but
-      // empty track rather than anything this app's code could fix.
-      const reportTrackState = () => {
-        if (!track) return;
-        const settings = track.getSettings();
-        setTrackDiagnostics(
-          `label="${track.label}" enabled=${track.enabled} muted=${track.muted} readyState=${track.readyState} deviceId=${settings.deviceId ?? "?"} groupId=${settings.groupId ?? "?"} sampleRate=${settings.sampleRate ?? "?"} channelCount=${settings.channelCount ?? "?"}`
-        );
-      };
-      reportTrackState();
-      track?.addEventListener("mute", reportTrackState);
-      track?.addEventListener("unmute", reportTrackState);
       await loadAudioDevices();
       const analyser = await buildLevelAnalyser(rawStream);
       startMicMonitor(analyser);
@@ -294,15 +256,6 @@ export function RecordingPanel() {
         // it - the preview player above lets them judge for themselves, and
         // a save that turns out fine beats a block that turns out wrong.
         const analysis = await analyzeRecordedAudio(blob);
-        setDiagnostics({
-          blobSizeKb: (blob.size / 1024).toFixed(1),
-          mimeType: blobType,
-          liveMaxLevel: maxMicLevelRef.current.toFixed(5),
-          decoded:
-            "decodeError" in analysis
-              ? `decode failed: ${analysis.decodeError}`
-              : `peak=${analysis.peak.toFixed(5)} rms=${analysis.rms.toFixed(5)} duration=${analysis.durationSec.toFixed(1)}s channels=${analysis.channels} sampleRate=${analysis.sampleRate}`
-        });
         if (maxMicLevelRef.current < silentInputThreshold) {
           setQuietWarning(
             "សំឡេងហាក់ស្ងាត់ខ្លាំងកំឡុងពេលថត។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
@@ -497,20 +450,6 @@ export function RecordingPanel() {
       {quietWarning ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
           {quietWarning}
-        </div>
-      ) : null}
-      {trackDiagnostics ? (
-        <div className="mb-4 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-600">
-          <p>mic track state (screenshot this):</p>
-          <p>{trackDiagnostics}</p>
-        </div>
-      ) : null}
-      {diagnostics ? (
-        <div className="mb-4 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-600">
-          <p>diagnostics (screenshot this):</p>
-          <p>blob: {diagnostics.blobSizeKb} KB, mime: {diagnostics.mimeType}</p>
-          <p>live analyser max level: {diagnostics.liveMaxLevel}</p>
-          <p>decoded file: {diagnostics.decoded}</p>
         </div>
       ) : null}
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
