@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { registerUser } from "@/lib/actions";
+import { registerUser, requestPasswordReset, resetPassword } from "@/lib/actions";
 
 const errorMessages: Record<string, string> = {
   CredentialsSignin: "រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។"
@@ -15,6 +15,7 @@ export function LoginForm() {
   const [csrfToken, setCsrfToken] = useState("");
   const [csrfFailed, setCsrfFailed] = useState(false);
   const justRegistered = searchParams.get("registered") === "1";
+  const justReset = searchParams.get("reset") === "1";
   const errorCode = searchParams.get("error");
   const callbackUrl = searchParams.get("from") || "/dashboard";
 
@@ -49,6 +50,9 @@ export function LoginForm() {
       {justRegistered ? (
         <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">បានបង្កើតគណនីរួចរាល់! សូមចូលប្រើដោយប្រើអ៊ីមែល និងពាក្យសម្ងាត់ដែលទើបបង្កើត។</p>
       ) : null}
+      {justReset ? (
+        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">ពាក្យសម្ងាត់ត្រូវបានកំណត់ថ្មីរួចរាល់! សូមចូលប្រើដោយពាក្យសម្ងាត់ថ្មី។</p>
+      ) : null}
       {csrfFailed ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
           មិនអាចត្រៀមទំព័រ login បានទេ (មិនអាចទាញ security token)។ សូម refresh ទំព័រ ហើយសាកល្បងម្ដងទៀត។
@@ -64,6 +68,9 @@ export function LoginForm() {
       <button className="kh-button-primary w-full" type="submit" disabled={!csrfToken}>
         {csrfToken ? "ចូលប្រើ" : "កំពុងត្រៀម..."}
       </button>
+      <p className="text-center text-sm text-slate-500">
+        <Link className="font-semibold text-leaf" href="/forgot-password">ភ្លេចពាក្យសម្ងាត់?</Link>
+      </p>
       <p className="text-center text-sm text-slate-500">
         មិនទាន់មានគណនី? <Link className="font-semibold text-leaf" href="/register">បង្កើតគណនី</Link>
       </p>
@@ -81,6 +88,43 @@ export function RegisterForm() {
       <p className="text-center text-sm text-slate-500">
         មានគណនីរួចហើយ? <Link className="font-semibold text-leaf" href="/login">ចូលប្រើ</Link>
       </p>
+    </form>
+  );
+}
+
+export function ForgotPasswordForm() {
+  const searchParams = useSearchParams();
+  const sent = searchParams.get("sent") === "1";
+
+  if (sent) {
+    return (
+      <div className="space-y-4 text-center">
+        <p className="rounded-lg bg-leaf/10 p-4 text-sm text-leaf">
+          បើ email នេះមានគណនីចុះឈ្មោះ យើងបានផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅហើយ។ សូមពិនិត្យ inbox (និង spam/junk folder)។
+        </p>
+        <Link className="font-semibold text-leaf" href="/login">ត្រឡប់ទៅចូលប្រើ</Link>
+      </div>
+    );
+  }
+
+  return (
+    <form action={requestPasswordReset} className="space-y-4">
+      <p className="text-sm text-slate-500">វាយ email របស់អ្នក យើងនឹងផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅ inbox របស់អ្នក។</p>
+      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
+      <button className="kh-button-primary w-full" type="submit">ផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មី</button>
+      <p className="text-center text-sm text-slate-500">
+        <Link className="font-semibold text-leaf" href="/login">ត្រឡប់ទៅចូលប្រើ</Link>
+      </p>
+    </form>
+  );
+}
+
+export function ResetPasswordForm({ token }: { token: string }) {
+  return (
+    <form action={resetPassword} className="space-y-4">
+      <input type="hidden" name="token" value={token} />
+      <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់ថ្មីយ៉ាងតិច 6 តួ" minLength={6} required />
+      <button className="kh-button-primary w-full" type="submit">កំណត់ពាក្យសម្ងាត់ថ្មី</button>
     </form>
   );
 }

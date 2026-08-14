@@ -36,6 +36,19 @@ model Meeting {
   updatedAt          DateTime                   @updatedAt
 }
 
+// Single-use, short-lived tokens for the "forgot password" flow (see
+// lib/actions.ts requestPasswordReset/resetPassword) - never store the raw
+// password reset capability anywhere else, and always delete/expire these.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model Decision {
   id         String    @id @default(cuid())
   meetingId  String
