@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,6 +13,8 @@ export const maxDuration = 60;
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-generate");
+    if (limited) return limited;
     const { id } = await params;
     const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
 

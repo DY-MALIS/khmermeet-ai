@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { processStudioText, type StudioAction } from "@/lib/studio";
+import { requireUser } from "@/lib/session";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-generate");
+    if (limited) return limited;
     const body = (await request.json()) as {
       action?: StudioAction;
       text?: string;

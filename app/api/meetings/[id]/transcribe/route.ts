@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -12,6 +13,8 @@ export const maxDuration = 300;
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-transcribe");
+    if (limited) return limited;
     const { id } = await params;
     const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
 

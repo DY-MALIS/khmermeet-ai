@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
@@ -43,6 +44,8 @@ function fallbackAgentAnswer(command: string, meeting: { title: string; summary:
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-generate");
+    if (limited) return limited;
     const body = await request.json();
     const meetingId = typeof body.meetingId === "string" ? body.meetingId.trim() : "";
     const command = typeof body.command === "string" ? body.command.trim() : "";

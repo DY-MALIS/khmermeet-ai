@@ -192,3 +192,15 @@ BEGIN
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Rate limiting (lib/rate-limit.ts)
+
+CREATE TABLE IF NOT EXISTS "ApiUsageEvent" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "bucket" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ApiUsageEvent_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "ApiUsageEvent_userId_bucket_createdAt_idx" ON "ApiUsageEvent"("userId", "bucket", "createdAt");
+ALTER TABLE "ApiUsageEvent" ENABLE ROW LEVEL SECURITY;

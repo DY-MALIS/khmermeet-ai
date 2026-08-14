@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { answerMeetingQuestion } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +16,8 @@ function normalize(text: string) {
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-generate");
+    if (limited) return limited;
     const { id } = await params;
     const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });

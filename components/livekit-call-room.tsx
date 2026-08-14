@@ -1064,6 +1064,15 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
   return (
     <section className="border-t border-white/10 bg-white p-5">
+      {recording || serverRecording || remoteRecordingActive ? (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+          </span>
+          កិច្ចប្រជុំនេះកំពុងត្រូវបានថតសំឡេង — សូមអញ្ជើញអ្នកចូលរួមទាំងអស់ដឹងជាមុន (microphone របស់អ្នកចូលរួមម្នាក់ៗកំពុងត្រូវបានថតដោយស្វ័យប្រវត្តិ)។
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-leaf">

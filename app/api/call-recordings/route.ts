@@ -5,12 +5,15 @@ import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+    const limited = await rateLimitResponse(user.id, "ai-generate");
+    if (limited) return limited;
     const body = await request.json();
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const rawTranscript = typeof body.transcript === "string" ? body.transcript.trim() : "";

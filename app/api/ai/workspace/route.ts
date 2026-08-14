@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,7 +58,9 @@ function localAnalysis(transcript: string, question = "") {
 }
 
 export async function POST(request: Request) {
-  await requireUser();
+  const user = await requireUser();
+  const limited = await rateLimitResponse(user.id, "ai-generate");
+  if (limited) return limited;
   const body = (await request.json()) as WorkspaceRequest;
   const transcript = body.transcript?.trim() || "";
   if (!transcript) {

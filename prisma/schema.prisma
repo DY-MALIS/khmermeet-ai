@@ -126,6 +126,19 @@ model WorkbenchProject {
   @@index([status, updatedAt])
 }
 
+// Tracks one row per AI-cost-incurring API call, so enforceRateLimit() can
+// count how many a user made in a recent time window - a real signup means
+// any logged-in account can hit these endpoints in a tight client-side
+// loop and run up the shared OPEN_ROUTER_API_KEY bill.
+model ApiUsageEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  bucket    String
+  createdAt DateTime @default(now())
+
+  @@index([userId, bucket, createdAt])
+}
+
 model WorkbenchVersion {
   id        String           @id @default(cuid())
   projectId String

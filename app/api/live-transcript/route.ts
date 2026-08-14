@@ -2,11 +2,14 @@ import { NextResponse } from "next/server";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  await requireUser();
+  const user = await requireUser();
+  const limited = await rateLimitResponse(user.id, "ai-transcribe");
+  if (limited) return limited;
   let formData: FormData;
   try {
     formData = await request.formData();
