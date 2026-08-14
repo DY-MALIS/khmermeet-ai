@@ -258,7 +258,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   // slips past every other quality check since the output is still fluent,
   // grammatical text.
   const properNounRule =
-    "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name.";
+    "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name. For example, if the audio says \"ABA PayWay\", the transcript must say \"ABA PayWay\" in full, never a shortened \"ABA Pay\". These names can blend together at normal speaking speed - listen closely for every syllable of a name rather than assuming it ends where a natural word would.";
   const languageInstruction =
     language === "km"
       ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
@@ -388,7 +388,7 @@ export async function refineOpenRouterTranscript(
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
-    "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name.",
+    "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
     "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
