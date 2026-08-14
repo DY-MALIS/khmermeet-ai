@@ -251,9 +251,17 @@ function multimodalTranscriptionModel() {
 }
 
 function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: string[] = []) {
+  // "Keep the full name" is stated explicitly and separately from the
+  // language-conversion rule below - confirmed live that a multi-word brand
+  // name spoken mixed into Khmer speech (e.g. "ABA PayWay") can otherwise
+  // come back with a trailing word silently dropped ("ABA Pay"), which
+  // slips past every other quality check since the output is still fluent,
+  // grammatical text.
+  const properNounRule =
+    "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name.";
   const languageInstruction =
     language === "km"
-      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form."
+      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
       : language === "en"
         ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
@@ -270,6 +278,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
     languageInstruction + vocabularyHint,
+    properNounRule,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
@@ -379,6 +388,7 @@ export async function refineOpenRouterTranscript(
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name.",
     "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
