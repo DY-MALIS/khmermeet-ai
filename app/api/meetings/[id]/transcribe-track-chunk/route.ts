@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // No speakerNames hint here: this is already single-speaker audio, so the
     // label is attached externally below instead of asked of the model.
-    const transcript = await transcribeAudio(file, [], languageMode, { mode: "live", timeoutMs: 45000 });
+    const transcript = await transcribeAudio(file, [], languageMode, { mode: "live", timeoutMs: 45000, singleSpeaker: true });
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json({ transcript: "", skipped: true, index });

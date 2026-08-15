@@ -250,7 +250,7 @@ function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
 }
 
-function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: string[] = []) {
+function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: string[] = [], singleSpeaker = false) {
   // "Keep the full name" is stated explicitly and separately from the
   // language-conversion rule below - confirmed live that a multi-word brand
   // name spoken mixed into Khmer speech (e.g. "ABA PayWay") can otherwise
@@ -281,7 +281,16 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     properNounRule,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
-    "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
+    // Per-track chunks (client-mesh Server Rec, one file per participant's
+    // own microphone) know in advance there is exactly one speaker - without
+    // this, the model sometimes still hallucinates a "Speaker 2:" turn
+    // inside a single continuous voice (confirmed live: a looping single-
+    // speaker test clip came back with fabricated Speaker 1/Speaker 2
+    // splits), which then shows up doubled-up under the real per-track
+    // speaker label applied downstream.
+    singleSpeaker
+      ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
+      : "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
     "Return the transcript text only - no preamble, no explanation, no markdown formatting, no commentary about the audio."
@@ -300,7 +309,8 @@ export async function transcribeOpenRouterAudioViaChat(
   filename: string,
   language: "km" | "en" | "km-en",
   timeoutMs = 55000,
-  speakerNames: string[] = []
+  speakerNames: string[] = [],
+  singleSpeaker = false
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
@@ -318,7 +328,7 @@ export async function transcribeOpenRouterAudioViaChat(
           {
             role: "user",
             content: [
-              { type: "text", text: transcriptionChatPrompt(language, speakerNames) },
+              { type: "text", text: transcriptionChatPrompt(language, speakerNames, singleSpeaker) },
               {
                 type: "input_audio",
                 input_audio: {

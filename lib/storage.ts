@@ -23,6 +23,11 @@ export type TranscriptionLanguageMode = "km" | "en" | "km-en";
 type TranscriptionOptions = {
   timeoutMs?: number;
   mode?: "final" | "live";
+  // True when audioFile is known in advance to be one specific person's own
+  // microphone track (client-mesh Server Rec's per-participant segments) -
+  // stops the model from hallucinating a "Speaker 2:" turn inside audio
+  // that is provably a single continuous voice.
+  singleSpeaker?: boolean;
 };
 
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
@@ -394,7 +399,8 @@ export async function transcribeAudio(
       filename,
       normalizedLanguageMode,
       timeoutMs,
-      normalizeSpeakerNames(speakerNames)
+      normalizeSpeakerNames(speakerNames),
+      options.singleSpeaker ?? false
     );
     const cleanedFallback = addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames);
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;

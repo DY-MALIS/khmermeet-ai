@@ -44,7 +44,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // the model to guess/label speakers within the transcribed text itself.
     const transcript = await transcribeAudio(file, [], languageMode, {
       mode: "live",
-      timeoutMs: 45000
+      timeoutMs: 45000,
+      singleSpeaker: true
     });
 
     if (!hasUsableTranscript(transcript)) {
