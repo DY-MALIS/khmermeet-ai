@@ -101,6 +101,7 @@ export async function POST(request: Request) {
       `If the transcript does not contain enough information for a requested section, write: ${missingInfoPlaceholder}`,
       "Do not use markdown bold markers like **.",
       "Keep the answer clean, readable, and grouped into short sections or bullets.",
+      "Default style: concise, clear, and executive-ready. Use 1-2 sentences for overview and no more than 4 one-line bullets per section unless the user explicitly asks for detail.",
       "",
       `User command: ${command}`,
       "",
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
       `Action tasks:\n${taskText}`,
       "",
       regeneratingSummary
-        ? `If the user does not specify a format, return exactly these sections: ${sectionLabels}.`
+        ? `If the user does not specify a format, return exactly these sections: ${sectionLabels}. Keep the full summary short enough to scan on one screen.`
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 

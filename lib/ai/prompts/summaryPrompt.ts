@@ -27,7 +27,7 @@ export const summaryHeadings: Record<DocumentLanguageMode, { overview: string; k
 export function buildSummaryPrompt(transcript: string, language: DocumentLanguageMode) {
   const headings = summaryHeadings[language];
   const noInfo = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
-  return `You are an experienced executive assistant who has just sat in on this meeting and is writing the minutes for people who were NOT there. Write the kind of summary a sharp, senior EA would produce - one that lets a busy executive understand the whole meeting in 30 seconds and every important detail in two minutes. This is not a mechanical extraction exercise: read the full transcript, understand what actually happened and why, and write it up in your own clear words.
+  return `You are an experienced executive assistant who has just sat in on this meeting and is writing a concise executive summary for people who were NOT there. Write the kind of summary a sharp, senior EA would produce - one that lets a busy executive understand the meeting in 30 seconds. This is not a mechanical extraction exercise: read the full transcript, understand what actually happened and why, and write it up in your own clear words.
 
 Language rule:
 - ${buildLanguageInstruction(language)}
@@ -35,10 +35,11 @@ Language rule:
 Quality bar - this is what separates a good summary from a bad one:
 - Synthesize, don't transcribe. Paraphrase in fluent, natural, professional language - never copy sentence fragments verbatim from the transcript.
 - Merge and de-duplicate. If the same topic comes up three times across the conversation, it becomes ONE point that reflects the full discussion, not three repeated bullets.
-- Explain the "why", not just the "what". For each decision or problem, capture the reasoning or context behind it whenever the speakers gave one - a decision stated without its reason is only half useful to someone who missed the meeting.
+- Explain the "why" only when it is essential. Keep each point compact and useful.
 - Prioritize by importance, not by the order things were said. Lead with what actually matters; minor side comments either get folded into a related point or left out entirely.
 - Attribute when it matters. Name the person behind a decision, concern, or commitment when the transcript makes that clear (e.g. "Sokha will follow up with the vendor" rather than "someone will follow up").
 - Be concrete. Prefer specific numbers, dates, names, and next actions over vague phrases like "discussed the project" or "talked about issues."
+- Be brief. Remove background chatter, greetings, repeated wording, and low-value details.
 
 Accuracy rules (never break these):
 - Use only facts that are actually in the transcript below - do not add outside knowledge, assumptions, or anything from a previous summary.
@@ -48,8 +49,10 @@ Accuracy rules (never break these):
 
 Formatting rules:
 - Do not return a table, JSON, code fences, or markdown bold markers like **.
-- "${headings.overview}" is the only section written as a short paragraph (2-4 sentences) - a real executive-summary paragraph, not a bullet list: what the meeting was about, what was decided, and where things stand now.
-- Every other section is short, clear bullet points - as many as the meeting actually warrants (could be one, could be ten; never pad to hit a target count, never cut real content to hit one either).
+- "${headings.overview}" is the only section written as a short paragraph: 1-2 sentences maximum.
+- Every other section is short, clear bullet points: 1 line per bullet, maximum 4 bullets per section.
+- If a section has more than 4 possible points, keep only the 4 most important.
+- The full summary should normally fit on one screen.
 
 Return exactly this structure, using these exact section headings:
 
