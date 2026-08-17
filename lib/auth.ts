@@ -1,7 +1,7 @@
 import { compare } from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
+import { authEmailLookupCandidates, normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
 import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
@@ -29,11 +29,14 @@ export const authOptions: NextAuthOptions = {
         const email = normalizeAuthEmail(credentials.email);
         const password = normalizeAuthPassword(credentials.password);
         if (!email || !password) return null;
-        const user =
-          (await prisma.user.findUnique({ where: { email } })) ??
-          (await prisma.user.findFirst({
-            where: { email: { equals: email, mode: "insensitive" } }
-          }));
+        const emailCandidates = authEmailLookupCandidates(credentials.email);
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: emailCandidates.map((candidate) => ({
+              email: { equals: candidate, mode: "insensitive" as const }
+            }))
+          }
+        });
         if (!user) return null;
         const ok = await compare(password, user.passwordHash);
         if (!ok) return null;

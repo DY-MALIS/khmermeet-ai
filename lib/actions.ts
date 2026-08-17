@@ -11,7 +11,7 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { sendPasswordResetEmail } from "@/lib/email";
-import { normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
+import { authEmailLookupCandidates, normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
@@ -41,11 +41,13 @@ export async function requestPasswordReset(formData: FormData) {
   // whether an email is registered by timing/behavior differences either.
   await enforceRateLimit(email, "password-reset-request");
 
-  const user =
-    (await prisma.user.findUnique({ where: { email } })) ??
-    (await prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } }
-    }));
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: authEmailLookupCandidates(formData.get("email")).map((candidate) => ({
+        email: { equals: candidate, mode: "insensitive" as const }
+      }))
+    }
+  });
   // Always end up on the same "check your email" page whether or not the
   // account exists - confirming/denying an email's registration here would
   // let anyone enumerate real accounts.
