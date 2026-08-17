@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { requestPasswordReset, resetPassword } from "@/lib/actions";
+import { hasEmailSeparatorTypo } from "@/lib/auth-input";
 import { PasswordInput } from "@/components/password-input";
 
 const errorMessages: Record<string, string> = {
@@ -25,6 +26,8 @@ export function LoginForm() {
   const justReset = searchParams.get("reset") === "1";
   const errorCode = searchParams.get("error");
   const callbackUrl = searchParams.get("from") || "/dashboard";
+  const [email, setEmail] = useState("");
+  const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +73,12 @@ export function LoginForm() {
           {errorMessages[errorCode] ?? `ចូលប្រើមិនបានទេ។ លម្អិត technical: ${errorCode}`}
         </p>
       ) : null}
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
+      {emailSeparatorTypo ? (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលចូលប្រើ។
+        </p>
+      ) : null}
+      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
       <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់" required />
       <button className="kh-button-primary w-full" type="submit" disabled={!csrfToken}>
         {csrfToken ? "ចូលប្រើ" : "កំពុងត្រៀម..."}
@@ -88,6 +96,8 @@ export function LoginForm() {
 export function RegisterForm() {
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
+  const [email, setEmail] = useState("");
+  const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
   return (
     <form method="POST" action="/api/register" className="space-y-4">
@@ -97,7 +107,12 @@ export function RegisterForm() {
         </p>
       ) : null}
       <input className="kh-input" name="name" placeholder="ឈ្មោះ" required />
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
+      {emailSeparatorTypo ? (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលបង្កើតគណនី។
+        </p>
+      ) : null}
+      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
       <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់យ៉ាងតិច 6 តួ" minLength={6} required />
       <button className="kh-button-primary w-full">បង្កើតគណនី</button>
       <p className="text-center text-sm text-slate-500">
@@ -110,6 +125,8 @@ export function RegisterForm() {
 export function ForgotPasswordForm() {
   const searchParams = useSearchParams();
   const sent = searchParams.get("sent") === "1";
+  const [email, setEmail] = useState("");
+  const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
   if (sent) {
     return (
@@ -125,7 +142,12 @@ export function ForgotPasswordForm() {
   return (
     <form action={requestPasswordReset} className="space-y-4">
       <p className="text-sm text-slate-500">វាយ email របស់អ្នក យើងនឹងផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅ inbox របស់អ្នក។</p>
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
+      {emailSeparatorTypo ? (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលស្វែងរកគណនី។
+        </p>
+      ) : null}
+      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
       <button className="kh-button-primary w-full" type="submit">ផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មី</button>
       <p className="text-center text-sm text-slate-500">
         <Link className="font-semibold text-leaf" href="/login">ត្រឡប់ទៅចូលប្រើ</Link>
