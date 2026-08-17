@@ -12,7 +12,7 @@ export function PasswordInput({ className, ...props }: InputHTMLAttributes<HTMLI
 
   return (
     <div className="relative">
-      <input {...props} type={visible ? "text" : "password"} className={cn("kh-input pr-10", className)} />
+      <input {...props} type={visible ? "text" : "password"} className={cn("kh-input kh-password-input pr-10", className)} />
       <button
         type="button"
         onClick={() => setVisible((current) => !current)}
