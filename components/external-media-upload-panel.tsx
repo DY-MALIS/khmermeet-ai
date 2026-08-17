@@ -3,6 +3,7 @@
 import { AlertCircle, CheckCircle2, FileAudio, Loader2, UploadCloud } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { uploadMediaDirect } from "@/lib/client/direct-upload";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
@@ -73,26 +74,7 @@ export function ExternalMediaUploadPanel() {
 
     try {
       const duration = await getMediaDuration(file);
-      const formData = new FormData();
-      formData.append("audio", file, file.name);
-      formData.append("languageMode", languageMode);
-
-      setStatus("កំពុង upload និងបំលែងសំឡេងជាអក្សរ...");
-      const uploadResponse = await fetch("/api/uploads", { method: "POST", body: formData });
-      const uploadJson = await readJsonResponse<{
-        audioUrl?: string;
-        transcript?: string;
-        transcriptionError?: string;
-        error?: string;
-      }>(uploadResponse);
-
-      if (!uploadResponse.ok || !uploadJson.audioUrl) {
-        throw new Error(uploadJson.error ?? "Upload មិនជោគជ័យទេ។");
-      }
-
-      if (uploadJson.transcriptionError) {
-        setWarning(uploadJson.transcriptionError);
-      }
+      const audioUrl = await uploadMediaDirect(file);
 
       setStatus("កំពុងរក្សាទុកកំណត់ត្រាប្រជុំ...");
       const meetingResponse = await fetch("/api/meetings", {
@@ -100,8 +82,8 @@ export function ExternalMediaUploadPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim() || titleFromFile(file) || "កិច្ចប្រជុំពីការ upload",
-          audioUrl: uploadJson.audioUrl,
-          transcript: uploadJson.transcript ?? "",
+          audioUrl,
+          transcript: "",
           duration,
           languageMode
         })
@@ -109,6 +91,20 @@ export function ExternalMediaUploadPanel() {
       const meetingJson = await readJsonResponse<{ id?: string; error?: string }>(meetingResponse);
       if (!meetingResponse.ok || !meetingJson.id) {
         throw new Error(meetingJson.error ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
+      }
+
+      setStatus("កំពុងបំលែងសំឡេងជាអក្សរ...");
+      const transcribeResponse = await fetch(`/api/meetings/${meetingJson.id}/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ languageMode })
+      });
+      const transcribeJson = await readJsonResponse<{ transcript?: string; error?: string }>(transcribeResponse);
+      if (!transcribeResponse.ok || !transcribeJson.transcript) {
+        setWarning(transcribeJson.error ?? "រក្សាទុកឯកសាររួច ប៉ុន្តែមិនអាចបំលែងសំឡេងជាអក្សរបានទេ។");
+      } else {
+        setStatus("កំពុងបង្កើតសង្ខេប និងកិច្ចការ...");
+        await fetch(`/api/meetings/${meetingJson.id}/finalize-summary`, { method: "POST" }).catch(() => undefined);
       }
 
       setStatus("បានរក្សាទុករួច។ កំពុងបើកប្រជុំ...");

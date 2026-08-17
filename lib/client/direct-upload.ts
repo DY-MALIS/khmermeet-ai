@@ -11,7 +11,9 @@ type UploadTicket = {
   error?: string;
 };
 
-function extensionFor(mimeType: string) {
+function extensionFor(mimeType: string, filename?: string) {
+  const nameExt = filename?.split(".").pop()?.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (nameExt && nameExt.length <= 8) return nameExt;
   if (mimeType.includes("mp4")) return "m4a";
   if (mimeType.includes("webm")) return "webm";
   if (mimeType.includes("mpeg")) return "mp3";
@@ -23,14 +25,14 @@ function extensionFor(mimeType: string) {
 // passes through our own API). Requires NEXT_PUBLIC_SUPABASE_ANON_KEY to be
 // set - throws if it's missing or if anything in the handoff fails, so
 // callers can fall back to the smaller-recording /api/uploads path.
-export async function uploadRecordingDirect(blob: Blob): Promise<string> {
+export async function uploadRecordingDirect(blob: Blob, filename?: string): Promise<string> {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error("Direct upload is not configured (missing NEXT_PUBLIC_SUPABASE_ANON_KEY).");
 
   const initResponse = await fetch("/api/uploads/direct-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ext: extensionFor(blob.type) })
+    body: JSON.stringify({ ext: extensionFor(blob.type, filename) })
   });
   const ticket = await readJsonResponse<UploadTicket>(initResponse);
   if (!initResponse.ok || !ticket.token || !ticket.objectPath || !ticket.supabaseUrl || !ticket.bucket || !ticket.audioUrl) {
@@ -48,4 +50,8 @@ export async function uploadRecordingDirect(blob: Blob): Promise<string> {
   if (error) throw new Error(error.message);
 
   return ticket.audioUrl;
+}
+
+export async function uploadMediaDirect(file: File): Promise<string> {
+  return uploadRecordingDirect(file, file.name);
 }
