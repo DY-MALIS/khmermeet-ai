@@ -19,9 +19,18 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) return null;
-        const user = await prisma.user.findUnique({ where: { email: credentials.email.toLowerCase() } });
+        // registerUser() trims both fields before hashing (see lib/actions.ts
+        // formString) - login must normalize the same way, or a password
+        // with an accidental leading/trailing space (autofill, a password
+        // manager, copy-paste from a chat app) gets hashed without it at
+        // signup but compared with it at login, permanently locking out an
+        // account with the "correct" password.
+        const email = credentials.email.trim().toLowerCase();
+        const password = credentials.password.trim();
+        if (!email || !password) return null;
+        const user = await prisma.user.findUnique({ where: { email } });
         if (!user) return null;
-        const ok = await compare(credentials.password, user.passwordHash);
+        const ok = await compare(password, user.passwordHash);
         if (!ok) return null;
         return { id: user.id, name: user.name, email: user.email };
       }
