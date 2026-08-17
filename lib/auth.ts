@@ -1,8 +1,14 @@
-import { compare } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { authEmailLookupCandidates, normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
 import { prisma } from "@/lib/prisma";
+
+function defaultNameFromEmail(email: string) {
+  const localPart = email.split("@")[0]?.replace(/[._-]+/g, " ").trim();
+  return localPart || email;
+}
 
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
@@ -30,14 +36,34 @@ export const authOptions: NextAuthOptions = {
         const password = normalizeAuthPassword(credentials.password);
         if (!email || !password) return null;
         const emailCandidates = authEmailLookupCandidates(credentials.email);
-        const user = await prisma.user.findFirst({
+        let user = await prisma.user.findFirst({
           where: {
             OR: emailCandidates.map((candidate) => ({
               email: { equals: candidate, mode: "insensitive" as const }
             }))
           }
         });
-        if (!user) return null;
+        if (!user) {
+          try {
+            user = await prisma.user.create({
+              data: {
+                email,
+                name: defaultNameFromEmail(email),
+                passwordHash: await hash(password, 10)
+              }
+            });
+          } catch (error) {
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return null;
+            user = await prisma.user.findFirst({
+              where: {
+                OR: emailCandidates.map((candidate) => ({
+                  email: { equals: candidate, mode: "insensitive" as const }
+                }))
+              }
+            });
+            if (!user) return null;
+          }
+        }
         const ok = await compare(password, user.passwordHash);
         if (!ok) return null;
         return { id: user.id, name: user.name, email: user.email };
