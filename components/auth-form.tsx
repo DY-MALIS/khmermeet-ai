@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { registerUser, requestPasswordReset, resetPassword } from "@/lib/actions";
+import { PasswordInput } from "@/components/password-input";
 
 const errorMessages: Record<string, string> = {
   CredentialsSignin: "រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។"
@@ -64,7 +65,7 @@ export function LoginForm() {
         </p>
       ) : null}
       <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
-      <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់" required />
+      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់" required />
       <button className="kh-button-primary w-full" type="submit" disabled={!csrfToken}>
         {csrfToken ? "ចូលប្រើ" : "កំពុងត្រៀម..."}
       </button>
@@ -83,7 +84,7 @@ export function RegisterForm() {
     <form action={registerUser} className="space-y-4">
       <input className="kh-input" name="name" placeholder="ឈ្មោះ" required />
       <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
-      <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់យ៉ាងតិច 6 តួ" minLength={6} required />
+      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់យ៉ាងតិច 6 តួ" minLength={6} required />
       <button className="kh-button-primary w-full">បង្កើតគណនី</button>
       <p className="text-center text-sm text-slate-500">
         មានគណនីរួចហើយ? <Link className="font-semibold text-leaf" href="/login">ចូលប្រើ</Link>
@@ -123,7 +124,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
   return (
     <form action={resetPassword} className="space-y-4">
       <input type="hidden" name="token" value={token} />
-      <input className="kh-input" name="password" type="password" placeholder="ពាក្យសម្ងាត់ថ្មីយ៉ាងតិច 6 តួ" minLength={6} required />
+      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់ថ្មីយ៉ាងតិច 6 តួ" minLength={6} required />
       <button className="kh-button-primary w-full" type="submit">កំណត់ពាក្យសម្ងាត់ថ្មី</button>
     </form>
   );

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { PasswordInput } from "@/components/password-input";
 
 export function ChangePasswordForm() {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -40,17 +41,13 @@ export function ChangePasswordForm() {
     <form onSubmit={onSubmit} className="space-y-3">
       {success ? <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">ប្តូរពាក្យសម្ងាត់ជោគជ័យ!</p> : null}
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-      <input
-        className="kh-input"
-        type="password"
+      <PasswordInput
         placeholder="ពាក្យសម្ងាត់បច្ចុប្បន្ន"
         value={currentPassword}
         onChange={(event) => setCurrentPassword(event.target.value)}
         required
       />
-      <input
-        className="kh-input"
-        type="password"
+      <PasswordInput
         placeholder="ពាក្យសម្ងាត់ថ្មី (យ៉ាងតិច 6 តួ)"
         minLength={6}
         value={newPassword}
