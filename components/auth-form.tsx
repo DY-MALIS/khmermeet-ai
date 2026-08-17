@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { registerUser, requestPasswordReset, resetPassword } from "@/lib/actions";
+import { requestPasswordReset, resetPassword } from "@/lib/actions";
 import { PasswordInput } from "@/components/password-input";
 
 const errorMessages: Record<string, string> = {
@@ -13,7 +13,8 @@ const errorMessages: Record<string, string> = {
 
 const registerErrorMessages: Record<string, string> = {
   invalid: "សូមបញ្ចូលឈ្មោះ, អ៊ីមែល, និងពាក្យសម្ងាត់យ៉ាងតិច 6 តួ។",
-  exists: "អ៊ីមែលនេះមានគណនីរួចហើយ។ សូមចូលប្រើវិញ ឬប្រើអ៊ីមែលផ្សេង។"
+  exists: "អ៊ីមែលនេះមានគណនីរួចហើយ។ សូមចូលប្រើវិញ ឬប្រើអ៊ីមែលផ្សេង។",
+  unknown: "មិនអាចបង្កើតគណនីបានទេ។ សូមសាកល្បងម្តងទៀត។"
 };
 
 export function LoginForm() {
@@ -89,7 +90,7 @@ export function RegisterForm() {
   const errorCode = searchParams.get("error");
 
   return (
-    <form action={registerUser} className="space-y-4">
+    <form method="POST" action="/api/register" className="space-y-4">
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
           {registerErrorMessages[errorCode] ?? `មិនអាចបង្កើតគណនីបានទេ។ លម្អិត technical: ${errorCode}`}

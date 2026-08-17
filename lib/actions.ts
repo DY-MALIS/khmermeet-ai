@@ -2,7 +2,6 @@
 
 import { randomBytes } from "crypto";
 import { hash } from "bcryptjs";
-import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -31,33 +30,6 @@ function revalidateMeetingViews(meetingId?: string) {
   revalidatePath("/summaries");
   revalidatePath("/tasks");
   if (meetingId) revalidatePath(`/meetings/${meetingId}`);
-}
-
-export async function registerUser(formData: FormData) {
-  const name = formString(formData, "name");
-  const email = formString(formData, "email").toLowerCase();
-  const password = formString(formData, "password");
-  if (!name || !email || password.length < 6) {
-    redirect("/register?error=invalid");
-  }
-
-  try {
-    await prisma.user.create({ data: { name, email, passwordHash: await hash(password, 10) } });
-  } catch (error) {
-    // A duplicate email (P2002 = unique constraint violation) is a routine,
-    // expected case for a real multi-user app, not a real error - without
-    // this catch it was an unhandled throw out of a Server Action, which
-    // Next.js renders as the generic "Application error" crash page
-    // (app/error.tsx) instead of a message telling the person what to do.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      redirect("/register?error=exists");
-    }
-    throw error;
-  }
-
-  // Creating the row here isn't a session - send them to log in with the
-  // credentials they just chose rather than a /dashboard they have no access to.
-  redirect("/login?registered=1");
 }
 
 export async function requestPasswordReset(formData: FormData) {
