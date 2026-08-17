@@ -11,6 +11,11 @@ const errorMessages: Record<string, string> = {
   CredentialsSignin: "រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។"
 };
 
+const registerErrorMessages: Record<string, string> = {
+  invalid: "សូមបញ្ចូលឈ្មោះ, អ៊ីមែល, និងពាក្យសម្ងាត់យ៉ាងតិច 6 តួ។",
+  exists: "អ៊ីមែលនេះមានគណនីរួចហើយ។ សូមចូលប្រើវិញ ឬប្រើអ៊ីមែលផ្សេង។"
+};
+
 export function LoginForm() {
   const searchParams = useSearchParams();
   const [csrfToken, setCsrfToken] = useState("");
@@ -80,8 +85,16 @@ export function LoginForm() {
 }
 
 export function RegisterForm() {
+  const searchParams = useSearchParams();
+  const errorCode = searchParams.get("error");
+
   return (
     <form action={registerUser} className="space-y-4">
+      {errorCode ? (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {registerErrorMessages[errorCode] ?? `មិនអាចបង្កើតគណនីបានទេ។ លម្អិត technical: ${errorCode}`}
+        </p>
+      ) : null}
       <input className="kh-input" name="name" placeholder="ឈ្មោះ" required />
       <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" required />
       <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់យ៉ាងតិច 6 តួ" minLength={6} required />
