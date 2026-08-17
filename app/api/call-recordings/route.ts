@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
     const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
     const speakerNames = normalizeSpeakerNames(body.speakerNames);
+    const meetingSpeakerNames = speakerNames.length ? speakerNames : normalizeSpeakerNames([user.name]);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
 
     await prisma.user.upsert({
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
         duration,
         language: languageMode,
         status: transcript ? "transcribed" : "recorded",
-        speakerNames,
+        speakerNames: meetingSpeakerNames,
         createdById: user.id
       }
     });

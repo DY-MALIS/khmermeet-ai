@@ -88,6 +88,24 @@ function cleanTranscriptionText(text: string) {
   return rejoinKhmerWordSpacing(cleaned);
 }
 
+function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
+  const names = normalizeSpeakerNames(speakerNames);
+  if (!names.length || !transcript.trim()) return transcript;
+
+  return transcript
+    .split(/\n+/)
+    .map((line) => {
+      const match = line.match(/^Speaker\s*(\d+)\s*:\s*(.*)$/i);
+      if (!match) return line;
+      const speakerIndex = Number(match[1]) - 1;
+      const speakerName = names[speakerIndex];
+      if (!speakerName) return line;
+      return `${speakerName}: ${match[2].trim()}`;
+    })
+    .join("\n")
+    .trim();
+}
+
 export function getLocalAudioPath(name: string) {
   return path.join(uploadRoot, path.basename(name));
 }
@@ -385,7 +403,7 @@ export async function transcribeAudio(
       // let those surface immediately as before.
       if (!(error instanceof OpenRouterApiError) || error.status !== 400) throw error;
     }
-    cleanedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames);
+    cleanedTranscript = applyKnownSpeakerLabels(addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames), speakerNames);
   }
 
   if (!hasUsableTranscript(cleanedTranscript)) {
@@ -402,7 +420,10 @@ export async function transcribeAudio(
       normalizeSpeakerNames(speakerNames),
       options.singleSpeaker ?? false
     );
-    const cleanedFallback = addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames);
+    const cleanedFallback = applyKnownSpeakerLabels(
+      addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
+      speakerNames
+    );
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
   }
 
@@ -416,7 +437,10 @@ export async function transcribeAudio(
     Math.min(timeoutMs, 55000)
   ).catch(() => cleanedTranscript);
 
-  const cleanedRefinedTranscript = addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames);
+  const cleanedRefinedTranscript = applyKnownSpeakerLabels(
+    addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames),
+    speakerNames
+  );
   const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
   assertUsableSavedTranscript(bestTranscript);
   return bestTranscript;
@@ -448,8 +472,9 @@ export async function refineSavedTranscript(
     55000
   ).catch(() => cleanedTranscript);
 
-  const cleanedRefinedTranscript = cleanTranscriptionText(refinedTranscript);
-  return chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
+  const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, speakerNames);
+  const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), speakerNames);
+  return chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
 }
 
 export async function transcribeAudioChunks(
