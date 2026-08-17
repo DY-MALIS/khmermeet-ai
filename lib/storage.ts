@@ -456,6 +456,36 @@ export async function transcribeAudio(
 // chunks are in to run the same refine + quality-guard pass transcribeAudio
 // already does for non-live transcriptions, applied to the whole
 // accumulated transcript instead of per-chunk.
+// A many-hour meeting's full transcript sent as one refine-pass prompt can
+// exceed the text model's context window (no chunking existed here at all
+// before - confirmed by reading through this file). Speaker turns are
+// one-per-line (see cleanTranscriptionText), so splitting on line
+// boundaries never cuts a turn in half; conservative enough that Khmer's
+// higher tokens-per-character ratio still leaves headroom below common
+// 128k-token context windows once the prompt template and matching-length
+// output are accounted for.
+const REFINE_CHUNK_MAX_CHARS = 30000;
+
+function splitTranscriptForRefine(transcript: string, maxChars: number) {
+  const lines = transcript.split("\n");
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const lineLength = line.length + 1;
+    if (current.length && currentLength + lineLength > maxChars) {
+      chunks.push(current.join("\n"));
+      current = [];
+      currentLength = 0;
+    }
+    current.push(line);
+    currentLength += lineLength;
+  }
+  if (current.length) chunks.push(current.join("\n"));
+  return chunks;
+}
+
 export async function refineSavedTranscript(
   transcript: string,
   languageMode: TranscriptionLanguageMode,
@@ -465,12 +495,15 @@ export async function refineSavedTranscript(
   const cleanedTranscript = cleanTranscriptionText(transcript);
   if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
 
-  const refinedTranscript = await refineOpenRouterTranscript(
-    cleanedTranscript,
-    normalizedLanguageMode,
-    normalizeSpeakerNames(speakerNames),
-    55000
-  ).catch(() => cleanedTranscript);
+  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
+  const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
+
+  const refinedChunks = await Promise.all(
+    chunks.map((chunk) =>
+      refineOpenRouterTranscript(chunk, normalizedLanguageMode, normalizedSpeakerNames, 55000).catch(() => chunk)
+    )
+  );
+  const refinedTranscript = refinedChunks.join("\n");
 
   const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, speakerNames);
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), speakerNames);

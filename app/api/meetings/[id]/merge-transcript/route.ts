@@ -7,7 +7,11 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+// Was 30s, shorter than a single refine call's own 55s internal timeout
+// (lib/storage.ts refineSavedTranscript) - Vercel would kill the whole
+// function before that timeout ever had a chance to fire on a slow
+// response. Matches the other AI-calling routes' maxDuration.
+export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
