@@ -1,6 +1,7 @@
 import { compare } from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
 import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
@@ -25,10 +26,14 @@ export const authOptions: NextAuthOptions = {
         // manager, copy-paste from a chat app) gets hashed without it at
         // signup but compared with it at login, permanently locking out an
         // account with the "correct" password.
-        const email = credentials.email.trim().toLowerCase();
-        const password = credentials.password.trim();
+        const email = normalizeAuthEmail(credentials.email);
+        const password = normalizeAuthPassword(credentials.password);
         if (!email || !password) return null;
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user =
+          (await prisma.user.findUnique({ where: { email } })) ??
+          (await prisma.user.findFirst({
+            where: { email: { equals: email, mode: "insensitive" } }
+          }));
         if (!user) return null;
         const ok = await compare(password, user.passwordHash);
         if (!ok) return null;

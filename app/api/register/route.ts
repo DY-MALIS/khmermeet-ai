@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { Prisma } from "@prisma/client";
+import { normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +18,8 @@ export async function POST(request: Request) {
   const baseUrl = new URL(request.url).origin;
   const formData = await request.formData().catch(() => null);
   const name = typeof formData?.get("name") === "string" ? (formData.get("name") as string).trim() : "";
-  const email = typeof formData?.get("email") === "string" ? (formData.get("email") as string).trim().toLowerCase() : "";
-  const password = typeof formData?.get("password") === "string" ? (formData.get("password") as string).trim() : "";
+  const email = normalizeAuthEmail(formData?.get("email"));
+  const password = normalizeAuthPassword(formData?.get("password"));
 
   if (!name || !email || password.length < 6) {
     return NextResponse.redirect(`${baseUrl}/register?error=invalid`, { status: 303 });

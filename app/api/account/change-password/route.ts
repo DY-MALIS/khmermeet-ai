@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { compare, hash } from "bcryptjs";
+import { normalizeAuthPassword } from "@/lib/auth-input";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 
@@ -7,11 +8,8 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = await request.json().catch(() => ({}));
-    // Trimmed the same way registerUser()/login do (see lib/auth.ts) - an
-    // untrimmed compare/hash here would reproduce the exact same
-    // stray-whitespace lockout bug just fixed for login.
-    const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword.trim() : "";
-    const newPassword = typeof body.newPassword === "string" ? body.newPassword.trim() : "";
+    const currentPassword = normalizeAuthPassword(body.currentPassword);
+    const newPassword = normalizeAuthPassword(body.newPassword);
 
     if (newPassword.length < 6) {
       return NextResponse.json({ error: "ពាក្យសម្ងាត់ថ្មីត្រូវមានយ៉ាងតិច 6 តួ។" }, { status: 400 });
