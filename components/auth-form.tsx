@@ -9,7 +9,7 @@ import { hasEmailSeparatorTypo } from "@/lib/auth-input";
 import { PasswordInput } from "@/components/password-input";
 
 const errorMessages: Record<string, string> = {
-  CredentialsSignin: "រកមិនឃើញគណនីនេះ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវ។ សូម Register ជាមុន ប្រសិនបើមិនទាន់មានគណនី។"
+  CredentialsSignin: "ចូលប្រើមិនបានទេ។ សូមពិនិត្យ email/password ឬចុច ភ្លេចពាក្យសម្ងាត់ ដើម្បីកំណត់ password ថ្មី។"
 };
 
 const registerErrorMessages: Record<string, string> = {
