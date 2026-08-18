@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
 import { hasEmailSeparatorTypo } from "@/lib/auth-input";
 import { PasswordInput } from "@/components/password-input";
 
@@ -26,14 +25,29 @@ const resetPasswordErrorMessages: Record<string, string> = {
   short: "ពាក្យសម្ងាត់ត្រូវការយ៉ាងតិច ៦ តួអក្សរ។"
 };
 
-export function LoginForm() {
-  const searchParams = useSearchParams();
+// searchParams are read server-side by each (auth) page and passed down as
+// plain props - NOT via next/navigation's useSearchParams() here. That hook
+// forces Next.js to wrap the caller in <Suspense>, and confirmed live
+// (curl against production HTML): the fallback for these Suspense
+// boundaries had no content, so the actual <form> never appeared in the
+// server-rendered HTML at all (a literal BAILOUT_TO_CLIENT_SIDE_RENDERING
+// marker instead) - a visitor with JavaScript disabled or slow/failed to
+// load saw a completely blank card, not even the (already JS-independent)
+// native form. Reading params server-side and passing as props keeps the
+// form itself fully server-rendered regardless of JS.
+export function LoginForm({
+  justRegistered,
+  justReset,
+  errorCode,
+  callbackUrl
+}: {
+  justRegistered: boolean;
+  justReset: boolean;
+  errorCode: string | null;
+  callbackUrl: string;
+}) {
   const [csrfToken, setCsrfToken] = useState("");
   const [csrfFailed, setCsrfFailed] = useState(false);
-  const justRegistered = searchParams.get("registered") === "1";
-  const justReset = searchParams.get("reset") === "1";
-  const errorCode = searchParams.get("error");
-  const callbackUrl = searchParams.get("from") || "/dashboard";
   const [email, setEmail] = useState("");
   const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
@@ -98,9 +112,7 @@ export function LoginForm() {
   );
 }
 
-export function RegisterForm() {
-  const searchParams = useSearchParams();
-  const errorCode = searchParams.get("error");
+export function RegisterForm({ errorCode }: { errorCode: string | null }) {
   const [email, setEmail] = useState("");
   const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
@@ -127,10 +139,7 @@ export function RegisterForm() {
   );
 }
 
-export function ForgotPasswordForm() {
-  const searchParams = useSearchParams();
-  const sent = searchParams.get("sent") === "1";
-  const errorCode = searchParams.get("error");
+export function ForgotPasswordForm({ sent, errorCode }: { sent: boolean; errorCode: string | null }) {
   const [email, setEmail] = useState("");
   const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
@@ -167,10 +176,7 @@ export function ForgotPasswordForm() {
   );
 }
 
-export function ResetPasswordForm({ token }: { token: string }) {
-  const searchParams = useSearchParams();
-  const errorCode = searchParams.get("error");
-
+export function ResetPasswordForm({ token, errorCode }: { token: string; errorCode: string | null }) {
   return (
     <form method="POST" action="/api/reset-password" className="space-y-4">
       <input type="hidden" name="token" value={token} />
