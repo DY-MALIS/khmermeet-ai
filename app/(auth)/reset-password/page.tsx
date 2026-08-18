@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { ResetPasswordForm } from "@/components/auth-form";
 
@@ -13,7 +14,9 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
           <p className="mt-2 text-sm text-slate-500">សូមវាយពាក្យសម្ងាត់ថ្មីរបស់អ្នក</p>
         </div>
         {token ? (
-          <ResetPasswordForm token={token} />
+          <Suspense>
+            <ResetPasswordForm token={token} />
+          </Suspense>
         ) : (
           <div className="space-y-4 text-center">
             <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700">Link នេះមិនត្រឹមត្រូវទេ។ សូមស្នើសុំ link ថ្មី។</p>

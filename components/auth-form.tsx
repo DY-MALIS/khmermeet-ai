@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getCsrfToken } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { requestPasswordReset, resetPassword } from "@/lib/actions";
 import { hasEmailSeparatorTypo } from "@/lib/auth-input";
 import { PasswordInput } from "@/components/password-input";
 
@@ -16,6 +15,15 @@ const registerErrorMessages: Record<string, string> = {
   invalid: "សូមបញ្ចូលឈ្មោះ, អ៊ីមែល, និងពាក្យសម្ងាត់យ៉ាងតិច 6 តួ។",
   exists: "អ៊ីមែលនេះមានគណនីរួចហើយ។ សូមចូលប្រើវិញ ឬប្រើអ៊ីមែលផ្សេង។",
   unknown: "មិនអាចបង្កើតគណនីបានទេ។ សូមសាកល្បងម្តងទៀត។"
+};
+
+const forgotPasswordErrorMessages: Record<string, string> = {
+  invalid: "សូមបញ្ចូល email។",
+  ratelimit: "ស្នើសុំកំណត់ password ថ្មីច្រើនដងពេក។ សូមរង់ចាំ ១ម៉ោង រួចសាកល្បងម្តងទៀត។"
+};
+
+const resetPasswordErrorMessages: Record<string, string> = {
+  short: "ពាក្យសម្ងាត់ត្រូវការយ៉ាងតិច ៦ តួអក្សរ។"
 };
 
 export function LoginForm() {
@@ -122,6 +130,7 @@ export function RegisterForm() {
 export function ForgotPasswordForm() {
   const searchParams = useSearchParams();
   const sent = searchParams.get("sent") === "1";
+  const errorCode = searchParams.get("error");
   const [email, setEmail] = useState("");
   const emailSeparatorTypo = hasEmailSeparatorTypo(email);
 
@@ -137,8 +146,13 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form action={requestPasswordReset} className="space-y-4">
+    <form method="POST" action="/api/forgot-password" className="space-y-4">
       <p className="text-sm text-slate-500">វាយ email របស់អ្នក យើងនឹងផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅ inbox របស់អ្នក។</p>
+      {errorCode ? (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {forgotPasswordErrorMessages[errorCode] ?? `មិនអាចផ្ញើបានទេ។ សូមសាកល្បងម្តងទៀត។ (${errorCode})`}
+        </p>
+      ) : null}
       {emailSeparatorTypo ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលស្វែងរកគណនី។
@@ -154,9 +168,17 @@ export function ForgotPasswordForm() {
 }
 
 export function ResetPasswordForm({ token }: { token: string }) {
+  const searchParams = useSearchParams();
+  const errorCode = searchParams.get("error");
+
   return (
-    <form action={resetPassword} className="space-y-4">
+    <form method="POST" action="/api/reset-password" className="space-y-4">
       <input type="hidden" name="token" value={token} />
+      {errorCode ? (
+        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          {resetPasswordErrorMessages[errorCode] ?? `មិនអាចកំណត់ពាក្យសម្ងាត់ថ្មីបានទេ។ (${errorCode})`}
+        </p>
+      ) : null}
       <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់ថ្មីយ៉ាងតិច 6 តួ" minLength={6} required />
       <button className="kh-button-primary w-full" type="submit">កំណត់ពាក្យសម្ងាត់ថ្មី</button>
     </form>

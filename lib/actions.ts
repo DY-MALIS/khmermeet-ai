@@ -1,19 +1,11 @@
 "use server";
 
-import { randomBytes } from "crypto";
-import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, normalizeTranscriptionLanguageMode } from "@/lib/storage";
-import { enforceRateLimit } from "@/lib/rate-limit";
-import { sendPasswordResetEmail } from "@/lib/email";
-import { authEmailLookupCandidates, normalizeAuthEmail, normalizeAuthPassword } from "@/lib/auth-input";
-
-const PASSWORD_RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -31,65 +23,6 @@ function revalidateMeetingViews(meetingId?: string) {
   revalidatePath("/summaries");
   revalidatePath("/tasks");
   if (meetingId) revalidatePath(`/meetings/${meetingId}`);
-}
-
-export async function requestPasswordReset(formData: FormData) {
-  const email = normalizeAuthEmail(formData.get("email"));
-  if (!email) throw new Error("សូមបញ្ចូល email។");
-
-  // Enforced before the user lookup below so this can't be used to probe
-  // whether an email is registered by timing/behavior differences either.
-  await enforceRateLimit(email, "password-reset-request");
-
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: authEmailLookupCandidates(formData.get("email")).map((candidate) => ({
-        email: { equals: candidate, mode: "insensitive" as const }
-      }))
-    }
-  });
-  // Always end up on the same "check your email" page whether or not the
-  // account exists - confirming/denying an email's registration here would
-  // let anyone enumerate real accounts.
-  if (user) {
-    const token = randomBytes(32).toString("hex");
-    await prisma.passwordResetToken.create({
-      data: { userId: user.id, token, expiresAt: new Date(Date.now() + PASSWORD_RESET_TOKEN_TTL_MS) }
-    });
-    const resetUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/reset-password?token=${token}`;
-    // Swallowed behind the generic response above (an email-provider outage
-    // still shouldn't reveal account existence) - logged server-side so a
-    // misconfigured RESEND_API_KEY/domain is still visible to whoever
-    // reads the logs, instead of silently pretending to have worked.
-    await sendPasswordResetEmail(email, resetUrl).catch((error) => {
-      console.error("sendPasswordResetEmail failed:", error);
-    });
-  }
-
-  redirect("/forgot-password?sent=1");
-}
-
-export async function resetPassword(formData: FormData) {
-  const token = formString(formData, "token");
-  const password = normalizeAuthPassword(formData.get("password"));
-  if (!token) throw new Error("Reset link មិនត្រឹមត្រូវទេ។");
-  if (password.length < 6) throw new Error("ពាក្យសម្ងាត់ត្រូវការយ៉ាងតិច ៦ តួអក្សរ។");
-
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
-  if (!resetToken || resetToken.expiresAt < new Date()) {
-    throw new Error("Reset link ផុតកំណត់ ឬមិនត្រឹមត្រូវ។ សូមស្នើសុំម្តងទៀត។");
-  }
-
-  const passwordHash = await hash(password, 10);
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: resetToken.userId }, data: { passwordHash } }),
-    // Every outstanding token for this user, not just the one used - a
-    // password change should invalidate any other reset links still
-    // floating in an old email.
-    prisma.passwordResetToken.deleteMany({ where: { userId: resetToken.userId } })
-  ]);
-
-  redirect("/login?reset=1");
 }
 
 export async function getMeetingById(id: string) {

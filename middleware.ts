@@ -5,7 +5,14 @@ import { getToken } from "next-auth/jwt";
 // Routes/prefixes that must stay reachable without a session: NextAuth's own
 // sign-in/callback/session endpoints, and the two DB/provider health probes
 // that the login form and recorder call before a session can exist.
-const PUBLIC_API_PREFIXES = ["/api/auth", "/api/health", "/api/openrouter-health", "/api/register"];
+const PUBLIC_API_PREFIXES = [
+  "/api/auth",
+  "/api/health",
+  "/api/openrouter-health",
+  "/api/register",
+  "/api/forgot-password",
+  "/api/reset-password"
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
