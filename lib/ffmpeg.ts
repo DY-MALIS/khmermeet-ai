@@ -1,14 +1,27 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
 import path from "path";
 import os from "os";
 import ffmpegPath from "ffmpeg-static";
 
 const execFileAsync = promisify(execFile);
+let ensuredExecutable = false;
+
+// Confirmed live: Vercel's build/packaging pipeline doesn't reliably
+// preserve the executable bit ffmpeg-static's binary has in node_modules -
+// without this, execFile fails immediately (ENOENT/EACCES) on first use in
+// the deployed function, even though the exact same code works locally.
+// Harmless no-op on platforms where it's already executable.
+async function ensureFfmpegExecutable() {
+  if (ensuredExecutable || !ffmpegPath) return;
+  await chmod(ffmpegPath, 0o755).catch(() => undefined);
+  ensuredExecutable = true;
+}
 
 async function probeDurationSeconds(inputPath: string): Promise<number> {
   if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
+  await ensureFfmpegExecutable();
   try {
     // ffmpeg -i with no output always exits non-zero (it refuses to run
     // with nothing to encode to) - this is the standard trick to probe
@@ -21,8 +34,14 @@ async function probeDurationSeconds(inputPath: string): Promise<number> {
       const [, h, m, s] = match;
       return Number(h) * 3600 + Number(m) * 60 + Number(s);
     }
+    // Surface the real cause (binary missing/not executable, bad input,
+    // etc.) instead of masking every failure behind the same generic
+    // message - confirmed live this distinction matters (a fast ENOENT
+    // looks identical to a slow parse miss otherwise).
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not determine audio duration (ffmpeg probe failed: ${detail}).`);
   }
-  throw new Error("Could not determine audio duration.");
+  throw new Error("Could not determine audio duration (no Duration line in ffmpeg output).");
 }
 
 // Splits a large audio buffer into a series of smaller, independently
@@ -45,6 +64,7 @@ export async function splitAudioIntoChunks(buffer: Buffer, ext: string, maxBytes
 
   try {
     await writeFile(inputPath, buffer);
+    await ensureFfmpegExecutable();
 
     const durationSeconds = await probeDurationSeconds(inputPath);
     const bytesPerSecond = buffer.length / Math.max(1, durationSeconds);
