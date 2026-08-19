@@ -899,6 +899,11 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speakerIdentity: room.localParticipant.identity, index: 1 })
     }).catch(() => undefined);
+    await fetch(`/api/meetings/${meetingId}/merge-transcript`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ duration: Math.max(1, Math.round(durationMs / 1000)) })
+    }).catch(() => undefined);
   }
 
   async function startServerRecording() {
@@ -963,7 +968,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       // segment still not done by the time it's called, so this is a
       // best-effort head start, not the only safety net.
       const callDurationMs = Date.now() - serverRecording.recordingStartedAt;
-      const graceMs = Math.min(90000, Math.max(15000, Math.round(callDurationMs * 0.02)));
+      const graceMs = Math.min(10 * 60 * 1000, Math.max(45000, Math.round(callDurationMs * 0.08)));
       await new Promise((resolve) => window.setTimeout(resolve, graceMs));
 
       const duration = Math.max(1, Math.round((Date.now() - serverRecording.recordingStartedAt) / 1000));
