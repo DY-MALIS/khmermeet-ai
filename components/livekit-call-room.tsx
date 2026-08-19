@@ -512,6 +512,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const trackRecordingStartedAtRef = useRef(0);
   const trackLanguageModeRef = useRef<"km" | "en" | "km-en">("km-en");
   const trackStartRequestRef = useRef(0);
+  const serverMixedRecorderRef = useRef<MediaRecorder | null>(null);
+  const serverMixedChunksRef = useRef<Blob[]>([]);
+  const serverMixedMimeTypeRef = useRef("audio/webm");
 
   useEffect(() => {
     if (!recording && !serverRecording) return;
@@ -787,6 +790,71 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setRecording(false);
   }
 
+  function startServerMixedBackup() {
+    try {
+      const mixedStream = buildMixedAudioStream();
+      const mimeType = getRecorderMimeType();
+      const recorder = new MediaRecorder(mixedStream, getLongRecordingOptions(mimeType));
+      serverMixedChunksRef.current = [];
+      serverMixedMimeTypeRef.current = mimeType || recorder.mimeType || "audio/webm";
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) serverMixedChunksRef.current.push(event.data);
+      };
+      recorder.start(5000);
+      serverMixedRecorderRef.current = recorder;
+    } catch {
+      serverMixedRecorderRef.current = null;
+      serverMixedChunksRef.current = [];
+    }
+  }
+
+  function stopServerMixedBackup(
+    meetingId: string,
+    languageMode: "km" | "en" | "km-en",
+    durationMs: number
+  ): Promise<boolean> {
+    const recorder = serverMixedRecorderRef.current;
+    serverMixedRecorderRef.current = null;
+    if (!recorder || recorder.state === "inactive") {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+      return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+      recorder.onstop = async () => {
+        cleanupRef.current?.();
+        cleanupRef.current = null;
+        const mimeType = recorder.mimeType || serverMixedMimeTypeRef.current || "audio/webm";
+        const blob = new Blob(serverMixedChunksRef.current, { type: mimeType });
+        serverMixedChunksRef.current = [];
+        if (blob.size <= 1000) {
+          resolve(false);
+          return;
+        }
+
+        try {
+          const audioUrl = await uploadRecordingDirect(blob, mimeType.includes("mp4") ? "mixed-meeting.m4a" : "mixed-meeting.webm");
+          const response = await fetch(`/api/meetings/${meetingId}/register-track-recording`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              speakerIdentity: "__mixed_meeting_audio__",
+              speakerName: "Mixed meeting audio",
+              audioUrl,
+              durationMs,
+              languageMode
+            })
+          });
+          resolve(response.ok);
+        } catch {
+          resolve(false);
+        }
+      };
+      recorder.stop();
+    });
+  }
+
   // Records only this participant's own microphone track (never the mixed
   // room audio) as ONE continuous file for the whole call - no restarts, no
   // gaps (explicit user request: capture start-to-finish in one take, only
@@ -948,6 +1016,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       // to be told to start recording itself the same way every remote
       // participant just was.
       void startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
+      startServerMixedBackup();
       setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setNotice("បានចាប់ផ្តើមថត។ Browser របស់អ្នកចូលរួមម្នាក់ៗនឹងថតសំឡេងខ្លួនឯងដាច់ដោយឡែកដោយស្វ័យប្រវត្តិ (មិនចាំបាច់ចុចអ្វីទេ)។");
     } catch (error) {
@@ -967,6 +1036,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         .publishData(new TextEncoder().encode(JSON.stringify(stopSignal)), { reliable: true })
         .catch(() => undefined);
       await stopLocalTrackRecording();
+      const durationMs = clampMeetingDurationMs(Date.now() - serverRecording.recordingStartedAt);
+      await stopServerMixedBackup(serverRecording.meetingId, transcriptionLanguage, durationMs);
 
       setNotice("កំពុងបំលែងសំឡេងទៅជាអក្សរ សូមរង់ចាំបន្តិច...");
       // Best-effort grace period: recording+transcription now happens
@@ -986,7 +1057,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const graceMs = Math.min(10 * 60 * 1000, Math.max(45000, Math.round(callDurationMs * 0.08)));
       await new Promise((resolve) => window.setTimeout(resolve, graceMs));
 
-      const duration = clampMeetingDurationSeconds((Date.now() - serverRecording.recordingStartedAt) / 1000);
+      const duration = clampMeetingDurationSeconds(durationMs / 1000);
       const mergeResponse = await fetch(`/api/meetings/${serverRecording.meetingId}/merge-transcript`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
