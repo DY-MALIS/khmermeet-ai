@@ -16,6 +16,12 @@ export default async function TranscriptsPage() {
   const data = await prisma.meeting
     .findMany({
       where: { createdById: user.id },
+      include: {
+        transcriptSegments: {
+          where: { audioUrl: { not: null } },
+          orderBy: [{ startMs: "asc" }, { segmentIndex: "asc" }, { id: "asc" }]
+        }
+      },
       orderBy: { updatedAt: "desc" },
       take: 20
     })
@@ -39,6 +45,18 @@ export default async function TranscriptsPage() {
         <div className="grid gap-4 xl:grid-cols-2">
           {meetings.map((meeting) => {
             const usableTranscript = hasUsableTranscript(meeting.transcript ?? "");
+            const audioItems = [
+              ...(meeting.audioUrl
+                ? [{ key: "meeting-audio", label: "Recorded audio", audioUrl: meeting.audioUrl }]
+                : []),
+              ...meeting.transcriptSegments
+                .filter((segment) => segment.audioUrl)
+                .map((segment) => ({
+                  key: segment.id,
+                  label: segment.speakerName || segment.speakerIdentity || "Participant audio",
+                  audioUrl: segment.audioUrl as string
+                }))
+            ];
 
             return (
               <article className="kh-card p-5" key={meeting.id}>
@@ -55,10 +73,17 @@ export default async function TranscriptsPage() {
                     </p>
                   </div>
                 </div>
-                {meeting.audioUrl ? (
-                  <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recorded audio</p>
-                    <audio className="w-full" controls src={meeting.audioUrl} />
+                {audioItems.length ? (
+                  <div className="mb-4 space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {audioItems.length > 1 ? "Recorded participant audio" : "Recorded audio"}
+                    </p>
+                    {audioItems.map((item) => (
+                      <div key={item.key} className="space-y-1">
+                        {audioItems.length > 1 ? <p className="text-xs font-semibold text-slate-600">{item.label}</p> : null}
+                        <audio className="w-full" controls src={item.audioUrl} />
+                      </div>
+                    ))}
                   </div>
                 ) : null}
                 {usableTranscript ? (
@@ -73,7 +98,7 @@ export default async function TranscriptsPage() {
                     Audio ត្រូវបានរក្សាទុក ប៉ុន្តែអត្ថបទដែលបានបម្លែងមិនមានពាក្យនិយាយច្បាស់ ឬមានតែលេខ timestamp។ បើក meeting detail ដើម្បីបញ្ចូល transcript ពិត។
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {meeting.audioUrl ? (
+                    {meeting.audioUrl || meeting.transcriptSegments.some((segment) => segment.audioUrl) ? (
                       <TranscribeAudioButton meetingId={meeting.id} />
                     ) : null}
                     <Link className="kh-button-secondary inline-flex" href={`/meetings/${meeting.id}`}>

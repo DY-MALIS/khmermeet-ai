@@ -504,6 +504,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const trackMeetingIdRef = useRef("");
   const trackRecordingStartedAtRef = useRef(0);
   const trackLanguageModeRef = useRef<"km" | "en" | "km-en">("km-en");
+  const trackStartRequestRef = useRef(0);
 
   useEffect(() => {
     if (!recording && !serverRecording) return;
@@ -546,7 +547,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       }
       if (message.type === "khmermeet-record-start") {
         setRemoteRecordingActive(true);
-        startLocalTrackRecording(message.meetingId, message.languageMode, message.recordingStartedAt);
+        void startLocalTrackRecording(message.meetingId, message.languageMode, message.recordingStartedAt);
       } else if (message.type === "khmermeet-record-stop") {
         setRemoteRecordingActive(false);
         void stopLocalTrackRecording();
@@ -849,10 +850,25 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   // since publishData never loops back to the sender) when a
   // "khmermeet-record-start" signal is received - starts recording only the
   // local microphone, no user interaction required.
-  function startLocalTrackRecording(meetingId: string, languageMode: "km" | "en" | "km-en", recordingStartedAt: number) {
+  async function waitForLocalMicrophoneTrack(requestId: number) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (trackStartRequestRef.current !== requestId || trackSegmentingRef.current) return null;
+      const micTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack;
+      if (micTrack?.readyState === "live") return micTrack;
+      await new Promise((resolve) => window.setTimeout(resolve, 500));
+    }
+    return null;
+  }
+
+  async function startLocalTrackRecording(meetingId: string, languageMode: "km" | "en" | "km-en", recordingStartedAt: number) {
     if (trackSegmentingRef.current) return;
-    const micTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack;
-    if (!micTrack || micTrack.readyState !== "live") return;
+    const requestId = trackStartRequestRef.current + 1;
+    trackStartRequestRef.current = requestId;
+    const micTrack = await waitForLocalMicrophoneTrack(requestId);
+    if (!micTrack || trackSegmentingRef.current || trackStartRequestRef.current !== requestId) {
+      setError("មិនអាចចាប់យក microphone សម្រាប់ Server Rec បានទេ។ សូមបើក microphone រួចចាប់ផ្តើមថតម្តងទៀត។");
+      return;
+    }
     trackMeetingIdRef.current = meetingId;
     trackLanguageModeRef.current = languageMode;
     trackRecordingStartedAtRef.current = recordingStartedAt;
@@ -860,6 +876,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   }
 
   async function stopLocalTrackRecording() {
+    trackStartRequestRef.current += 1;
     if (!trackSegmentingRef.current && !trackSegmentRecorderRef.current) return;
     const meetingId = trackMeetingIdRef.current;
     const languageMode = trackLanguageModeRef.current;
@@ -910,7 +927,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       // publishData never delivers back to the sender - this participant has
       // to be told to start recording itself the same way every remote
       // participant just was.
-      startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
+      void startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
       setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setNotice("បានចាប់ផ្តើមថត។ Browser របស់អ្នកចូលរួមម្នាក់ៗនឹងថតសំឡេងខ្លួនឯងដាច់ដោយឡែកដោយស្វ័យប្រវត្តិ (មិនចាំបាច់ចុចអ្វីទេ)។");
     } catch (error) {
