@@ -93,20 +93,7 @@ export function ExternalMediaUploadPanel() {
         throw new Error(meetingJson.error ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
       }
 
-      setStatus("កំពុងបំលែងសំឡេងជាអក្សរ...");
-      const transcribeResponse = await fetch(`/api/meetings/${meetingJson.id}/transcribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode })
-      });
-      const transcribeJson = await readJsonResponse<{ transcript?: string; error?: string }>(transcribeResponse);
-      if (!transcribeResponse.ok || !transcribeJson.transcript) {
-        setWarning(transcribeJson.error ?? "រក្សាទុកឯកសាររួច ប៉ុន្តែមិនអាចបំលែងសំឡេងជាអក្សរបានទេ។");
-      } else {
-        setStatus("កំពុងបង្កើតសង្ខេប និងកិច្ចការ...");
-        await fetch(`/api/meetings/${meetingJson.id}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-      }
-
+      setWarning("ឯកសារត្រូវបានរក្សាទុករួច។ សម្រាប់វីដេអូ/សំឡេងវែង សូមបើក meeting ហើយចុច Transcribe audio ពេលក្រោយ ដើម្បីជៀសវាង timeout។");
       setStatus("បានរក្សាទុករួច។ កំពុងបើកប្រជុំ...");
       router.push(`/meetings/${meetingJson.id}`);
       router.refresh();
@@ -128,7 +115,7 @@ export function ExternalMediaUploadPanel() {
           <h2 className="text-xl font-bold text-ink">បំលែងការថតសំឡេងពីខាងក្រៅជាអក្សរ</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             Upload ឯកសារប្រភេទ MP3, M4A, WebM, MP4 ឬប្រភេទផ្សេងទៀតដែល browser គាំទ្រ។ កម្មវិធីនឹងរក្សាទុកឯកសារនោះ
-            ព្យាយាមបំលែងសំឡេងខ្មែរ និងអង់គ្លេសទៅជាអក្សរ រួចបង្កើតកំណត់ត្រាប្រជុំដោយស្វ័យប្រវត្តិ។
+            ជាកំណត់ត្រាប្រជុំ។ សម្រាប់ឯកសារវែង សូមបើក meeting ហើយចុច Transcribe audio ពេលក្រោយ ដើម្បីកុំឲ្យ upload timeout។
           </p>
         </div>
       </div>
@@ -171,7 +158,7 @@ export function ExternalMediaUploadPanel() {
         />
         <button className="kh-button-primary" disabled={pending || !file} onClick={uploadAndCreateMeeting} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-          {pending ? "កំពុងដំណើរការ..." : "Upload និងបំលែងជាអក្សរ"}
+          {pending ? "កំពុងដំណើរការ..." : "Upload និងរក្សាទុក"}
         </button>
       </div>
 
