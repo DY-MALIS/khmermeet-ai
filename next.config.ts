@@ -10,13 +10,19 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb"
     }
   },
-  // ffmpeg-static resolves its binary's exact filename at runtime
-  // (os.platform()-dependent), which Vercel's build-time file tracer can't
-  // always follow statically - without this, the Linux ffmpeg binary can
-  // get silently left out of the deployed function and only fail once a
-  // long recording actually needs splitting (lib/ffmpeg.ts). Explicitly
-  // including the whole package directory covers every platform binary it
-  // ships, not just the one this happens to run on.
+  // ffmpeg-static resolves its binary's path from its own __dirname at
+  // runtime. Confirmed live in production: webpack bundling that module
+  // into the route's single chunk file rewrites __dirname to point at
+  // .next/server/chunks instead of the real node_modules/ffmpeg-static
+  // directory, so the binary is never found (ENOENT) even though the file
+  // genuinely exists in the deployment - excluding it from the webpack
+  // bundle keeps its own real __dirname intact.
+  serverExternalPackages: ["ffmpeg-static"],
+  // Vercel's build-time file tracer can't always follow ffmpeg-static's
+  // runtime (os.platform()-dependent) path to its binary statically -
+  // without this, the Linux binary can get left out of the deployed
+  // function entirely. Including the whole package directory covers every
+  // platform binary it ships, not just the one this happens to run on.
   outputFileTracingIncludes: {
     "/api/meetings/[id]/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**"],
     "/api/meetings/[id]/merge-transcript": ["./node_modules/ffmpeg-static/**"]
