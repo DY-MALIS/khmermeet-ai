@@ -116,7 +116,14 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             />
           ))}
         </div>
-      ) : null}
+      ) : (
+        <div className="kh-card border-saffron/30 bg-saffron/10 p-4 text-sm leading-6 text-ink">
+          <p className="font-semibold">Recorded audio មិនមានសម្រាប់ meeting នេះ</p>
+          <p className="mt-1 text-slate-600">
+            Meeting នេះមាន transcript ប៉ុណ្ណោះ។ Audio player នឹងបង្ហាញនៅទីនេះ នៅពេល meeting មាន audio file ឬ participant recording ដែលបានរក្សាទុក។
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <MeetingTranscriptPanel

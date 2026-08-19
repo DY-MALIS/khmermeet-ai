@@ -87,7 +87,14 @@ export default async function TranscriptsPage() {
                       />
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
+                    <p className="font-semibold">Recorded audio មិនមានសម្រាប់ record នេះ</p>
+                    <p className="mt-1 text-slate-600">
+                      Record នេះមានតែ transcript ប៉ុណ្ណោះ។ សម្រាប់ការថតថ្មីៗ KhmerMeet នឹងរក្សា audio player ពេលមាន file សំឡេងត្រូវបាន upload ឬថតជោគជ័យ។
+                    </p>
+                  </div>
+                )}
                 {usableTranscript ? (
                   <div className="space-y-3">
                     <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
