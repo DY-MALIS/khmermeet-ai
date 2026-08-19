@@ -13,8 +13,6 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
-    const limited = await rateLimitResponse(user.id, "ai-generate");
-    if (limited) return limited;
     const body = await request.json();
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const rawTranscript = typeof body.transcript === "string" ? body.transcript.trim() : "";
@@ -55,6 +53,10 @@ export async function POST(request: Request) {
     let aiError = "";
 
     if (transcript) {
+      const limited = await rateLimitResponse(user.id, "ai-generate");
+      if (limited) {
+        aiError = "AI summary skipped because the account reached the current AI rate limit.";
+      } else {
       try {
         const summary = await generateMeetingSummary(transcript, languageMode);
         await prisma.meeting.update({
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         aiError = [aiError, error instanceof Error ? error.message : "AI task extraction failed."].filter(Boolean).join(" ");
+      }
       }
     }
 
