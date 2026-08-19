@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
+import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -79,10 +80,11 @@ export default async function TranscriptsPage() {
                       {audioItems.length > 1 ? "Recorded participant audio" : "Recorded audio"}
                     </p>
                     {audioItems.map((item) => (
-                      <div key={item.key} className="space-y-1">
-                        {audioItems.length > 1 ? <p className="text-xs font-semibold text-slate-600">{item.label}</p> : null}
-                        <audio className="w-full" controls src={item.audioUrl} />
-                      </div>
+                      <RecordedAudioPlayer
+                        key={item.key}
+                        label={audioItems.length > 1 ? item.label : undefined}
+                        src={item.audioUrl}
+                      />
                     ))}
                   </div>
                 ) : null}

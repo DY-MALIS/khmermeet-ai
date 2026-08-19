@@ -7,6 +7,7 @@ import { deleteMeeting } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { formatMeetingDuration } from "@/lib/time-format";
+import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,7 +54,11 @@ export default async function NewMeetingPage() {
                     <p className="mt-1 text-xs text-slate-500">
                       {meeting.createdAt.toLocaleString()} · {formatMeetingDuration(meeting.duration)}
                     </p>
-                    {meeting.audioUrl ? <audio className="mt-3 w-full" controls src={meeting.audioUrl} /> : null}
+                    {meeting.audioUrl ? (
+                      <div className="mt-3">
+                        <RecordedAudioPlayer src={meeting.audioUrl} />
+                      </div>
+                    ) : null}
                   </div>
                   <form action={deleteMeeting}>
                     <input type="hidden" name="id" value={meeting.id} />

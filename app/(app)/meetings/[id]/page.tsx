@@ -12,6 +12,7 @@ import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
+import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 
 function meetingLoadErrorMessage(error: unknown) {
   const code =
@@ -97,7 +98,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
       {meeting.audioUrl ? (
         <div className="kh-card p-4">
-          <audio id={AUDIO_PLAYER_ELEMENT_ID} className="w-full" controls src={meeting.audioUrl} />
+          <RecordedAudioPlayer audioId={AUDIO_PLAYER_ELEMENT_ID} src={meeting.audioUrl} />
         </div>
       ) : meeting.transcriptSegments.length ? (
         // Server Rec meetings: each participant recorded their own full
@@ -108,10 +109,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             សំឡេងដែលបានថត (តាមអ្នកនិយាយម្នាក់ៗ)
           </p>
           {meeting.transcriptSegments.map((segment) => (
-            <div key={segment.id}>
-              <p className="mb-1 text-sm font-semibold text-ink">{segment.speakerName || segment.speakerIdentity}</p>
-              <audio className="w-full" controls src={segment.audioUrl ?? undefined} />
-            </div>
+            <RecordedAudioPlayer
+              key={segment.id}
+              label={segment.speakerName || segment.speakerIdentity}
+              src={segment.audioUrl ?? ""}
+            />
           ))}
         </div>
       ) : null}
