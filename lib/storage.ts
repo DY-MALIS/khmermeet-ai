@@ -28,6 +28,14 @@ type TranscriptionOptions = {
   // stops the model from hallucinating a "Speaker 2:" turn inside audio
   // that is provably a single continuous voice.
   singleSpeaker?: boolean;
+  // English audio otherwise always tries google/chirp-3 first. Confirmed
+  // live that chirp-3 reliably rejects longer clips (~2min+ tested) with a
+  // 400 - the multimodal fallback below still recovers correctly, but only
+  // after wasting 60-90s on the doomed chirp-3 attempt first. Long/full-
+  // call recordings (lib/storage.ts transcribeStoredTrackRecording) know in
+  // advance they don't fit chirp-3's window, so they skip straight to the
+  // fallback instead of paying that cost on every chunk.
+  skipPrimaryModel?: boolean;
 };
 
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
@@ -392,7 +400,7 @@ export async function transcribeAudio(
   // straight to the multimodal chat fallback instead of risking that bug.
   // English still uses chirp-3 first since it's confirmed reliable there.
   let cleanedTranscript = "";
-  if (normalizedLanguageMode === "en") {
+  if (normalizedLanguageMode === "en" && !options.skipPrimaryModel) {
     let transcript = "";
     try {
       transcript = await transcribeOpenRouterAudio(audioBuffer, mimeType, filename, normalizedLanguageMode, timeoutMs);
@@ -444,6 +452,52 @@ export async function transcribeAudio(
   const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
   assertUsableSavedTranscript(bestTranscript);
   return bestTranscript;
+}
+
+function audioExtensionFromMime(mimeType: string) {
+  if (mimeType.includes("mp4")) return "m4a";
+  if (mimeType.includes("webm")) return "webm";
+  if (mimeType.includes("mpeg")) return "mp3";
+  if (mimeType.includes("wav")) return "wav";
+  return "webm";
+}
+
+// Server Rec now records one truly continuous file per participant for the
+// whole call (no restarts - explicit user request), stored as one
+// MeetingTranscriptSegment row per participant. That file can be much
+// bigger than OpenRouter's ~24MB single-request transcription ceiling, so
+// this splits it (via ffmpeg stream-copy - no re-encoding, fast even for
+// hours of audio) into pieces that each fit, transcribes each piece with
+// the normal live/single-speaker path, and joins the results back together
+// in order. The recording itself is never touched by this - splitting only
+// happens here, after it's already safely stored, purely so the AI can
+// process it.
+export async function transcribeStoredTrackRecording(
+  audioUrl: string,
+  languageMode: TranscriptionLanguageMode,
+  timeoutMs = 120000
+) {
+  const file = await loadStoredAudioAsFile(audioUrl);
+  // This is always a whole-call recording (minutes to hours), never a
+  // short clip - skipPrimaryModel avoids the ~60-90s wasted on chirp-3's
+  // confirmed rejection of longer English audio before falling back.
+  const transcribeOptions: TranscriptionOptions = { mode: "live", timeoutMs, singleSpeaker: true, skipPrimaryModel: true };
+  if (file.size <= openRouterAudioLimit) {
+    return transcribeAudio(file, [], languageMode, transcribeOptions);
+  }
+
+  const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const ext = audioExtensionFromMime(file.type || "audio/webm");
+  const chunks = await splitAudioIntoChunks(buffer, ext, openRouterAudioLimit);
+
+  const transcripts = await Promise.all(
+    chunks.map((chunkBuffer, index) => {
+      const chunkFile = new File([new Uint8Array(chunkBuffer)], `part-${index}.${ext}`, { type: file.type || "audio/webm" });
+      return transcribeAudio(chunkFile, [], languageMode, transcribeOptions).catch(() => "");
+    })
+  );
+  return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",

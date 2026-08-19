@@ -2,18 +2,19 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeAudio } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
-// Segments are normally transcribed by the client fanning out
-// transcribe-stored-segment calls right after it stops recording (see
+// Segments are normally transcribed by the client calling
+// transcribe-stored-segment right after it stops recording (see
 // stopLocalTrackRecording in livekit-call-room.tsx) - this only catches
-// stragglers left behind if that fan-out didn't fully finish (a tab closed
-// early, a flaky request). Time-boxed rather than "do them all", so a
-// meeting with many leftover segments still finishes within maxDuration
-// instead of risking the same kind of timeout this route was just fixed
-// for - anything not caught up here just won't be in the transcript.
+// stragglers left behind if that didn't finish (a tab closed early, a
+// flaky request). Each participant now has at most one stored recording
+// (one continuous file for the whole call, no restarts), so this is a
+// handful of large-file transcriptions at most, not hundreds of small
+// ones - still time-boxed so a meeting with several leftover recordings
+// doesn't risk the same kind of timeout this route was fixed for earlier.
 async function catchUpPendingSegments(
   segments: Array<{ id: string; text: string; audioUrl: string | null; languageMode: string | null }>,
   deadline: number
@@ -28,12 +29,11 @@ async function catchUpPendingSegments(
       if (!segment || !segment.audioUrl) continue;
       try {
         const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
-        const file = await loadStoredAudioAsFile(segment.audioUrl);
-        const transcript = await transcribeAudio(file, [], languageMode, {
-          mode: "live",
-          timeoutMs: Math.max(5000, Math.min(25000, deadline - Date.now())),
-          singleSpeaker: true
-        });
+        const transcript = await transcribeStoredTrackRecording(
+          segment.audioUrl,
+          languageMode,
+          Math.max(15000, Math.min(150000, deadline - Date.now()))
+        );
         if (hasUsableTranscript(transcript)) {
           const trimmed = transcript.trim();
           await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text: trimmed } });
@@ -44,17 +44,16 @@ async function catchUpPendingSegments(
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(6, pending.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(4, pending.length) }, worker));
 }
 
 export const dynamic = "force-dynamic";
-// A single refine call's own internal timeout (lib/storage.ts
-// refineSavedTranscript, 55s) leaves only ~5s of margin against a 60s
-// maxDuration for the DB queries and response around it - confirmed live
-// to actually get killed by Vercel's own hard timeout on a real 292-
-// segment/~30k-char meeting (2 parallel refine chunks, one landed near the
-// 55s mark). 120s gives real headroom above that 55s ceiling.
-export const maxDuration = 120;
+// Catch-up transcription of a full-length recording (see above) can itself
+// take a couple minutes for a long call, on top of the refine pass's own
+// ~55s internal ceiling - 280s (near Vercel's practical function limit)
+// gives real headroom for both instead of the tight margin that caused a
+// real production timeout earlier.
+export const maxDuration = 280;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -85,9 +84,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ transcript: "", merged: false });
     }
 
-    // Reserve most of the 120s budget for this catch-up pass, leaving the
+    // Reserve most of the 280s budget for this catch-up pass, leaving the
     // refine call below (its own 55s internal ceiling) real room to run.
-    await catchUpPendingSegments(segments, Date.now() + 55000);
+    await catchUpPendingSegments(segments, Date.now() + 200000);
 
     const rawTranscript = segments
       .filter((segment) => segment.text.trim())

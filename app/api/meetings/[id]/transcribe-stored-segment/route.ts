@@ -1,22 +1,27 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// A participant's stored recording is one continuous file for the whole
+// call (no restarts - see register-track-recording).
+// transcribeStoredTrackRecording splits anything over OpenRouter's ~24MB
+// ceiling into a few pieces and transcribes them in parallel, so total
+// time is close to one piece's time, not the sum - 240s leaves real
+// headroom above that per-piece timeout.
+export const maxDuration = 240;
 
 // Second half of the deferred client-mesh recording flow (see
-// transcribe-track-chunk, which now only stores raw audio during the call).
-// Once a participant's browser stops recording, it fans out one of these
-// calls per segment it uploaded - each one is a small, independently
-// bounded AI call (same shape as the old live per-chunk transcription, just
-// triggered after the call ends instead of during it), so no single request
-// has to transcribe more than one ~25s clip. Same permissive ownership
-// model as transcribe-track-chunk: any authenticated participant handed
-// this meetingId can transcribe a segment they themselves recorded.
+// register-track-recording, which only stores the raw audio). Once a
+// participant's browser stops recording, it calls this once for the one
+// continuous file it uploaded - triggered after the call ends instead of
+// during it, so no AI activity happens while the call is still live. Same
+// permissive ownership model as register-track-recording: any
+// authenticated participant handed this meetingId can transcribe a segment
+// they themselves recorded.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser();
@@ -47,8 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
-    const file = await loadStoredAudioAsFile(segment.audioUrl);
-    const transcript = await transcribeAudio(file, [], languageMode, { mode: "live", timeoutMs: 45000, singleSpeaker: true });
+    const transcript = await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000);
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json({ transcript: "", skipped: true, index });

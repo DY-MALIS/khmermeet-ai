@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb"
     }
   },
+  // ffmpeg-static resolves its binary's exact filename at runtime
+  // (os.platform()-dependent), which Vercel's build-time file tracer can't
+  // always follow statically - without this, the Linux ffmpeg binary can
+  // get silently left out of the deployed function and only fail once a
+  // long recording actually needs splitting (lib/ffmpeg.ts). Explicitly
+  // including the whole package directory covers every platform binary it
+  // ships, not just the one this happens to run on.
+  outputFileTracingIncludes: {
+    "/api/meetings/[id]/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**"],
+    "/api/meetings/[id]/merge-transcript": ["./node_modules/ffmpeg-static/**"]
+  },
   webpack: (config, { isServer, webpack }) => {
     // pptxgenjs's ESM build contains guarded `require("node:fs"/"node:https")`
     // calls for a Node-only codepath that never runs in the browser. Webpack

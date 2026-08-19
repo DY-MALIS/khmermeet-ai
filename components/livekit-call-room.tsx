@@ -463,13 +463,16 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [localBackupUrl, setLocalBackupUrl] = useState("");
   // Client-mesh per-speaker recording: each participant's browser records
-  // only its own microphone locally and posts segments straight to
-  // transcribe-track-chunk, instead of LiveKit Egress mixing server-side and
-  // uploading to S3. That S3 hop hit a confirmed, unresolved AWS SDK V2 vs
-  // Supabase Storage signature bug (supabase/storage#646) - unrelated to any
-  // config on this end - so recording moved entirely client-side, reusing
-  // the direct-audio-chunk transcription path "Start Agent" already proved
-  // reliable, just fed by one track per participant instead of one mixed one.
+  // only its own microphone locally, as one continuous file for the whole
+  // call (no restarts - explicit user request), instead of LiveKit Egress
+  // mixing server-side and uploading to S3. That S3 hop hit a confirmed,
+  // unresolved AWS SDK V2 vs Supabase Storage signature bug
+  // (supabase/storage#646) - unrelated to any config on this end - so
+  // recording moved entirely client-side. The finished recording uploads
+  // straight to Supabase Storage (register-track-recording) and gets
+  // transcribed only after the call ends (transcribe-stored-segment,
+  // splitting a long file server-side via ffmpeg if needed - see
+  // lib/ffmpeg.ts) - never while the call is still live.
   const [serverRecording, setServerRecording] = useState<{ meetingId: string; recordingStartedAt: number } | null>(null);
   // True on participants who received the start signal but weren't the one
   // who clicked the button - shown as a passive "recording" indicator only,
@@ -497,12 +500,10 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const trackSegmentRecorderRef = useRef<MediaRecorder | null>(null);
   const trackSegmentStreamRef = useRef<MediaStream | null>(null);
   const trackSegmentingRef = useRef(false);
-  const trackSegmentIndexRef = useRef(0);
+  const trackChunksRef = useRef<Blob[]>([]);
   const trackMeetingIdRef = useRef("");
   const trackRecordingStartedAtRef = useRef(0);
   const trackLanguageModeRef = useRef<"km" | "en" | "km-en">("km-en");
-  const pendingTrackUploadsRef = useRef<Promise<unknown>[]>([]);
-  const uploadedTrackIndexesRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (!recording && !serverRecording) return;
@@ -771,91 +772,76 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   }
 
   // Records only this participant's own microphone track (never the mixed
-  // room audio) in ~25s segments, uploading each one as soon as it's cut -
-  // mirrors startSegmentRecorder's proven pattern but fires an upload per
-  // segment instead of collecting them for later batch transcription.
-  function startLocalTrackSegmentRecorder(stream: MediaStream, mimeType: string) {
+  // room audio) as ONE continuous file for the whole call - no restarts, no
+  // gaps (explicit user request: capture start-to-finish in one take, only
+  // process it afterward). `media.start(timeslice)` just controls how often
+  // ondataavailable hands over the buffer so memory doesn't pile up as one
+  // giant pending chunk - every piece still belongs to the same recording
+  // session and is only joined into a single Blob once, in stopLocalTrackRecorder.
+  function startLocalTrackRecorder(stream: MediaStream, mimeType: string) {
     trackSegmentingRef.current = true;
     const trackStream = new MediaStream(stream.getAudioTracks().map((track) => track.clone()));
     trackSegmentStreamRef.current = trackStream;
-    const segmentMs = 25000;
+    trackChunksRef.current = [];
 
-    const recordNextSegment = () => {
-      if (!trackSegmentingRef.current) return;
-      const media = new MediaRecorder(
-        trackStream,
-        mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
-      );
-      const parts: Blob[] = [];
-      trackSegmentRecorderRef.current = media;
-
-      media.ondataavailable = (event) => {
-        if (event.data.size > 0) parts.push(event.data);
-      };
-      media.onstop = () => {
-        const segmentType = media.mimeType || mimeType || "audio/webm";
-        const segment = new Blob(parts, { type: segmentType });
-        if (segment.size > 1000) {
-          trackSegmentIndexRef.current += 1;
-          pendingTrackUploadsRef.current.push(uploadTrackSegment(segment, trackSegmentIndexRef.current));
-        }
-        if (trackSegmentingRef.current) window.setTimeout(recordNextSegment, 0);
-      };
-
-      media.start();
-      window.setTimeout(() => {
-        if (media.state !== "inactive") media.stop();
-      }, segmentMs);
+    const media = new MediaRecorder(
+      trackStream,
+      mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
+    );
+    media.ondataavailable = (event) => {
+      if (event.data.size > 0) trackChunksRef.current.push(event.data);
     };
-
-    recordNextSegment();
+    trackSegmentRecorderRef.current = media;
+    media.start(5000);
   }
 
-  // Resolves only once the final in-flight segment's onstop handler has run
-  // (and queued its upload) - a plain synchronous stop() would race the
-  // caller against that still-pending segment.
-  function stopLocalTrackSegmentRecorder(): Promise<void> {
+  // Resolves once the recorder has fully stopped, with the single Blob for
+  // the entire call (or null if nothing usable was captured).
+  function stopLocalTrackRecorder(mimeType: string): Promise<Blob | null> {
     trackSegmentingRef.current = false;
     const media = trackSegmentRecorderRef.current;
+    trackSegmentRecorderRef.current = null;
     if (!media || media.state === "inactive") {
       trackSegmentStreamRef.current?.getTracks().forEach((track) => track.stop());
       trackSegmentStreamRef.current = null;
-      return Promise.resolve();
+      return Promise.resolve(null);
     }
     return new Promise((resolve) => {
-      const previousOnStop = media.onstop;
-      media.onstop = (event) => {
-        if (typeof previousOnStop === "function") previousOnStop.call(media, event);
+      media.onstop = () => {
         trackSegmentStreamRef.current?.getTracks().forEach((track) => track.stop());
         trackSegmentStreamRef.current = null;
-        resolve();
+        const blobType = media.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(trackChunksRef.current, { type: blobType });
+        trackChunksRef.current = [];
+        resolve(blob.size > 1000 ? blob : null);
       };
       media.stop();
     });
   }
 
-  // Uploads the raw audio only - transcribe-track-chunk now just stores it
-  // (see that route for why: the user explicitly asked for no AI activity
-  // while the call is still going). Tracks which indexes actually made it
-  // to storage so stopLocalTrackRecording knows which ones to fan out
-  // transcription requests for once the call ends.
-  async function uploadTrackSegment(blob: Blob, index: number) {
-    const meetingId = trackMeetingIdRef.current;
-    if (!meetingId) return;
+  // Uploads the one complete recording straight to Supabase Storage
+  // (uploadRecordingDirect bypasses Vercel's request-body limit entirely -
+  // a full call can be tens of MB) and registers it against the meeting.
+  // No AI call happens here - see transcribe-stored-segment for the
+  // deferred transcription step, triggered separately below.
+  async function uploadAndRegisterTrackRecording(
+    meetingId: string,
+    blob: Blob,
+    languageMode: "km" | "en" | "km-en",
+    durationMs: number
+  ) {
     const identity = room.localParticipant.identity;
     const name = room.localParticipant.name || identity;
-    const formData = new FormData();
-    formData.append("audio", blob, blob.type.includes("mp4") ? `track-${index}.m4a` : `track-${index}.webm`);
-    formData.append("speakerIdentity", identity);
-    formData.append("speakerName", name);
-    formData.append("index", String(index));
-    formData.append("startOffsetMs", String(Date.now() - trackRecordingStartedAtRef.current));
-    formData.append("languageMode", trackLanguageModeRef.current);
     try {
-      const response = await fetch(`/api/meetings/${meetingId}/transcribe-track-chunk`, { method: "POST", body: formData });
-      if (response.ok) uploadedTrackIndexesRef.current.push(index);
+      const audioUrl = await uploadRecordingDirect(blob, blob.type.includes("mp4") ? "track.m4a" : "track.webm");
+      const response = await fetch(`/api/meetings/${meetingId}/register-track-recording`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speakerIdentity: identity, speakerName: name, audioUrl, durationMs, languageMode })
+      });
+      return response.ok;
     } catch {
-      // Best-effort: one lost segment shouldn't break the rest of this participant's recording.
+      return false;
     }
   }
 
@@ -870,51 +856,32 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     trackMeetingIdRef.current = meetingId;
     trackLanguageModeRef.current = languageMode;
     trackRecordingStartedAtRef.current = recordingStartedAt;
-    trackSegmentIndexRef.current = 0;
-    pendingTrackUploadsRef.current = [];
-    uploadedTrackIndexesRef.current = [];
-    startLocalTrackSegmentRecorder(new MediaStream([micTrack]), getRecorderMimeType());
-  }
-
-  // Fans out one transcribe-stored-segment call per uploaded segment now
-  // that recording has stopped - this is where the actual AI transcription
-  // happens (see transcribe-track-chunk/transcribe-stored-segment for why
-  // it's deferred to here instead of running live during the call). Runs
-  // with limited concurrency so a long call's ~100+ segments don't all fire
-  // at once; best-effort per segment, matching the upload step above.
-  async function transcribeUploadedTrackSegments(meetingId: string, identity: string) {
-    const indexes = [...uploadedTrackIndexesRef.current];
-    uploadedTrackIndexesRef.current = [];
-    if (!indexes.length) return;
-
-    const queue = [...indexes];
-    async function worker() {
-      while (queue.length) {
-        const index = queue.shift();
-        if (index === undefined) return;
-        try {
-          await fetch(`/api/meetings/${meetingId}/transcribe-stored-segment`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ speakerIdentity: identity, index })
-          });
-        } catch {
-          // Best-effort: one failed segment shouldn't block the rest from transcribing.
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+    startLocalTrackRecorder(new MediaStream([micTrack]), getRecorderMimeType());
   }
 
   async function stopLocalTrackRecording() {
-    if (!trackSegmentingRef.current) return;
-    await stopLocalTrackSegmentRecorder();
-    await Promise.allSettled(pendingTrackUploadsRef.current);
-    pendingTrackUploadsRef.current = [];
+    if (!trackSegmentingRef.current && !trackSegmentRecorderRef.current) return;
     const meetingId = trackMeetingIdRef.current;
-    const identity = room.localParticipant.identity;
+    const languageMode = trackLanguageModeRef.current;
+    const durationMs = Date.now() - trackRecordingStartedAtRef.current;
+    const mimeType = getRecorderMimeType();
     trackMeetingIdRef.current = "";
-    await transcribeUploadedTrackSegments(meetingId, identity);
+
+    const blob = await stopLocalTrackRecorder(mimeType);
+    if (!blob || !meetingId) return;
+
+    const registered = await uploadAndRegisterTrackRecording(meetingId, blob, languageMode, durationMs);
+    if (!registered) return;
+
+    // Transcription happens now, after the call has fully ended - never
+    // while it was still live. Best-effort: if this fails or the tab
+    // closes before it finishes, merge-transcript's own catch-up pass
+    // retries it since the audio is already safely stored.
+    await fetch(`/api/meetings/${meetingId}/transcribe-stored-segment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speakerIdentity: room.localParticipant.identity, index: 1 })
+    }).catch(() => undefined);
   }
 
   async function startServerRecording() {

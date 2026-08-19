@@ -9,8 +9,8 @@ export const maxDuration = 15;
 // Creates a placeholder Meeting row the instant a live-call recording starts,
 // before any audio exists yet. Every participant's browser needs this id
 // right away (broadcast over the LiveKit data channel) so each can tag its
-// own per-speaker segments as they're captured - see
-// transcribe-track-chunk/route.ts.
+// own per-speaker recording once the call ends - see
+// register-track-recording/route.ts.
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
