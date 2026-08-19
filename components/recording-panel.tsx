@@ -118,7 +118,7 @@ export function RecordingPanel() {
   }
 
   function getRecorderOptions(mimeType: string) {
-    return mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 };
+    return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
   }
 
   async function loadAudioDevices() {

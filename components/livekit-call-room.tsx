@@ -60,6 +60,10 @@ function getRecorderMimeType() {
   return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
+function getLongRecordingOptions(mimeType: string) {
+  return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+}
+
 function extractApiError(value: unknown) {
   if (value && typeof value === "object" && "error" in value && typeof value.error === "string") {
     return value.error;
@@ -756,7 +760,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     try {
       const mixedStream = buildMixedAudioStream();
       const mimeType = getRecorderMimeType();
-      const recorder = new MediaRecorder(mixedStream, mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 });
+      const recorder = new MediaRecorder(mixedStream, getLongRecordingOptions(mimeType));
       chunksRef.current = [];
       segmentsRef.current = [];
       recorder.ondataavailable = (event) => {
@@ -798,7 +802,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
     const media = new MediaRecorder(
       trackStream,
-      mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
+      getLongRecordingOptions(mimeType)
     );
     media.ondataavailable = (event) => {
       if (event.data.size > 0) trackChunksRef.current.push(event.data);
