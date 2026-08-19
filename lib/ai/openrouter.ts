@@ -128,7 +128,7 @@ export function hasOpenRouterKey() {
 
 export async function generateOpenRouterContent(
   parts: TextPart[],
-  options: { model?: string; json?: boolean; temperature?: number; timeoutMs?: number } = {}
+  options: { model?: string; json?: boolean; temperature?: number; timeoutMs?: number; maxTokens?: number } = {}
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, options.timeoutMs ?? 55000));
@@ -143,6 +143,7 @@ export async function generateOpenRouterContent(
         model: options.model ?? textModel(),
         messages: [{ role: "user", content: parts.map((part) => part.text).join("\n") }],
         temperature: options.temperature ?? (options.json ? 0.1 : 0.2),
+        ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
         ...(options.json ? { response_format: { type: "json_object" } } : {})
       })
     });
@@ -463,10 +464,20 @@ export async function refineOpenRouterTranscript(
     clean
   ].join("\n");
 
+  // Cleanup output should never be much longer than the raw input it's
+  // rejoining - without a cap, a large or repetitive chunk (confirmed live:
+  // a real ~30k-char chunk from a looping test call never returned at all,
+  // even given 100s) can send the model into a very long or runaway
+  // completion that blows the request's own timeout regardless how
+  // generous it is. ~1 token per 2 raw chars is already generous headroom
+  // over the input length.
+  const maxTokens = Math.min(16000, Math.max(1000, Math.ceil(clean.length / 2) + 500));
+
   return generateOpenRouterContent([{ text: prompt }], {
     model: textModel(),
     temperature: 0,
-    timeoutMs
+    timeoutMs,
+    maxTokens
   });
 }
 

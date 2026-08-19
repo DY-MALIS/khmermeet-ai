@@ -460,11 +460,17 @@ export async function transcribeAudio(
 // exceed the text model's context window (no chunking existed here at all
 // before - confirmed by reading through this file). Speaker turns are
 // one-per-line (see cleanTranscriptionText), so splitting on line
-// boundaries never cuts a turn in half; conservative enough that Khmer's
-// higher tokens-per-character ratio still leaves headroom below common
-// 128k-token context windows once the prompt template and matching-length
-// output are accounted for.
-const REFINE_CHUNK_MAX_CHARS = 30000;
+// boundaries never cuts a turn in half.
+// This was originally 30000, sized only for the context-window limit above -
+// but confirmed live against a real 292-segment call transcript that a
+// ~30k-char chunk can send this model into an extremely long or fully
+// runaway completion (one trial ran 145s and only stopped because it hit
+// the token-length ceiling), regardless of how generous a timeout is given.
+// 6000-char chunks stayed on a normal, roughly-linear completion time in
+// the same test. Smaller chunks means more parallel requests for a long
+// meeting, but they run concurrently (Promise.all below), so wall-clock
+// time stays close to a single chunk's time either way.
+const REFINE_CHUNK_MAX_CHARS = 6000;
 
 function splitTranscriptForRefine(transcript: string, maxChars: number) {
   const lines = transcript.split("\n");
