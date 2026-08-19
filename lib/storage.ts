@@ -18,6 +18,7 @@ const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") :
 // so this limit must stay below 4.5MB to ever actually trigger.
 const databaseAudioLimit = 4 * 1024 * 1024;
 const openRouterAudioLimit = 24 * 1024 * 1024;
+const transcriptionChunkTargetSeconds = 10 * 60;
 
 export type TranscriptionLanguageMode = "km" | "en" | "km-en";
 type TranscriptionOptions = {
@@ -489,14 +490,10 @@ export async function transcribeStoredTrackRecording(
     singleSpeaker: options.singleSpeaker ?? true,
     skipPrimaryModel: true
   };
-  if (file.size <= openRouterAudioLimit) {
-    return transcribeAudio(file, speakerNames, languageMode, transcribeOptions);
-  }
-
   const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
-  const chunks = await splitAudioIntoChunks(buffer, ext, openRouterAudioLimit);
+  const chunks = await splitAudioIntoChunks(buffer, ext, openRouterAudioLimit, transcriptionChunkTargetSeconds);
 
   const transcripts = await Promise.all(
     chunks.map((chunkBuffer, index) => {

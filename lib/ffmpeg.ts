@@ -54,9 +54,13 @@ async function probeDurationSeconds(inputPath: string): Promise<number> {
 // ~24MB (roughly 25-30 minutes at this app's recording bitrate). Splitting
 // only happens here, server-side, after the full recording is already
 // safely saved - it never affects what gets recorded or played back.
-export async function splitAudioIntoChunks(buffer: Buffer, ext: string, maxBytesPerChunk: number): Promise<Buffer[]> {
+export async function splitAudioIntoChunks(
+  buffer: Buffer,
+  ext: string,
+  maxBytesPerChunk: number,
+  preferredSegmentSeconds?: number
+): Promise<Buffer[]> {
   if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
-  if (buffer.length <= maxBytesPerChunk) return [buffer];
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-split-"));
   const inputPath = path.join(tmpDir, `input.${ext}`);
@@ -67,11 +71,18 @@ export async function splitAudioIntoChunks(buffer: Buffer, ext: string, maxBytes
     await ensureFfmpegExecutable();
 
     const durationSeconds = await probeDurationSeconds(inputPath);
+    if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || durationSeconds <= preferredSegmentSeconds)) {
+      return [buffer];
+    }
+
     const bytesPerSecond = buffer.length / Math.max(1, durationSeconds);
     // 0.8x safety margin below the ideal ceiling - real bitrate isn't
     // perfectly constant, and landing a segment right at the limit risks
     // tipping over it.
-    const segmentSeconds = Math.max(30, Math.floor((maxBytesPerChunk * 0.8) / bytesPerSecond));
+    const sizeBasedSegmentSeconds = Math.max(30, Math.floor((maxBytesPerChunk * 0.8) / bytesPerSecond));
+    const segmentSeconds = preferredSegmentSeconds
+      ? Math.min(sizeBasedSegmentSeconds, preferredSegmentSeconds)
+      : sizeBasedSegmentSeconds;
 
     await execFileAsync(ffmpegPath, [
       "-y",
@@ -85,8 +96,10 @@ export async function splitAudioIntoChunks(buffer: Buffer, ext: string, maxBytes
     ]);
 
     const files = (await readdir(tmpDir)).filter((name) => name.startsWith("part-")).sort();
-    if (!files.length) throw new Error("ffmpeg produced no output segments.");
-    return await Promise.all(files.map((name) => readFile(path.join(tmpDir, name))));
+    const chunks = (await Promise.all(files.map((name) => readFile(path.join(tmpDir, name)))))
+      .filter((chunk) => chunk.length > 1000);
+    if (!chunks.length) throw new Error("ffmpeg produced no usable output segments.");
+    return chunks;
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
