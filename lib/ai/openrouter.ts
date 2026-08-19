@@ -268,7 +268,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name. For example, if the audio says \"ABA PayWay\", the transcript must say \"ABA PayWay\" in full, never a shortened \"ABA Pay\". These names can blend together at normal speaking speed - listen closely for every syllable of a name rather than assuming it ends where a natural word would.";
   const languageInstruction =
     language === "km"
-      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into natural Khmer. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
+      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
       : language === "en"
         ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
@@ -431,7 +431,7 @@ export async function refineOpenRouterTranscript(
 
   const languageInstruction =
     language === "km"
-      ? "The selected output language is Khmer. Return Khmer script only. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
+      ? "The selected output language is Khmer. Return Khmer script only, using modern, natural Khmer as used in Cambodia today. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Do not rewrite into archaic, overly literary, or old-fashioned Khmer unless the speaker actually used that wording. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
       : language === "en"
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
