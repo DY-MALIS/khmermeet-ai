@@ -475,15 +475,22 @@ function audioExtensionFromMime(mimeType: string) {
 export async function transcribeStoredTrackRecording(
   audioUrl: string,
   languageMode: TranscriptionLanguageMode,
-  timeoutMs = 120000
+  timeoutMs = 120000,
+  options: { speakerNames?: string[]; singleSpeaker?: boolean } = {}
 ) {
   const file = await loadStoredAudioAsFile(audioUrl);
   // This is always a whole-call recording (minutes to hours), never a
   // short clip - skipPrimaryModel avoids the ~60-90s wasted on chirp-3's
   // confirmed rejection of longer English audio before falling back.
-  const transcribeOptions: TranscriptionOptions = { mode: "live", timeoutMs, singleSpeaker: true, skipPrimaryModel: true };
+  const speakerNames = normalizeSpeakerNames(options.speakerNames ?? []);
+  const transcribeOptions: TranscriptionOptions = {
+    mode: "live",
+    timeoutMs,
+    singleSpeaker: options.singleSpeaker ?? true,
+    skipPrimaryModel: true
+  };
   if (file.size <= openRouterAudioLimit) {
-    return transcribeAudio(file, [], languageMode, transcribeOptions);
+    return transcribeAudio(file, speakerNames, languageMode, transcribeOptions);
   }
 
   const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
@@ -494,7 +501,7 @@ export async function transcribeStoredTrackRecording(
   const transcripts = await Promise.all(
     chunks.map((chunkBuffer, index) => {
       const chunkFile = new File([new Uint8Array(chunkBuffer)], `part-${index}.${ext}`, { type: file.type || "audio/webm" });
-      return transcribeAudio(chunkFile, [], languageMode, transcribeOptions).catch(() => "");
+      return transcribeAudio(chunkFile, speakerNames, languageMode, transcribeOptions).catch(() => "");
     })
   );
   return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));

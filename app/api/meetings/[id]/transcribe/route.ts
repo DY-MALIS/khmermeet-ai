@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
+import { loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -40,10 +40,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const body = await readTranscriptionBody(request);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
     const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
-    const speakerNames = savedSpeakerNames;
-    const transcript = await transcribeAudio(audioFile, speakerNames, languageMode, {
-      timeoutMs: Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 240000)
+    const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
+    const rawTranscript = await transcribeStoredTrackRecording(meeting.audioUrl, languageMode, Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000), {
+      speakerNames,
+      singleSpeaker: speakerNames.length === 1
     });
+    const transcript = await refineSavedTranscript(rawTranscript, languageMode, speakerNames).catch(() => rawTranscript);
 
     if (!hasUsableTranscript(transcript)) {
       const durationHint =
