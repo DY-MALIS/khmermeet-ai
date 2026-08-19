@@ -534,15 +534,16 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   }, [recording, serverRecording]);
 
   // buildMixedAudioStream() only wires up whatever microphone tracks are
-  // already live when "Start Agent" is clicked. Without this, anyone who
-  // joins (or whose mic finishes subscribing) after that moment is silently
-  // missing from the recording even though they're audible live via
-  // RoomAudioRenderer - this keeps the mix in sync with the room for as
-  // long as recording stays active.
+  // already live when recording starts. Without this, anyone who joins (or
+  // whose mic finishes subscribing) after that moment is silently missing
+  // from the mixed recording even though they're audible live via
+  // RoomAudioRenderer - this keeps the mix in sync with the room for both
+  // Start Agent and Server Rec's primary mixed-audio recording.
   useEffect(() => {
-    if (!recording) return;
+    if (!recording && !serverRecording) return;
     connectAvailableAudioTracks();
-  }, [audioTracks, recording]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioTracks, recording, serverRecording]);
 
   useEffect(() => {
     return () => {
@@ -1205,7 +1206,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           </p>
           <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ប្រើ &quot;Server Rec&quot; ដើម្បីថតសំឡេងអ្នកនិយាយម្នាក់ៗដាច់ដោយឡែក ហើយដាក់ឈ្មោះត្រឹមត្រូវស្វ័យប្រវត្តិតាមឈ្មោះចូលរួម (ត្រឹមត្រូវបំផុតសម្រាប់អ្នកនិយាយច្រើននាក់)។ &quot;Start Agent&quot; ថត mixed audio តែមួយ track ដែលងាយច្រឡំឈ្មោះអ្នកនិយាយ ប្រើសម្រាប់ការហៅខ្លីៗតែប៉ុណ្ណោះ។
+            ប្រើ &quot;Server Rec&quot; ដើម្បីថតសំឡេងប្រជុំរួមតែមួយ ដែលចាប់យកអ្នកចូលរួមទាំងអស់ដែល host លឺ ហើយរក្សាទុកជា audio player សំខាន់។ &quot;Start Agent&quot; ប្រើសម្រាប់ការហៅខ្លីៗតែប៉ុណ្ណោះ។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
@@ -1235,10 +1236,10 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               type="button"
               onClick={startServerRecording}
               disabled={saving || recording}
-              title="Records each participant's microphone on its own track and labels every transcript line with their real join name - accurate for meetings with many speakers."
+              title="Records one mixed meeting audio file from every audible participant and saves it as the primary meeting audio."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Server Rec (per-speaker, recommended)
+              Server Rec (full meeting audio)
             </button>
           ) : (
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopServerRecording} disabled={saving}>
