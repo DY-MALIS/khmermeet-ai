@@ -32,7 +32,16 @@ export async function getMeetingById(id: string) {
     include: {
       tasks: { orderBy: { createdAt: "desc" } },
       decisions: { orderBy: { createdAt: "desc" } },
-      transcriptSegments: { select: { id: true }, take: 1 }
+      // Server Rec meetings never set meeting.audioUrl (each participant's
+      // own full-call recording is stored per segment instead - see
+      // components/livekit-call-room.tsx) - the meeting detail page uses
+      // this to show one player per participant when there's no single
+      // mixed-file recording to fall back to.
+      transcriptSegments: {
+        where: { audioUrl: { not: null } },
+        select: { id: true, speakerName: true, speakerIdentity: true, audioUrl: true },
+        orderBy: { speakerName: "asc" }
+      }
     }
   });
 }

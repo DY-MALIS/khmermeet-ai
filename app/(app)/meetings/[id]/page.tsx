@@ -99,6 +99,21 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <div className="kh-card p-4">
           <audio id={AUDIO_PLAYER_ELEMENT_ID} className="w-full" controls src={meeting.audioUrl} />
         </div>
+      ) : meeting.transcriptSegments.length ? (
+        // Server Rec meetings: each participant recorded their own full
+        // call as one continuous file (no single mixed track to show one
+        // player for) - one player per person instead.
+        <div className="kh-card space-y-3 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            សំឡេងដែលបានថត (តាមអ្នកនិយាយម្នាក់ៗ)
+          </p>
+          {meeting.transcriptSegments.map((segment) => (
+            <div key={segment.id}>
+              <p className="mb-1 text-sm font-semibold text-ink">{segment.speakerName || segment.speakerIdentity}</p>
+              <audio className="w-full" controls src={segment.audioUrl ?? undefined} />
+            </div>
+          ))}
+        </div>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
