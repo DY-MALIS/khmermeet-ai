@@ -96,6 +96,8 @@ model MeetingTranscriptSegment {
   startMs         Int
   endMs           Int
   text            String
+  audioUrl        String?
+  languageMode    String?
   createdAt       DateTime @default(now())
 
   @@index([meetingId, startMs])

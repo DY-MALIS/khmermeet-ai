@@ -222,7 +222,7 @@ function supabaseStorageClient() {
   };
 }
 
-async function saveSupabaseAudio(filename: string, mimeType: string, data: Buffer) {
+export async function saveSupabaseAudio(filename: string, mimeType: string, data: Buffer) {
   const storage = supabaseStorageClient();
   if (!storage) return "";
 

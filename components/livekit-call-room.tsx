@@ -502,6 +502,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const trackRecordingStartedAtRef = useRef(0);
   const trackLanguageModeRef = useRef<"km" | "en" | "km-en">("km-en");
   const pendingTrackUploadsRef = useRef<Promise<unknown>[]>([]);
+  const uploadedTrackIndexesRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (!recording && !serverRecording) return;
@@ -833,6 +834,11 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     });
   }
 
+  // Uploads the raw audio only - transcribe-track-chunk now just stores it
+  // (see that route for why: the user explicitly asked for no AI activity
+  // while the call is still going). Tracks which indexes actually made it
+  // to storage so stopLocalTrackRecording knows which ones to fan out
+  // transcription requests for once the call ends.
   async function uploadTrackSegment(blob: Blob, index: number) {
     const meetingId = trackMeetingIdRef.current;
     if (!meetingId) return;
@@ -846,7 +852,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     formData.append("startOffsetMs", String(Date.now() - trackRecordingStartedAtRef.current));
     formData.append("languageMode", trackLanguageModeRef.current);
     try {
-      await fetch(`/api/meetings/${meetingId}/transcribe-track-chunk`, { method: "POST", body: formData });
+      const response = await fetch(`/api/meetings/${meetingId}/transcribe-track-chunk`, { method: "POST", body: formData });
+      if (response.ok) uploadedTrackIndexesRef.current.push(index);
     } catch {
       // Best-effort: one lost segment shouldn't break the rest of this participant's recording.
     }
@@ -865,7 +872,38 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     trackRecordingStartedAtRef.current = recordingStartedAt;
     trackSegmentIndexRef.current = 0;
     pendingTrackUploadsRef.current = [];
+    uploadedTrackIndexesRef.current = [];
     startLocalTrackSegmentRecorder(new MediaStream([micTrack]), getRecorderMimeType());
+  }
+
+  // Fans out one transcribe-stored-segment call per uploaded segment now
+  // that recording has stopped - this is where the actual AI transcription
+  // happens (see transcribe-track-chunk/transcribe-stored-segment for why
+  // it's deferred to here instead of running live during the call). Runs
+  // with limited concurrency so a long call's ~100+ segments don't all fire
+  // at once; best-effort per segment, matching the upload step above.
+  async function transcribeUploadedTrackSegments(meetingId: string, identity: string) {
+    const indexes = [...uploadedTrackIndexesRef.current];
+    uploadedTrackIndexesRef.current = [];
+    if (!indexes.length) return;
+
+    const queue = [...indexes];
+    async function worker() {
+      while (queue.length) {
+        const index = queue.shift();
+        if (index === undefined) return;
+        try {
+          await fetch(`/api/meetings/${meetingId}/transcribe-stored-segment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ speakerIdentity: identity, index })
+          });
+        } catch {
+          // Best-effort: one failed segment shouldn't block the rest from transcribing.
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
   }
 
   async function stopLocalTrackRecording() {
@@ -873,7 +911,10 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     await stopLocalTrackSegmentRecorder();
     await Promise.allSettled(pendingTrackUploadsRef.current);
     pendingTrackUploadsRef.current = [];
+    const meetingId = trackMeetingIdRef.current;
+    const identity = room.localParticipant.identity;
     trackMeetingIdRef.current = "";
+    await transcribeUploadedTrackSegments(meetingId, identity);
   }
 
   async function startServerRecording() {
@@ -923,13 +964,23 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         .catch(() => undefined);
       await stopLocalTrackRecording();
 
-      setNotice("កំពុងរង់ចាំសំឡេងពីអ្នកចូលរួមទាំងអស់ផ្ញើចប់...");
-      // Best-effort grace period: recording now happens independently in
-      // each participant's own browser, so there's no single server-side job
-      // to poll for completion like LiveKit Egress had - this just gives
-      // everyone's browser time to receive the stop signal, flush its
-      // current segment, and finish uploading before merging.
-      await new Promise((resolve) => window.setTimeout(resolve, 12000));
+      setNotice("កំពុងបំលែងសំឡេងទៅជាអក្សរ សូមរង់ចាំបន្តិច...");
+      // Best-effort grace period: recording+transcription now happens
+      // independently in each remote participant's own browser (this
+      // participant's own work already finished above, inside
+      // stopLocalTrackRecording), so there's no single server-side job to
+      // poll for completion like LiveKit Egress had. Transcription was
+      // deferred to call-end specifically so it wouldn't compete with the
+      // AI's remote per-segment fan-out for time - a longer call has more
+      // segments for remote participants to get through, so scale the wait
+      // with call length instead of a flat window that was fine for a
+      // quick upload but too short once transcription moved here too.
+      // merge-transcript also runs its own bounded catch-up pass for any
+      // segment still not done by the time it's called, so this is a
+      // best-effort head start, not the only safety net.
+      const callDurationMs = Date.now() - serverRecording.recordingStartedAt;
+      const graceMs = Math.min(90000, Math.max(15000, Math.round(callDurationMs * 0.02)));
+      await new Promise((resolve) => window.setTimeout(resolve, graceMs));
 
       const duration = Math.max(1, Math.round((Date.now() - serverRecording.recordingStartedAt) / 1000));
       const mergeResponse = await fetch(`/api/meetings/${serverRecording.meetingId}/merge-transcript`, {
