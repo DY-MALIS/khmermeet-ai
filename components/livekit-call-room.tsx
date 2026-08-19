@@ -835,14 +835,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
         try {
           const audioUrl = await uploadRecordingDirect(blob, mimeType.includes("mp4") ? "mixed-meeting.m4a" : "mixed-meeting.webm");
-          const response = await fetch(`/api/meetings/${meetingId}/register-track-recording`, {
+          const response = await fetch(`/api/meetings/${meetingId}/attach-audio`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              speakerIdentity: "__mixed_meeting_audio__",
-              speakerName: "Mixed meeting audio",
               audioUrl,
-              durationMs,
+              duration: clampMeetingDurationSeconds(durationMs / 1000),
               languageMode
             })
           });
