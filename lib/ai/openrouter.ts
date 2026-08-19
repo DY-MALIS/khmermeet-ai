@@ -241,10 +241,16 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-// gemini-2.5-pro over gemini-2.5-flash: costs more per request but is
-// noticeably more accurate on Khmer audio, and transcript quality is
-// central to this product - worth the difference.
-const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-pro";
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
+// gemini-3.7-flash is the primary model above for cost reasons, but a live
+// side-by-side comparison against gemini-2.5-pro (identical audio, repeated
+// trials) found it occasionally returns a fully empty transcript on audio
+// that clearly contains speech (~1 in 6 trials), a failure mode 2.5-pro
+// never showed. Rather than accept that reliability hit, an empty result
+// from the primary model is retried once against this safety-net model
+// before giving up - keeps the cost savings on the common case while still
+// catching the rare miss.
+const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-2.5-pro";
 
 function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
@@ -303,14 +309,15 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
 // large multimodal model has broader language understanding and is tried here
 // when the primary result comes back empty/unusable, without replacing chirp-3
 // as the default for audio that it already handles fine (e.g. English).
-export async function transcribeOpenRouterAudioViaChat(
+async function callMultimodalTranscription(
+  model: string,
   audio: Buffer,
   mimeType: string,
   filename: string,
   language: "km" | "en" | "km-en",
-  timeoutMs = 55000,
-  speakerNames: string[] = [],
-  singleSpeaker = false
+  timeoutMs: number,
+  speakerNames: string[],
+  singleSpeaker: boolean
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
@@ -322,7 +329,7 @@ export async function transcribeOpenRouterAudioViaChat(
       headers: requestHeaders(),
       signal: controller.signal,
       body: JSON.stringify({
-        model: multimodalTranscriptionModel(),
+        model,
         temperature: 0,
         messages: [
           {
@@ -362,6 +369,54 @@ export async function transcribeOpenRouterAudioViaChat(
   const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => part.text ?? "").join("\n") : "";
   const trimmed = text.trim();
   return trimmed === "[no speech detected]" ? "" : trimmed;
+}
+
+export async function transcribeOpenRouterAudioViaChat(
+  audio: Buffer,
+  mimeType: string,
+  filename: string,
+  language: "km" | "en" | "km-en",
+  timeoutMs = 55000,
+  speakerNames: string[] = [],
+  singleSpeaker = false
+) {
+  // Callers size timeoutMs against their own serverless maxDuration budget
+  // (e.g. 45s timeout inside a 60s function) - a naive second full-length
+  // call for the safety-net retry below would blow past that budget and get
+  // the function killed mid-flight. Instead both attempts share one overall
+  // deadline: the retry only runs, and only for whatever time is actually
+  // left, if the primary attempt returned quickly (an empty result from a
+  // real timeout would already have thrown, not returned empty).
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+  const primaryModel = multimodalTranscriptionModel();
+  const result = await callMultimodalTranscription(
+    primaryModel,
+    audio,
+    mimeType,
+    filename,
+    language,
+    deadline - Date.now(),
+    speakerNames,
+    singleSpeaker
+  );
+
+  if (result || primaryModel === TRANSCRIPTION_SAFETY_NET_MODEL) return result;
+
+  const remaining = deadline - Date.now();
+  if (remaining < 8000) return result;
+
+  // Primary model came back empty on audio the caller believes has speech -
+  // give the safety-net model one shot with whatever time budget is left.
+  return callMultimodalTranscription(
+    TRANSCRIPTION_SAFETY_NET_MODEL,
+    audio,
+    mimeType,
+    filename,
+    language,
+    remaining,
+    speakerNames,
+    singleSpeaker
+  );
 }
 
 export async function refineOpenRouterTranscript(
