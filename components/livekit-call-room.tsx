@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
+import { clampMeetingDurationMs, clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type TokenPayload = {
@@ -47,9 +48,11 @@ function readMeetingParams() {
 }
 
 function formatTime(seconds: number) {
-  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const s = Math.floor(seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
+  const safeSeconds = clampMeetingDurationSeconds(seconds);
+  const h = Math.floor(safeSeconds / 3600);
+  const m = Math.floor((safeSeconds % 3600) / 60).toString().padStart(2, "0");
+  const s = Math.floor(safeSeconds % 60).toString().padStart(2, "0");
+  return h ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
 function getRecorderMimeType() {
@@ -510,9 +513,17 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     if (!recording && !serverRecording) return;
     const startedAt = serverRecording ? serverRecording.recordingStartedAt : startedAtRef.current;
     const timer = window.setInterval(() => {
-      setSeconds(Math.max(1, Math.floor((Date.now() - startedAt) / 1000)));
+      const elapsedMs = Date.now() - startedAt;
+      setSeconds(clampMeetingDurationSeconds(Math.floor(elapsedMs / 1000)));
+      if (elapsedMs >= MAX_MEETING_DURATION_MS) {
+        if (serverRecording) void stopServerRecording();
+        else if (recording) stopRecording();
+      }
     }, 250);
     return () => window.clearInterval(timer);
+    // The timer should only restart when recording mode changes; stop
+    // handlers read the latest refs/state they need when invoked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, serverRecording]);
 
   // buildMixedAudioStream() only wires up whatever microphone tracks are
@@ -880,7 +891,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     if (!trackSegmentingRef.current && !trackSegmentRecorderRef.current) return;
     const meetingId = trackMeetingIdRef.current;
     const languageMode = trackLanguageModeRef.current;
-    const durationMs = Date.now() - trackRecordingStartedAtRef.current;
+    const durationMs = clampMeetingDurationMs(Date.now() - trackRecordingStartedAtRef.current);
     const mimeType = getRecorderMimeType();
     trackMeetingIdRef.current = "";
 
@@ -902,7 +913,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     await fetch(`/api/meetings/${meetingId}/merge-transcript`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ duration: Math.max(1, Math.round(durationMs / 1000)) })
+      body: JSON.stringify({ duration: clampMeetingDurationSeconds(durationMs / 1000) })
     }).catch(() => undefined);
   }
 
@@ -971,7 +982,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const graceMs = Math.min(10 * 60 * 1000, Math.max(45000, Math.round(callDurationMs * 0.08)));
       await new Promise((resolve) => window.setTimeout(resolve, graceMs));
 
-      const duration = Math.max(1, Math.round((Date.now() - serverRecording.recordingStartedAt) / 1000));
+      const duration = clampMeetingDurationSeconds((Date.now() - serverRecording.recordingStartedAt) / 1000);
       const mergeResponse = await fetch(`/api/meetings/${serverRecording.meetingId}/merge-transcript`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1039,7 +1050,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           title: meetingTitle,
           audioUrl,
           transcript: "",
-          duration: Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+          duration: clampMeetingDurationSeconds((Date.now() - startedAtRef.current) / 1000),
           speakerNames: speakers,
           languageMode: transcriptionLanguage
         })

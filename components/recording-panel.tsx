@@ -4,6 +4,7 @@ import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react"
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
+import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 // noiseSuppression + autoGainControl on: on-screen diagnostics proved (not
@@ -32,9 +33,11 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
 const silentInputThreshold = 0.0012;
 
 function formatTime(seconds: number) {
-  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const s = Math.floor(seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
+  const safeSeconds = clampMeetingDurationSeconds(seconds);
+  const h = Math.floor(safeSeconds / 3600);
+  const m = Math.floor((safeSeconds % 3600) / 60).toString().padStart(2, "0");
+  const s = Math.floor(safeSeconds % 60).toString().padStart(2, "0");
+  return h ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
 function defaultMeetingTitle() {
@@ -98,11 +101,15 @@ export function RecordingPanel() {
     if (state !== "recording") return;
     const updateElapsed = () => {
       const elapsedMs = accumulatedMsRef.current + (startedAtRef.current ? Date.now() - startedAtRef.current : 0);
-      setSeconds(Math.max(1, Math.floor(elapsedMs / 1000)));
+      setSeconds(clampMeetingDurationSeconds(Math.floor(elapsedMs / 1000)));
+      if (elapsedMs >= MAX_MEETING_DURATION_MS) stop();
     };
     updateElapsed();
     const timer = setInterval(updateElapsed, 250);
     return () => clearInterval(timer);
+    // stop() only touches recorder refs/state; keeping this effect keyed to
+    // recording state avoids recreating the interval on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   function getMimeType() {
@@ -495,7 +502,7 @@ export function RecordingPanel() {
       // "0 seconds"). accumulatedMsRef is a ref, not state, so reading
       // .current here always gets the true final elapsed time regardless of
       // when this closure was created.
-      const durationSeconds = Math.max(1, Math.floor(accumulatedMsRef.current / 1000));
+      const durationSeconds = clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000));
       // Passed through to the transcription prompt as a vocabulary hint (see
       // lib/ai/openrouter.ts's transcriptionChatPrompt) so the model has a
       // chance to correctly recognize a name from the audio itself - a
@@ -596,7 +603,7 @@ export function RecordingPanel() {
     recorder.current?.pause();
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
-    setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
+    setSeconds(clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000)));
     setState("paused");
   }
 
@@ -609,7 +616,7 @@ export function RecordingPanel() {
   function stop() {
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
-    setSeconds(Math.max(1, Math.floor(accumulatedMsRef.current / 1000)));
+    setSeconds(clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000)));
     stopSegmentRecorder();
     recorder.current?.stop();
     setState("stopped");

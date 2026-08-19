@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { clampMeetingDurationMs } from "@/lib/meeting-duration";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -18,7 +19,7 @@ export const maxDuration = 15;
 // meetingId can register their own recording, not just the host.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser();
+    await requireUser();
     const { id } = await params;
     const meeting = await prisma.meeting.findUnique({ where: { id } });
     if (!meeting || meeting.status !== "recording") {
@@ -29,8 +30,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const speakerIdentity = String(body.speakerIdentity ?? "").trim();
     const speakerName = String(body.speakerName ?? "").trim();
     const audioUrl = String(body.audioUrl ?? "").trim();
-    const durationMs = Number(body.durationMs);
-    if (!speakerIdentity || !audioUrl || !Number.isFinite(durationMs) || durationMs <= 0) {
+    const durationMs = clampMeetingDurationMs(body.durationMs);
+    if (!speakerIdentity || !audioUrl) {
       return NextResponse.json({ error: "speakerIdentity, audioUrl, and durationMs are required." }, { status: 400 });
     }
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);

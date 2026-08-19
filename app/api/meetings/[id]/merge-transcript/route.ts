@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 
 // Segments are normally transcribed by the client calling
 // transcribe-stored-segment right after it stops recording (see
@@ -67,7 +68,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const body = await request.json().catch(() => ({}));
-    const duration = Number.isFinite(Number(body.duration)) && Number(body.duration) > 0 ? Math.round(Number(body.duration)) : undefined;
+    const duration = "duration" in body ? clampMeetingDurationSeconds(body.duration) : undefined;
 
     const segments = await prisma.meetingTranscriptSegment.findMany({
       where: { meetingId: id },

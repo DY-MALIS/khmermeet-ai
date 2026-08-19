@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     const title = cleanString(body.title) || "Uploaded meeting";
     const audioUrl = cleanString(body.audioUrl);
     const rawTranscript = cleanString(body.transcript);
-    const duration = Number(body.duration ?? 0);
+    const duration = clampMeetingDurationSeconds(body.duration);
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
 
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
       summary: null,
       language: languageMode,
       status: transcript ? "transcribed" : "recorded",
-      duration: Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : 0,
+      duration,
       createdById: user.id
     }
   });

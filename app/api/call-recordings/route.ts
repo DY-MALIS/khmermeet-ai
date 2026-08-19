@@ -6,6 +6,7 @@ import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 
 export const maxDuration = 60;
 
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     const rawTranscript = typeof body.transcript === "string" ? body.transcript.trim() : "";
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
-    const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
+    const duration = clampMeetingDurationSeconds(body.duration);
     const speakerNames = normalizeSpeakerNames(body.speakerNames);
     const meetingSpeakerNames = speakerNames.length ? speakerNames : normalizeSpeakerNames([user.name]);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
