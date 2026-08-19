@@ -113,6 +113,7 @@ export function LiveKitCallRoom() {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const manualLeaveRef = useRef(false);
 
   useEffect(() => {
     const initialMeeting = readMeetingParams();
@@ -128,6 +129,37 @@ export function LiveKitCallRoom() {
       window.history.replaceState(null, "", `/meetings/call?room=${room}`);
     }
   }, [paramsReady, room]);
+
+  useEffect(() => {
+    if (!tokenPayload) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    function handleDocumentClick(event: MouseEvent) {
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!(target instanceof HTMLAnchorElement)) return;
+      const href = target.getAttribute("href") ?? "";
+      if (!href || href.startsWith("#") || target.target === "_blank" || target.hasAttribute("download")) return;
+      const nextUrl = new URL(target.href, window.location.href);
+      if (nextUrl.href === window.location.href) return;
+
+      const shouldLeave = window.confirm("កំពុងស្ថិតក្នុង video call។ ចង់ចេញពី call ទៅទំព័រផ្សេងមែនទេ?");
+      if (!shouldLeave) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, [tokenPayload]);
 
   function meetingTitle() {
     return title.trim() || `Video call ${room}`;
@@ -227,7 +259,14 @@ export function LiveKitCallRoom() {
           connect
           audio={callMedia.audio}
           video={callMedia.video}
-          onDisconnected={() => setTokenPayload(null)}
+          onDisconnected={() => {
+            if (manualLeaveRef.current) {
+              manualLeaveRef.current = false;
+              setTokenPayload(null);
+              return;
+            }
+            setError("Call disconnected unexpectedly. The call screen was kept open; check your connection, then rejoin if audio/video stopped.");
+          }}
           onError={(error) => {
             const message = error.message || "មិនអាចភ្ជាប់ camera/microphone បានទេ។";
             if (/camera|video|device|permission/i.test(message) && callMedia.video) {
@@ -249,7 +288,7 @@ export function LiveKitCallRoom() {
           className="kh-card overflow-hidden p-0"
           data-lk-theme="default"
         >
-          <LiveKitOneScreenConference />
+          <LiveKitOneScreenConference onLeaveRequest={() => { manualLeaveRef.current = true; }} />
           <LiveKitMeetingAgent meetingTitle={meetingTitle()} />
         </LiveKitRoom>
         {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
@@ -321,7 +360,7 @@ export function LiveKitCallRoom() {
   );
 }
 
-function LiveKitOneScreenConference() {
+function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => void }) {
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -381,12 +420,12 @@ function LiveKitOneScreenConference() {
         </div>
       </div>
       <RoomAudioRenderer />
-      <LiveKitCallControls />
+      <LiveKitCallControls onLeaveRequest={onLeaveRequest} />
     </section>
   );
 }
 
-function LiveKitCallControls() {
+function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void }) {
   const room = useRoomContext();
   const {
     isCameraEnabled,
@@ -439,7 +478,10 @@ function LiveKitCallControls() {
         className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
         type="button"
         disabled={Boolean(busyControl)}
-        onClick={() => runControl("leave", () => room.disconnect())}
+        onClick={() => runControl("leave", async () => {
+          onLeaveRequest();
+          room.disconnect();
+        })}
       >
         <Phone className="mr-2 inline h-4 w-4" />
         ចាកចេញ
