@@ -12,7 +12,7 @@ import {
 } from "@livekit/components-react";
 import { RoomEvent, Track } from "livekit-client";
 import type { RemoteParticipant } from "livekit-client";
-import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
+import { Bot, Camera, Copy, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
@@ -607,7 +607,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const audioTracks = useTracks([{ source: Track.Source.Microphone, withPlaceholder: false }], {
     onlySubscribed: false
   });
-  const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [notice, setNotice] = useState("");
@@ -616,9 +615,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
   const [savedMeetingId, setSavedMeetingId] = useState("");
-  const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
-  const [localBackupUrl, setLocalBackupUrl] = useState("");
   // Client-mesh per-speaker recording: each participant's browser records
   // only its own microphone locally, as one continuous file for the whole
   // call (no restarts - explicit user request), instead of LiveKit Egress
@@ -635,13 +632,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   // who clicked the button - shown as a passive "recording" indicator only,
   // they have no controls of their own.
   const [remoteRecordingActive, setRemoteRecordingActive] = useState(false);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const segmentRecorderRef = useRef<MediaRecorder | null>(null);
-  const segmentStreamRef = useRef<MediaStream | null>(null);
-  const segmentsRef = useRef<Blob[]>([]);
-  const segmentingRef = useRef(false);
-  const startedAtRef = useRef(0);
   const cleanupRef = useRef<(() => void) | null>(null);
   const mixAudioContextRef = useRef<AudioContext | null>(null);
   const mixDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -651,9 +641,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   useEffect(() => {
     serverRecordingRef.current = serverRecording;
   }, [serverRecording]);
-  // This participant's own track-only segment recorder for the client-mesh
-  // recording path - separate from segmentRecorderRef above (which segments
-  // the mixed stream for "Start Agent") since both can't safely share state.
+  // This participant's own track-only recorder for the client-mesh recording path.
   const trackSegmentRecorderRef = useRef<MediaRecorder | null>(null);
   const trackSegmentStreamRef = useRef<MediaStream | null>(null);
   const trackSegmentingRef = useRef(false);
@@ -673,36 +661,34 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const serverMixedMimeTypeRef = useRef("audio/webm");
 
   useEffect(() => {
-    if (!recording && !serverRecording) return;
-    const startedAt = serverRecording ? serverRecording.recordingStartedAt : startedAtRef.current;
+    if (!serverRecording) return;
+    const startedAt = serverRecording.recordingStartedAt;
     const timer = window.setInterval(() => {
       const elapsedMs = Date.now() - startedAt;
       setSeconds(clampMeetingDurationSeconds(Math.floor(elapsedMs / 1000)));
       if (elapsedMs >= MAX_MEETING_DURATION_MS) {
-        if (serverRecording) void stopServerRecording();
-        else if (recording) stopRecording();
+        void stopServerRecording();
       }
     }, 250);
     return () => window.clearInterval(timer);
     // The timer should only restart when recording mode changes; stop
     // handlers read the latest refs/state they need when invoked.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording, serverRecording]);
+  }, [serverRecording]);
 
   // buildMixedAudioStream() only wires up whatever microphone tracks are
   // already live when recording starts. Without this, anyone who joins (or
   // whose mic finishes subscribing) after that moment is silently missing
-  // from the mixed recording even though they're audible live via
-  // RoomAudioRenderer - this keeps the mix in sync with the room for both
-  // Start Agent and Server Rec's primary mixed-audio recording.
+  // from the host-side backup recording even though they're audible live via
+  // RoomAudioRenderer - this keeps the mix in sync with the room for Server Rec.
   useEffect(() => {
-    if (!recording && !serverRecording) return;
+    if (!serverRecording) return;
     connectAvailableAudioTracks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioTracks, recording, serverRecording]);
+  }, [audioTracks, serverRecording]);
 
   useEffect(() => {
-    if (!recording && !serverRecording && !pendingLocalRecordingRef.current) return;
+    if (!serverRecording && !pendingLocalRecordingRef.current) return;
 
     function handleAudioTrackReady() {
       window.setTimeout(() => {
@@ -722,13 +708,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       room.off(RoomEvent.LocalTrackSubscribed, handleAudioTrackReady);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room, audioTracks, recording, serverRecording]);
-
-  useEffect(() => {
-    return () => {
-      if (localBackupUrl) URL.revokeObjectURL(localBackupUrl);
-    };
-  }, [localBackupUrl]);
+  }, [room, audioTracks, serverRecording]);
 
   // Listens for the room-wide start/stop signal broadcast by whichever
   // participant clicked "Server Rec" (see startServerRecording below). Every
@@ -786,13 +766,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       room.off(RoomEvent.ParticipantConnected, handleConnected);
     };
   }, [room]);
-
-  function setLocalBackup(blob: Blob) {
-    if (localBackupUrl) URL.revokeObjectURL(localBackupUrl);
-    const url = URL.createObjectURL(blob);
-    setLocalBackupUrl(url);
-    return url;
-  }
 
   // Adds any live microphone tracks not already in the mix (new
   // participants joining, or a track finishing subscription) to the shared
@@ -864,110 +837,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     cleanupRef.current = stopMixedAudioContext;
 
     return destination.stream;
-  }
-
-  function startSegmentRecorder(stream: MediaStream, mimeType: string) {
-    // Longer than the original 10s: a fixed-time cut regardless of natural
-    // speech pauses splits some sentences across two segments, and whichever
-    // half lands in a chunk gets transcribed without the rest of the
-    // sentence for context - scattered wrong sentences, confirmed live in
-    // the standalone recorder's identical segment-recording pattern
-    // (components/recording-panel.tsx). Fewer cut points per minute means
-    // fewer split sentences.
-    const segmentMs = 25000;
-    segmentingRef.current = true;
-    segmentsRef.current = [];
-    // Cloned tracks instead of the live mixed stream the main recorder is
-    // attached to: running two MediaRecorder instances on the exact same
-    // MediaStreamTrack has been observed to starve the older recorder of
-    // audio data in some browsers, producing a fully silent main recording
-    // while this segment recorder (restarted every 10s) keeps capturing
-    // audio fine.
-    const segmentStream = new MediaStream(stream.getAudioTracks().map((track) => track.clone()));
-    segmentStreamRef.current = segmentStream;
-
-    const recordNextSegment = () => {
-      if (!segmentingRef.current) return;
-      const media = new MediaRecorder(
-        segmentStream,
-        mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
-      );
-      const parts: Blob[] = [];
-      segmentRecorderRef.current = media;
-
-      media.ondataavailable = (event) => {
-        if (event.data.size > 0) parts.push(event.data);
-      };
-      media.onstop = () => {
-        const segmentType = media.mimeType || mimeType || "audio/webm";
-        const segment = new Blob(parts, { type: segmentType });
-        if (segment.size > 1000) segmentsRef.current.push(segment);
-        if (segmentingRef.current) window.setTimeout(recordNextSegment, 0);
-      };
-
-      media.start();
-      window.setTimeout(() => {
-        if (media.state !== "inactive") media.stop();
-      }, segmentMs);
-    };
-
-    recordNextSegment();
-  }
-
-  function stopSegmentRecorder() {
-    segmentingRef.current = false;
-    const media = segmentRecorderRef.current;
-    if (media && media.state !== "inactive") media.stop();
-    segmentStreamRef.current?.getTracks().forEach((track) => track.stop());
-    segmentStreamRef.current = null;
-  }
-
-  function getCurrentSpeakerNames() {
-    const names = [
-      room.localParticipant.name || room.localParticipant.identity,
-      ...[...room.remoteParticipants.values()].map((participant) => participant.name || participant.identity)
-    ];
-
-    return [...new Set(names.map((name) => name?.trim()).filter((name): name is string => Boolean(name)))].slice(
-      0,
-      50
-    );
-  }
-
-  function startRecording() {
-    setError("");
-    setNotice("");
-    setSavedMeetingId("");
-    setSavedAudioUrl("");
-    setLocalBackupUrl("");
-    try {
-      const mixedStream = buildMixedAudioStream();
-      const mimeType = getRecorderMimeType();
-      const recorder = new MediaRecorder(mixedStream, getLongRecordingOptions(mimeType));
-      chunksRef.current = [];
-      segmentsRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
-      };
-      recorder.onstop = () => void saveRecording(mimeType || recorder.mimeType || "audio/webm");
-      startSegmentRecorder(mixedStream, mimeType);
-      recorder.start(5000);
-      recorderRef.current = recorder;
-      startedAtRef.current = Date.now();
-      setSeconds(0);
-      setRecording(true);
-      setNotice("Meeting Agent កំពុងថតសំឡេងពី LiveKit room។");
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើមថតកិច្ចប្រជុំបានទេ។");
-    }
-  }
-
-  function stopRecording() {
-    stopSegmentRecorder();
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-    setRecording(false);
   }
 
   function startServerMixedBackup() {
@@ -1194,7 +1063,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setError("");
     setNotice("");
     setSavedMeetingId("");
-    setSavedAudioUrl("");
     try {
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
@@ -1272,116 +1140,9 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     }
   }
 
-  async function saveRecording(mimeType: string) {
-    setSaving(true);
-    setError("");
-    try {
-      await new Promise((resolve) => window.setTimeout(resolve, 350));
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      if (!blob.size) throw new Error("No audio was recorded.");
-      setLocalBackup(blob);
-      const speakers = getCurrentSpeakerNames();
-
-      let audioUrl: string;
-      try {
-        // Direct-to-Supabase upload bypasses Vercel's hard 4.5MB
-        // request-body limit, so long (multi-hour) recordings can still be
-        // saved. Falls through to the server-relayed path below when this
-        // isn't available (e.g. Supabase Storage not configured) - that
-        // path is only reliable for shorter clips.
-        audioUrl = await uploadRecordingDirect(blob);
-      } catch {
-        const uploadData = new FormData();
-        uploadData.append("audio", blob, mimeType.includes("mp4") ? "livekit-call.m4a" : "livekit-call.webm");
-        uploadData.append("speakers", JSON.stringify(speakers));
-        uploadData.append("languageMode", transcriptionLanguage);
-        uploadData.append("skipTranscription", "true");
-        const uploadResponse = await fetch("/api/uploads", { method: "POST", body: uploadData });
-        const uploadJson = await readJsonResponse<{ audioUrl?: string; error?: string }>(uploadResponse);
-        if (!uploadResponse.ok || !uploadJson.audioUrl) {
-          throw new Error(
-            uploadJson.error ??
-              (uploadResponse.status === 413
-                ? "This recording is too large to upload. Download the local backup below, or record a shorter meeting."
-                : "Audio upload failed.")
-          );
-        }
-        audioUrl = uploadJson.audioUrl;
-      }
-
-      const saveResponse = await fetch("/api/call-recordings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: meetingTitle,
-          audioUrl,
-          transcript: "",
-          duration: clampMeetingDurationSeconds((Date.now() - startedAtRef.current) / 1000),
-          speakerNames: speakers,
-          languageMode: transcriptionLanguage
-        })
-      });
-      const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);
-      if (!saveResponse.ok) throw new Error(saveJson.error ?? saveJson.hint ?? "Save failed.");
-      if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
-      setSavedMeetingId(saveJson.meetingId);
-      setSavedAudioUrl(audioUrl);
-      setNotice("បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Meeting Agent កំពុងបម្លែងសំឡេងជា transcript ជា chunks។");
-      await transcribeSavedSegments(saveJson.meetingId, mimeType, speakers);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not save meeting recording.");
-    } finally {
-      cleanupRef.current?.();
-      cleanupRef.current = null;
-      setSaving(false);
-    }
-  }
-
-  async function transcribeSavedSegments(meetingId: string, mimeType: string, speakers: string[]) {
-    const audioSegments = segmentsRef.current.filter((chunk) => chunk.size > 1000);
-    if (!audioSegments.length) return;
-
-    let successfulChunks = 0;
-    let lastErrorMessage = "";
-    setTranscriptionProgress(`Transcribing 0/${audioSegments.length} audio segments...`);
-
-    for (let index = 0; index < audioSegments.length; index += 1) {
-      const chunk = audioSegments[index];
-      const formData = new FormData();
-      const chunkType = chunk.type || mimeType;
-      formData.append("audio", chunk, `livekit-call-part-${index + 1}.${chunkType.includes("mp4") ? "m4a" : "webm"}`);
-      formData.append("languageMode", transcriptionLanguage);
-      formData.append("speakers", JSON.stringify(speakers));
-      formData.append("index", String(index + 1));
-      setTranscriptionProgress(`Transcribing ${index + 1}/${audioSegments.length} audio segments...`);
-
-      try {
-        const response = await fetch(`/api/meetings/${meetingId}/transcribe-chunk`, { method: "POST", body: formData });
-        const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
-        if (response.ok && typeof data.transcript === "string" && data.transcript.trim()) {
-          successfulChunks += 1;
-        } else if (!response.ok && data.error) {
-          lastErrorMessage = data.error;
-        }
-      } catch (error) {
-        // Continue with the next chunk so one timeout/noisy section does not stop a long recording.
-        lastErrorMessage = error instanceof Error ? error.message : lastErrorMessage;
-      }
-    }
-
-    setTranscriptionProgress(
-      successfulChunks
-        ? `Transcription complete: ${successfulChunks}/${audioSegments.length} segments produced text. Open the meeting to review transcript.`
-        : lastErrorMessage
-          ? `Audio saved, but transcription failed: ${lastErrorMessage}`
-          : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
-    );
-    setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");
-  }
-
   return (
     <section className="border-t border-white/10 bg-white p-5">
-      {recording || serverRecording || remoteRecordingActive ? (
+      {serverRecording || remoteRecordingActive ? (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
@@ -1398,7 +1159,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
           </p>
           <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ប្រើ &quot;Server Rec&quot; ដើម្បីថតសំឡេងប្រជុំរួមតែមួយ ដែលចាប់យកអ្នកចូលរួមទាំងអស់ដែល host លឺ ហើយរក្សាទុកជា audio player សំខាន់។ &quot;Start Agent&quot; ប្រើសម្រាប់ការហៅខ្លីៗតែប៉ុណ្ណោះ។
+            ប្រើ &quot;Server Rec&quot; ដើម្បីថតសំឡេងប្រជុំ ដែលចាប់យក microphone របស់អ្នកចូលរួមម្នាក់ៗ ហើយរក្សាទុក auto ពេលចុចឈប់ថត។ Call នៅបន្ត ហើយអាចថតជុំថ្មីបាន។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
@@ -1407,15 +1168,15 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
             className="kh-input h-10 w-auto min-w-36 py-1 text-sm"
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
-            disabled={recording || saving}
+            disabled={Boolean(serverRecording) || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
             <option value="km">Khmer output</option>
             <option value="en">English output</option>
             <option value="km-en">Keep Khmer + English</option>
           </select>
-          <span className={cn("kh-badge", recording || serverRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
-            {recording || serverRecording ? `Recording ${formatTime(seconds)}` : "Ready"}
+          <span className={cn("kh-badge", serverRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
+            {serverRecording ? `Recording ${formatTime(seconds)}` : "Ready"}
           </span>
           {remoteRecordingActive && !serverRecording ? (
             <span className="kh-badge bg-red-100 text-red-700" title="Someone in this meeting started recording - your microphone is being captured automatically.">
@@ -1427,7 +1188,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               className="kh-button-primary"
               type="button"
               onClick={startServerRecording}
-              disabled={saving || recording}
+              disabled={saving}
               title="Records one mixed meeting audio file from every audible participant and saves it as the primary meeting audio."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -1439,50 +1200,11 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               Stop Server Rec
             </button>
           )}
-          {!recording ? (
-            <button
-              className="kh-button-secondary"
-              type="button"
-              onClick={startRecording}
-              disabled={saving || Boolean(serverRecording)}
-              // Mixes all participants through a synthesized
-              // MediaStreamDestinationNode into a single client-side
-              // MediaRecorder - confirmed live (via components/recording-panel.tsx's
-              // identical pattern) that this hand-off can lose almost all of
-              // the signal on some browser/OS/driver combinations, producing
-              // a silent recording with no error. Server Rec doesn't touch
-              // this code path at all - it's the reliable option.
-              title="Single mixed audio track for everyone - speaker names are guessed, not exact. Known issue: on some computers this can silently record no audio at all. Use Server Rec above unless you need a very quick, short recording."
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Start Agent (quick, single track - may record silently on some PCs)
-            </button>
-          ) : (
-            <button className="kh-button-secondary text-red-600" type="button" onClick={stopRecording}>
-              <Square className="h-4 w-4" />
-              Stop & Save
-            </button>
-          )}
           {savedMeetingId ? <Link className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</Link> : null}
         </div>
       </div>
       {notice ? <div className="mt-4 rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-      {localBackupUrl && !savedMeetingId ? (
-        <div className="mt-4 rounded-xl border border-saffron/30 bg-saffron/10 p-4">
-          <p className="font-semibold text-ink">Local recording backup</p>
-          <p className="mt-1 text-sm text-slate-600">
-            The audio was captured in this browser. If server save fails, download this backup before refreshing or closing the page.
-          </p>
-          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-            <audio className="w-full" controls src={localBackupUrl} />
-          </div>
-          <a className="kh-button-secondary mt-3 inline-flex" download={`khmermeet-${room.name || "meeting"}.webm`} href={localBackupUrl}>
-            <Download className="h-4 w-4" />
-            Download backup audio
-          </a>
-        </div>
-      ) : null}
       {savedMeetingId ? (
         <div className="mt-4 rounded-xl border border-leaf/20 bg-leaf/5 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1498,12 +1220,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
               <Link className="kh-button-secondary" href="/meetings">History</Link>
             </div>
           </div>
-          {savedAudioUrl ? (
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="mb-2 text-sm font-semibold text-slate-700">Recorded audio preview</p>
-              <audio className="w-full" controls src={savedAudioUrl} />
-            </div>
-          ) : null}
         </div>
       ) : null}
     </section>
