@@ -651,6 +651,19 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
   }
 
+  async function toggleMicrophone() {
+    if (isMicrophoneEnabled) {
+      await localParticipant.setMicrophoneEnabled(false);
+      manualMicTrackRef.current?.stop();
+      manualMicTrackRef.current = null;
+      setMicLevel(0);
+      setMicNotice("Microphone បានបិទហើយ។");
+      return;
+    }
+
+    await repairMicrophone();
+  }
+
   return (
     <div className="border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -658,10 +671,10 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
           type="button"
           disabled={Boolean(busyControl)}
-          onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, microphoneOptions()))}
+          onClick={() => runControl("mic", toggleMicrophone)}
         >
           <Mic className="mr-2 inline h-4 w-4" />
-          {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
+          {isMicrophoneEnabled ? "Microphone" : "បើក Microphone"}
         </button>
         <button
           className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
