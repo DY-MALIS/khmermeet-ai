@@ -3,10 +3,8 @@ import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import {
-  OpenRouterApiError,
   hasOpenRouterKey,
   refineOpenRouterTranscript,
-  transcribeOpenRouterAudio,
   transcribeOpenRouterAudioViaChat
 } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
@@ -393,27 +391,11 @@ export async function transcribeAudio(
   const filename = audioFile.name || "meeting-audio.webm";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
-  // google/chirp-3 (the primary STT model) has a confirmed fixed-hallucination
-  // bug on Khmer audio: it returns the same fluent, well-formed but entirely
-  // fabricated text regardless of what was actually said. That output is not
-  // empty, garbled, or repetitive, so no output-based quality check below can
-  // catch it - Khmer/mixed audio therefore skips chirp-3 entirely and goes
-  // straight to the multimodal chat fallback instead of risking that bug.
-  // English still uses chirp-3 first since it's confirmed reliable there.
+  // All languages use the configured multimodal transcription model
+  // (default: google/gemini-3.7-flash). Keeping one audio-grounded path
+  // across Khmer, English, and mixed meetings avoids switching English-only
+  // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
-  if (normalizedLanguageMode === "en" && !options.skipPrimaryModel) {
-    let transcript = "";
-    try {
-      transcript = await transcribeOpenRouterAudio(audioBuffer, mimeType, filename, normalizedLanguageMode, timeoutMs);
-    } catch (error) {
-      // A 400 means the primary model rejected this specific request -
-      // worth retrying with the fallback model below. Other errors (invalid
-      // key, no credits, rate limit) won't be fixed by switching models, so
-      // let those surface immediately as before.
-      if (!(error instanceof OpenRouterApiError) || error.status !== 400) throw error;
-    }
-    cleanedTranscript = applyKnownSpeakerLabels(addSingleSpeakerLabel(cleanTranscriptionText(transcript), speakerNames), speakerNames);
-  }
 
   if (!hasUsableTranscript(cleanedTranscript)) {
     // No .catch() here: an OpenRouterApiError (invalid key, no credits, rate
