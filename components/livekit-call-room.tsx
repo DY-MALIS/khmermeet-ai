@@ -84,6 +84,12 @@ function getLongRecordingOptions(mimeType: string) {
   return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
 }
 
+const callAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true
+};
+
 function extractApiError(value: unknown) {
   if (value && typeof value === "object" && "error" in value && typeof value.error === "string") {
     return value.error;
@@ -277,7 +283,7 @@ export function LiveKitCallRoom() {
           token={tokenPayload.token}
           serverUrl={tokenPayload.livekitUrl}
           connect
-          audio={callMedia.audio}
+          audio={callMedia.audio ? callAudioConstraints : false}
           video={callMedia.video}
           onDisconnected={() => {
             if (manualLeaveRef.current) {
@@ -453,14 +459,18 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     isScreenShareEnabled,
     localParticipant
   } = useLocalParticipant();
-  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "screen" | "audio" | "leave" | "">("");
+  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave" | "">("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [micNotice, setMicNotice] = useState("");
 
-  async function runControl(name: "mic" | "camera" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
+  async function runControl(name: "mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
     if (busyControl) return;
     setBusyControl(name);
     try {
       await action();
+      setMicNotice("");
+    } catch (error) {
+      setMicNotice(error instanceof Error ? error.message : "Microphone មិនអាចបើកបានទេ។");
     } finally {
       setBusyControl("");
     }
@@ -472,16 +482,38 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setAudioUnlocked(true);
   }
 
+  async function repairMicrophone() {
+    setMicNotice("កំពុង restart microphone...");
+    await localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    const publication = await localParticipant.setMicrophoneEnabled(true, callAudioConstraints);
+    const mediaTrack = publication?.track?.mediaStreamTrack;
+    if (!mediaTrack || mediaTrack.readyState !== "live") {
+      throw new Error("Browser បានអនុញ្ញាត mic ប៉ុន្តែ app មិនទទួលបាន live microphone track ទេ។ សូមជ្រើស microphone ក្នុង Chrome/Windows ហើយចុចជួសជុល Mic ម្តងទៀត។");
+    }
+    setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
+  }
+
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
+    <div className="border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
+      <div className="flex flex-wrap items-center justify-center gap-2">
       <button
         className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
         type="button"
         disabled={Boolean(busyControl)}
-        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))}
+        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, callAudioConstraints))}
       >
         <Mic className="mr-2 inline h-4 w-4" />
         {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
+      </button>
+      <button
+        className="rounded-lg bg-white/10 px-4 py-2 text-white"
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("repair-mic", repairMicrophone)}
+        title="Use this when you can hear others, but they cannot hear you."
+      >
+        {busyControl === "repair-mic" ? "កំពុងជួសជុល..." : "ជួសជុល Mic"}
       </button>
       <button
         className={cn("rounded-lg px-4 py-2 text-white", audioUnlocked ? "bg-leaf" : "bg-saffron/80")}
@@ -522,6 +554,8 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
         <Phone className="mr-2 inline h-4 w-4" />
         ចាកចេញ
       </button>
+      </div>
+      {micNotice ? <p className="mt-2 text-center text-xs text-white/70">{micNotice}</p> : null}
     </div>
   );
 }
