@@ -466,10 +466,61 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   const [micNotice, setMicNotice] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
+  const [micLevel, setMicLevel] = useState(0);
+  const [micTrackState, setMicTrackState] = useState("No live mic track");
 
   useEffect(() => {
     void loadAudioDevices();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let frameId = 0;
+    let audioContext: AudioContext | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+
+    async function monitorMicrophone() {
+      const publication = localParticipant.getTrackPublication(Track.Source.Microphone);
+      const mediaTrack = publication?.track?.mediaStreamTrack ?? null;
+      if (!mediaTrack || mediaTrack.readyState !== "live") {
+        setMicLevel(0);
+        setMicTrackState(isMicrophoneEnabled ? "Mic is on, but no live browser track" : "Mic is off");
+        return;
+      }
+
+      setMicTrackState(publication?.isMuted ? "Mic track exists but is muted" : "Mic track live");
+      audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      source = audioContext.createMediaStreamSource(new MediaStream([mediaTrack]));
+      source.connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+
+      const tick = () => {
+        if (cancelled) return;
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) {
+          const value = sample - 128;
+          sum += value * value;
+        }
+        const rms = Math.sqrt(sum / samples.length);
+        setMicLevel(Math.min(100, Math.round(rms * 4)));
+        frameId = window.requestAnimationFrame(tick);
+      };
+
+      tick();
+    }
+
+    void monitorMicrophone();
+
+    return () => {
+      cancelled = true;
+      if (frameId) window.cancelAnimationFrame(frameId);
+      source?.disconnect();
+      if (audioContext) void audioContext.close().catch(() => undefined);
+    };
+  }, [isMicrophoneEnabled, localParticipant, selectedAudioDeviceId, busyControl]);
 
   function microphoneOptions(): MediaTrackConstraints {
     return selectedAudioDeviceId
@@ -593,6 +644,17 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
         ចាកចេញ
       </button>
       </div>
+      <div className="mx-auto mt-3 flex max-w-xl items-center gap-3 text-xs text-white/70">
+        <span className="shrink-0 font-semibold">Mic signal</span>
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={cn("h-full rounded-full transition-all", micLevel > 8 ? "bg-leaf" : "bg-saffron")}
+            style={{ width: `${micLevel}%` }}
+          />
+        </div>
+        <span className="w-28 text-right">{micLevel}%</span>
+      </div>
+      <p className="mt-1 text-center text-xs text-white/50">{micTrackState}</p>
       {micNotice ? <p className="mt-2 text-center text-xs text-white/70">{micNotice}</p> : null}
     </div>
   );
