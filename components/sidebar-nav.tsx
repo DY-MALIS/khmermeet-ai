@@ -1,7 +1,8 @@
 "use client";
 
 import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, LayoutGrid, Settings, Sparkles, Video } from "lucide-react";
-import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/components/ui";
 import { useDisplayLanguage } from "@/lib/display-language";
 import { navigationLabels } from "@/lib/navigation-labels";
@@ -33,8 +34,23 @@ const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarC
 
 export function SidebarNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [language] = useDisplayLanguage();
   const labels = navigationLabels[language];
+
+  function navigate(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (pathname === href) return;
+    event.preventDefault();
+
+    const hasActiveCall = sessionStorage.getItem("khmermeet-active-call") === "true";
+    if (hasActiveCall) {
+      const shouldLeave = window.confirm("កំពុងស្ថិតក្នុង video call។ ចង់ចេញពី call ទៅទំព័រផ្សេងមែនទេ?");
+      if (!shouldLeave) return;
+      sessionStorage.removeItem("khmermeet-active-call");
+    }
+
+    router.push(href);
+  }
 
   return (
     <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-4">
@@ -47,13 +63,10 @@ export function SidebarNav() {
             pathname !== "/meetings/call") ||
           (item.href === "/studio" && pathname.startsWith("/studio/"));
         return (
-          <a
+          <Link
             key={item.href}
             href={item.href}
-            onClick={(event) => {
-              event.preventDefault();
-              window.location.assign(item.href);
-            }}
+            onClick={(event) => navigate(event, item.href)}
             className={cn(
               "flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition lg:gap-3",
               active ? "bg-leaf/10 text-leaf ring-1 ring-leaf/15" : "text-slate-600 hover:bg-slate-100 hover:text-ink"
@@ -62,7 +75,7 @@ export function SidebarNav() {
           >
             <item.icon className="h-4 w-4" />
             <span className="leading-5">{labels[item.labelKey]}</span>
-          </a>
+          </Link>
         );
       })}
     </nav>

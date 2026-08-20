@@ -155,6 +155,7 @@ export function LiveKitCallRoom() {
 
   useEffect(() => {
     if (!tokenPayload) return;
+    sessionStorage.setItem("khmermeet-active-call", "true");
 
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       event.preventDefault();
@@ -179,6 +180,7 @@ export function LiveKitCallRoom() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     document.addEventListener("click", handleDocumentClick, true);
     return () => {
+      sessionStorage.removeItem("khmermeet-active-call");
       window.removeEventListener("beforeunload", handleBeforeUnload);
       document.removeEventListener("click", handleDocumentClick, true);
     };

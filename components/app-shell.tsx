@@ -1,19 +1,20 @@
 import { SidebarNav } from "@/components/sidebar-nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ShellStatusCard } from "@/components/shell-status-card";
+import Link from "next/link";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen lg:flex">
       <aside className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between px-4 py-4 lg:block lg:px-6">
-          <a href="/dashboard" className="flex items-center gap-3">
+          <Link href="/dashboard" className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-lg bg-leaf text-lg font-black text-white">K</div>
             <div>
               <p className="font-bold text-ink">KhmerMeet AI</p>
               <p className="text-xs text-slate-500">AI meeting tracker</p>
             </div>
-          </a>
+          </Link>
         </div>
         <SidebarNav />
         <div className="px-4 pb-4">
