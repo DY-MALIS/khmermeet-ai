@@ -10,8 +10,8 @@ import {
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
-import { RoomEvent, Track } from "livekit-client";
-import type { RemoteParticipant } from "livekit-client";
+import { createLocalAudioTrack, RoomEvent, Track } from "livekit-client";
+import type { LocalAudioTrack, RemoteParticipant } from "livekit-client";
 import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -468,9 +468,17 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [micTrackState, setMicTrackState] = useState("No live mic track");
+  const manualMicTrackRef = useRef<LocalAudioTrack | null>(null);
 
   useEffect(() => {
     void loadAudioDevices();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      manualMicTrackRef.current?.stop();
+      manualMicTrackRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -534,6 +542,66 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setAudioDevices(devices.filter((device) => device.kind === "audioinput"));
   }
 
+  async function measureTrackLevel(mediaTrack: MediaStreamTrack, durationMs = 900) {
+    const AudioContextConstructor = window.AudioContext;
+    const audioContext = new AudioContextConstructor();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    const source = audioContext.createMediaStreamSource(new MediaStream([mediaTrack]));
+    source.connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    let maxLevel = 0;
+    const startedAt = performance.now();
+
+    return new Promise<number>((resolve) => {
+      const tick = () => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) {
+          const value = sample - 128;
+          sum += value * value;
+        }
+        maxLevel = Math.max(maxLevel, Math.min(100, Math.round(Math.sqrt(sum / samples.length) * 4)));
+
+        if (performance.now() - startedAt >= durationMs) {
+          source.disconnect();
+          void audioContext.close().catch(() => undefined);
+          resolve(maxLevel);
+          return;
+        }
+
+        window.requestAnimationFrame(tick);
+      };
+
+      tick();
+    });
+  }
+
+  async function publishManualMicrophoneFallback() {
+    const currentPublication = localParticipant.getTrackPublication(Track.Source.Microphone);
+    if (currentPublication?.track) {
+      await localParticipant.unpublishTrack(currentPublication.track, true).catch(() => undefined);
+    }
+
+    manualMicTrackRef.current?.stop();
+    manualMicTrackRef.current = null;
+
+    const track = await createLocalAudioTrack(microphoneOptions());
+    const level = await measureTrackLevel(track.mediaStreamTrack);
+    if (level <= 1) {
+      track.stop();
+      throw new Error("Chrome បានបើក microphone ប៉ុន្តែ signal នៅ 0%។ បញ្ហានេះនៅលើ device/driver ឬ Chrome audio input មិនបញ្ជូនសំឡេងទៅ browser ទេ។");
+    }
+
+    await localParticipant.publishTrack(track, {
+      source: Track.Source.Microphone,
+      name: "microphone"
+    });
+    manualMicTrackRef.current = track;
+    setMicLevel(level);
+    setMicTrackState("Manual mic track live");
+  }
+
   async function runControl(name: "mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
     if (busyControl) return;
     setBusyControl(name);
@@ -560,8 +628,25 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     const publication = await localParticipant.setMicrophoneEnabled(true, microphoneOptions());
     const mediaTrack = publication?.track?.mediaStreamTrack;
     if (!mediaTrack || mediaTrack.readyState !== "live") {
-      throw new Error("Browser បានអនុញ្ញាត mic ប៉ុន្តែ app មិនទទួលបាន live microphone track ទេ។ សូមជ្រើស microphone ក្នុង Chrome/Windows ហើយចុចជួសជុល Mic ម្តងទៀត។");
+      setMicNotice("LiveKit mic track មិន live។ កំពុងសាក fallback microphone...");
+      await publishManualMicrophoneFallback();
+      await loadAudioDevices();
+      setMicNotice("Fallback microphone បានភ្ជាប់ហើយ។ សាកនិយាយម្តងទៀត។");
+      return;
     }
+
+    const level = await measureTrackLevel(mediaTrack);
+    if (level <= 1) {
+      setMicNotice("LiveKit mic track នៅស្ងាត់។ កំពុងសាក fallback microphone...");
+      await publishManualMicrophoneFallback();
+      await loadAudioDevices();
+      setMicNotice("Fallback microphone បានភ្ជាប់ហើយ។ សាកនិយាយម្តងទៀត។");
+      return;
+    }
+
+    manualMicTrackRef.current?.stop();
+    manualMicTrackRef.current = null;
+    setMicLevel(level);
     await loadAudioDevices();
     setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
   }
