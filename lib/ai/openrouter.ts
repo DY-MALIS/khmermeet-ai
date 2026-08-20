@@ -287,7 +287,10 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     languageInstruction + vocabularyHint,
     properNounRule,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
+    "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
+    "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
+    "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
     // Per-track chunks (client-mesh Server Rec, one file per participant's
     // own microphone) know in advance there is exactly one speaker - without
     // this, the model sometimes still hallucinates a "Speaker 2:" turn
@@ -299,6 +302,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
       ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
       : "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
+    "If a long section is noisy, overlapped, muted, or too quiet to understand, write [unclear] for that section instead of producing a fluent guess.",
     "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
     "Return the transcript text only - no preamble, no explanation, no markdown formatting, no commentary about the audio."
   ].join(" ");
@@ -447,6 +451,8 @@ export async function refineOpenRouterTranscript(
     "Rules:",
     "- Do not summarize.",
     "- Do not add new facts, decisions, or tasks.",
+    "- Do not add words that are not present in the raw transcript.",
+    "- Do not complete unclear or broken sentences from context.",
     "- Keep speaker labels at the start of each spoken turn: Name: spoken text.",
     "- Do not combine different speakers into one paragraph.",
     "- For Khmer mode, normalize every clear spoken phrase into Khmer script only.",
@@ -454,6 +460,7 @@ export async function refineOpenRouterTranscript(
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- Treat [unclear] as evidence from the audio; preserve it exactly and do not replace it with a guessed phrase.",
     "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
     "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
     "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
