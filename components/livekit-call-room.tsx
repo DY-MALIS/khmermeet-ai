@@ -590,6 +590,12 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   const trackRecordingStartedAtRef = useRef(0);
   const trackLanguageModeRef = useRef<"km" | "en" | "km-en">("km-en");
   const trackStartRequestRef = useRef(0);
+  const pendingLocalRecordingRef = useRef<{
+    meetingId: string;
+    languageMode: "km" | "en" | "km-en";
+    recordingStartedAt: number;
+    requestId: number;
+  } | null>(null);
   const serverMixedRecorderRef = useRef<MediaRecorder | null>(null);
   const serverMixedChunksRef = useRef<Blob[]>([]);
   const serverMixedMimeTypeRef = useRef("audio/webm");
@@ -622,6 +628,29 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     connectAvailableAudioTracks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioTracks, recording, serverRecording]);
+
+  useEffect(() => {
+    if (!recording && !serverRecording && !pendingLocalRecordingRef.current) return;
+
+    function handleAudioTrackReady() {
+      window.setTimeout(() => {
+        connectAvailableAudioTracks();
+        void tryStartPendingLocalTrackRecording();
+      }, 0);
+    }
+
+    room.on(RoomEvent.TrackSubscribed, handleAudioTrackReady);
+    room.on(RoomEvent.TrackUnmuted, handleAudioTrackReady);
+    room.on(RoomEvent.LocalTrackPublished, handleAudioTrackReady);
+    room.on(RoomEvent.LocalTrackSubscribed, handleAudioTrackReady);
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, handleAudioTrackReady);
+      room.off(RoomEvent.TrackUnmuted, handleAudioTrackReady);
+      room.off(RoomEvent.LocalTrackPublished, handleAudioTrackReady);
+      room.off(RoomEvent.LocalTrackSubscribed, handleAudioTrackReady);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, audioTracks, recording, serverRecording]);
 
   useEffect(() => {
     return () => {
@@ -1010,33 +1039,55 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
   // since publishData never loops back to the sender) when a
   // "khmermeet-record-start" signal is received - starts recording only the
   // local microphone, no user interaction required.
+  function getLocalMicrophoneTrack() {
+    return room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack ?? null;
+  }
+
   async function waitForLocalMicrophoneTrack(requestId: number) {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       if (trackStartRequestRef.current !== requestId || trackSegmentingRef.current) return null;
-      const micTrack = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track?.mediaStreamTrack;
+      const micTrack = getLocalMicrophoneTrack();
       if (micTrack?.readyState === "live") return micTrack;
       await new Promise((resolve) => window.setTimeout(resolve, 500));
     }
     return null;
   }
 
+  async function tryStartPendingLocalTrackRecording() {
+    const pending = pendingLocalRecordingRef.current;
+    if (!pending || trackSegmentingRef.current || trackSegmentRecorderRef.current) return false;
+    if (trackStartRequestRef.current !== pending.requestId) {
+      pendingLocalRecordingRef.current = null;
+      return false;
+    }
+
+    const micTrack = getLocalMicrophoneTrack();
+    if (micTrack?.readyState !== "live") return false;
+
+    pendingLocalRecordingRef.current = null;
+    trackMeetingIdRef.current = pending.meetingId;
+    trackLanguageModeRef.current = pending.languageMode;
+    trackRecordingStartedAtRef.current = pending.recordingStartedAt;
+    startLocalTrackRecorder(new MediaStream([micTrack]), getRecorderMimeType());
+    return true;
+  }
+
   async function startLocalTrackRecording(meetingId: string, languageMode: "km" | "en" | "km-en", recordingStartedAt: number) {
     if (trackSegmentingRef.current) return;
     const requestId = trackStartRequestRef.current + 1;
     trackStartRequestRef.current = requestId;
+    pendingLocalRecordingRef.current = { meetingId, languageMode, recordingStartedAt, requestId };
     const micTrack = await waitForLocalMicrophoneTrack(requestId);
     if (!micTrack || trackSegmentingRef.current || trackStartRequestRef.current !== requestId) {
-      setError("មិនអាចចាប់យក microphone សម្រាប់ Server Rec បានទេ។ សូមបើក microphone រួចចាប់ផ្តើមថតម្តងទៀត។");
+      setNotice("Server Rec កំពុងរង់ចាំ microphone របស់អ្នក។ ពេលបើក microphone វានឹងចាប់ផ្តើមថតដោយស្វ័យប្រវត្តិ។");
       return;
     }
-    trackMeetingIdRef.current = meetingId;
-    trackLanguageModeRef.current = languageMode;
-    trackRecordingStartedAtRef.current = recordingStartedAt;
-    startLocalTrackRecorder(new MediaStream([micTrack]), getRecorderMimeType());
+    void tryStartPendingLocalTrackRecording();
   }
 
   async function stopLocalTrackRecording() {
     trackStartRequestRef.current += 1;
+    pendingLocalRecordingRef.current = null;
     if (!trackSegmentingRef.current && !trackSegmentRecorderRef.current) return;
     const meetingId = trackMeetingIdRef.current;
     const languageMode = trackLanguageModeRef.current;

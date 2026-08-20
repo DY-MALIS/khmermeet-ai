@@ -60,7 +60,11 @@ export async function splitAudioIntoChunks(
   maxBytesPerChunk: number,
   preferredSegmentSeconds?: number
 ): Promise<Buffer[]> {
-  if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
+  if (buffer.length <= maxBytesPerChunk && !preferredSegmentSeconds) return [buffer];
+  if (!ffmpegPath) {
+    if (buffer.length <= maxBytesPerChunk) return [buffer];
+    throw new Error("ffmpeg binary not found. Long recordings need ffmpeg available in the deployment before they can be split for transcription.");
+  }
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-split-"));
   const inputPath = path.join(tmpDir, `input.${ext}`);
@@ -70,7 +74,13 @@ export async function splitAudioIntoChunks(
     await writeFile(inputPath, buffer);
     await ensureFfmpegExecutable();
 
-    const durationSeconds = await probeDurationSeconds(inputPath);
+    let durationSeconds: number;
+    try {
+      durationSeconds = await probeDurationSeconds(inputPath);
+    } catch (error) {
+      if (buffer.length <= maxBytesPerChunk) return [buffer];
+      throw error;
+    }
     if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || durationSeconds <= preferredSegmentSeconds)) {
       return [buffer];
     }
