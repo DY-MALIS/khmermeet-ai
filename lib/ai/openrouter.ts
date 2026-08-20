@@ -302,7 +302,8 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
       ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
       : "If multiple speakers are audible, label each turn as Speaker 1:, Speaker 2:, etc. If only one speaker, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
-    "If a long section is noisy, overlapped, muted, or too quiet to understand, write [unclear] for that section instead of producing a fluent guess.",
+    "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
+    "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
     "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
     "Return the transcript text only - no preamble, no explanation, no markdown formatting, no commentary about the audio."
   ].join(" ");
