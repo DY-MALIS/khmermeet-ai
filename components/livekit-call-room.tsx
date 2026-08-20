@@ -1228,6 +1228,7 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
 
   async function stopServerRecording() {
     if (!serverRecording) return;
+    const currentRecording = serverRecording;
     setSaving(true);
     setError("");
     try {
@@ -1236,29 +1237,23 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         .publishData(new TextEncoder().encode(JSON.stringify(stopSignal)), { reliable: true })
         .catch(() => undefined);
       await stopLocalTrackRecording();
-      const durationMs = clampMeetingDurationMs(Date.now() - serverRecording.recordingStartedAt);
-      await stopServerMixedBackup(serverRecording.meetingId, transcriptionLanguage, durationMs);
-
-      setNotice("កំពុងបំលែងសំឡេងទៅជាអក្សរ សូមរង់ចាំបន្តិច...");
-      // Best-effort grace period: recording+transcription now happens
-      // independently in each remote participant's own browser (this
-      // participant's own work already finished above, inside
-      // stopLocalTrackRecording), so there's no single server-side job to
-      // poll for completion like LiveKit Egress had. Transcription was
-      // deferred to call-end specifically so it wouldn't compete with the
-      // AI's remote per-segment fan-out for time - a longer call has more
-      // segments for remote participants to get through, so scale the wait
-      // with call length instead of a flat window that was fine for a
-      // quick upload but too short once transcription moved here too.
-      // merge-transcript also runs its own bounded catch-up pass for any
-      // segment still not done by the time it's called, so this is a
-      // best-effort head start, not the only safety net.
-      const callDurationMs = Date.now() - serverRecording.recordingStartedAt;
-      const graceMs = Math.min(10 * 60 * 1000, Math.max(45000, Math.round(callDurationMs * 0.08)));
-      await new Promise((resolve) => window.setTimeout(resolve, graceMs));
-
+      const durationMs = clampMeetingDurationMs(Date.now() - currentRecording.recordingStartedAt);
+      await stopServerMixedBackup(currentRecording.meetingId, transcriptionLanguage, durationMs);
       const duration = clampMeetingDurationSeconds(durationMs / 1000);
-      const mergeResponse = await fetch(`/api/meetings/${serverRecording.meetingId}/merge-transcript`, {
+      setSavedMeetingId(currentRecording.meetingId);
+      setServerRecording(null);
+      setNotice("បានឈប់ថត និងរក្សាទុក audio រួច។ Call នៅបន្តធម្មតា ហើយអ្នកអាចចាប់ផ្តើមថតជុំថ្មីបាន។ Transcript/summary កំពុងដំណើរការក្រោយឆាក។");
+      void finalizeServerRecording(currentRecording.meetingId, duration);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not save server recording.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function finalizeServerRecording(meetingId: string, duration: number) {
+    try {
+      const mergeResponse = await fetch(`/api/meetings/${meetingId}/merge-transcript`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ duration })
@@ -1266,18 +1261,14 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const mergeJson = await readJsonResponse<{ merged?: boolean; error?: string }>(mergeResponse);
       if (!mergeResponse.ok) throw new Error(mergeJson.error ?? "Could not merge the recorded transcript.");
 
-      setSavedMeetingId(serverRecording.meetingId);
       if (mergeJson.merged) {
-        await fetch(`/api/meetings/${serverRecording.meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-        setNotice("ការថតត្រូវបានបំលែងជាអក្សរ និងរក្សាទុករួចរាល់។");
+        await fetch(`/api/meetings/${meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
+        setNotice("ការថតត្រូវបានរក្សាទុក ហើយ transcript/summary រួចរាល់។ អ្នកអាចបន្ត call ឬថតជុំថ្មីបាន។");
       } else {
-        setNotice("បានរក្សាទុកកិច្ចប្រជុំ ប៉ុន្តែរកមិនឃើញសំឡេងច្បាស់លាស់ពីអ្នកចូលរួមណាម្នាក់ទេ។");
+        setNotice("បានរក្សាទុក audio រួច។ Transcript មិនទាន់រកឃើញសំឡេងច្បាស់ទេ ប៉ុន្តែ call និងការថតជុំថ្មីនៅដំណើរការ។");
       }
-      setServerRecording(null);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not save server recording.");
-    } finally {
-      setSaving(false);
+      setTranscriptionProgress(error instanceof Error ? `Audio saved, but background transcription failed: ${error.message}` : "Audio saved, but background transcription failed.");
     }
   }
 
