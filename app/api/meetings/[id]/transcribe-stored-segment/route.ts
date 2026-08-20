@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
+import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
@@ -52,7 +52,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
-    const transcript = await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000);
+    const transcript = forceSingleSpeakerLabel(
+      await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000, {
+        speakerNames: [segment.speakerName || segment.speakerIdentity],
+        singleSpeaker: true
+      }),
+      segment.speakerName || segment.speakerIdentity
+    );
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json({ transcript: "", skipped: true, index });

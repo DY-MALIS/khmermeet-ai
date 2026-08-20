@@ -113,6 +113,28 @@ function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
     .trim();
 }
 
+export function forceSingleSpeakerLabel(transcript: string, speakerName: string) {
+  const name = speakerName.trim();
+  if (!name || !transcript.trim()) return transcript;
+
+  return transcript
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const withoutGenericSpeaker = line.replace(/^Speaker\s*\d+\s*:\s*/i, "").trim();
+      const withoutMatchingName = withoutGenericSpeaker.replace(new RegExp(`^${escapeRegExp(name)}\\s*:\\s*`, "i"), "").trim();
+      return withoutMatchingName ? `${name}: ${withoutMatchingName}` : "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function getLocalAudioPath(name: string) {
   return path.join(uploadRoot, path.basename(name));
 }

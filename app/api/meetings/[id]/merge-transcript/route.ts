@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
@@ -17,7 +17,7 @@ import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 // ones - still time-boxed so a meeting with several leftover recordings
 // doesn't risk the same kind of timeout this route was fixed for earlier.
 async function catchUpPendingSegments(
-  segments: Array<{ id: string; text: string; audioUrl: string | null; languageMode: string | null }>,
+  segments: Array<{ id: string; text: string; audioUrl: string | null; languageMode: string | null; speakerName: string | null; speakerIdentity: string }>,
   deadline: number
 ) {
   const pending = segments.filter((segment) => !segment.text.trim() && segment.audioUrl);
@@ -30,10 +30,15 @@ async function catchUpPendingSegments(
       if (!segment || !segment.audioUrl) continue;
       try {
         const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
-        const transcript = await transcribeStoredTrackRecording(
-          segment.audioUrl,
-          languageMode,
-          Math.max(15000, Math.min(150000, deadline - Date.now()))
+        const speakerName = segment.speakerName || segment.speakerIdentity;
+        const transcript = forceSingleSpeakerLabel(
+          await transcribeStoredTrackRecording(
+            segment.audioUrl,
+            languageMode,
+            Math.max(15000, Math.min(150000, deadline - Date.now())),
+            { speakerNames: [speakerName], singleSpeaker: true }
+          ),
+          speakerName
         );
         if (hasUsableTranscript(transcript)) {
           const trimmed = transcript.trim();
@@ -91,7 +96,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const rawTranscript = segments
       .filter((segment) => segment.text.trim())
-      .map((segment) => `${segment.speakerName || segment.speakerIdentity}: ${segment.text}`)
+      .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
       .join("\n");
     let transcript = rawTranscript;
     if (hasUsableTranscript(rawTranscript)) {
