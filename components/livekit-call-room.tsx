@@ -654,92 +654,100 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   return (
     <div className="border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
       <div className="flex flex-wrap items-center justify-center gap-2">
-      <select
-        className="h-10 max-w-56 rounded-lg border border-white/10 bg-slate-900 px-3 text-sm text-white"
-        value={selectedAudioDeviceId}
-        onChange={(event) => {
-          setSelectedAudioDeviceId(event.target.value);
-          setMicNotice("បានជ្រើស microphone។ ចុច ជួសជុល Mic ដើម្បីប្រើ device ថ្មី។");
-        }}
-        onFocus={() => void loadAudioDevices()}
-        title="Choose the microphone used by this call."
-      >
-        <option value="">Default microphone</option>
-        {audioDevices.map((device, index) => (
-          <option key={device.deviceId || index} value={device.deviceId}>
-            {device.label || `Microphone ${index + 1}`}
-          </option>
-        ))}
-      </select>
-      <button
-        className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, microphoneOptions()))}
-      >
-        <Mic className="mr-2 inline h-4 w-4" />
-        {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
-      </button>
-      <button
-        className="rounded-lg bg-white/10 px-4 py-2 text-white"
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("repair-mic", repairMicrophone)}
-        title="Use this when you can hear others, but they cannot hear you."
-      >
-        {busyControl === "repair-mic" ? "កំពុងជួសជុល..." : "ជួសជុល Mic"}
-      </button>
-      <button
-        className={cn("rounded-lg px-4 py-2 text-white", audioUnlocked ? "bg-leaf" : "bg-saffron/80")}
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("audio", unlockSpeakerAudio)}
-        title="Click once if you can see participants but cannot hear their voices."
-      >
-        {audioUnlocked ? "សំឡេងបើកហើយ" : "បើកសំឡេង"}
-      </button>
-      <button
-        className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("camera", () => localParticipant.setCameraEnabled(!isCameraEnabled))}
-      >
-        <Camera className="mr-2 inline h-4 w-4" />
-        {isCameraEnabled ? "កាមេរ៉ា" : "បិទកាមេរ៉ា"}
-      </button>
-      <button
-        className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
-      >
-        <Share2 className="mr-2 inline h-4 w-4" />
-        {isScreenShareEnabled ? "បញ្ឈប់ការចែករំលែក" : "ចែករំលែកអេក្រង់"}
-      </button>
-      <button
-        className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
-        type="button"
-        disabled={Boolean(busyControl)}
-        onClick={() => runControl("leave", async () => {
-          onLeaveRequest();
-          room.disconnect();
-        })}
-      >
-        <Phone className="mr-2 inline h-4 w-4" />
-        ចាកចេញ
-      </button>
+        <button
+          className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
+          type="button"
+          disabled={Boolean(busyControl)}
+          onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, microphoneOptions()))}
+        >
+          <Mic className="mr-2 inline h-4 w-4" />
+          {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
+        </button>
+        <button
+          className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
+          type="button"
+          disabled={Boolean(busyControl)}
+          onClick={() => runControl("camera", () => localParticipant.setCameraEnabled(!isCameraEnabled))}
+        >
+          <Camera className="mr-2 inline h-4 w-4" />
+          {isCameraEnabled ? "កាមេរ៉ា" : "បិទកាមេរ៉ា"}
+        </button>
+        <button
+          className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
+          type="button"
+          disabled={Boolean(busyControl)}
+          onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
+        >
+          <Share2 className="mr-2 inline h-4 w-4" />
+          {isScreenShareEnabled ? "បញ្ឈប់ការចែករំលែក" : "ចែករំលែកអេក្រង់"}
+        </button>
+        <button
+          className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
+          type="button"
+          disabled={Boolean(busyControl)}
+          onClick={() => runControl("leave", async () => {
+            onLeaveRequest();
+            room.disconnect();
+          })}
+        >
+          <Phone className="mr-2 inline h-4 w-4" />
+          ចាកចេញ
+        </button>
       </div>
-      <div className="mx-auto mt-3 flex max-w-xl items-center gap-3 text-xs text-white/70">
-        <span className="shrink-0 font-semibold">Mic signal</span>
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-          <div
-            className={cn("h-full rounded-full transition-all", micLevel > 8 ? "bg-leaf" : "bg-saffron")}
-            style={{ width: `${micLevel}%` }}
-          />
+
+      <details className="mx-auto mt-3 max-w-2xl text-xs text-white/70">
+        <summary className="cursor-pointer list-none text-center font-semibold text-white/70">
+          Mic settings
+        </summary>
+        <div className="mt-3 grid gap-2 rounded-lg border border-white/10 bg-white/5 p-3 sm:grid-cols-[1fr_auto_auto]">
+          <select
+            className="h-10 min-w-0 rounded-lg border border-white/10 bg-slate-900 px-3 text-sm text-white"
+            value={selectedAudioDeviceId}
+            onChange={(event) => {
+              setSelectedAudioDeviceId(event.target.value);
+              setMicNotice("បានជ្រើស microphone។ ចុច ជួសជុល Mic ដើម្បីប្រើ device ថ្មី។");
+            }}
+            onFocus={() => void loadAudioDevices()}
+            title="Choose the microphone used by this call."
+          >
+            <option value="">Default microphone</option>
+            {audioDevices.map((device, index) => (
+              <option key={device.deviceId || index} value={device.deviceId}>
+                {device.label || `Microphone ${index + 1}`}
+              </option>
+            ))}
+          </select>
+          <button
+            className="h-10 rounded-lg bg-white/10 px-4 py-2 text-white"
+            type="button"
+            disabled={Boolean(busyControl)}
+            onClick={() => runControl("repair-mic", repairMicrophone)}
+            title="Use this when you can hear others, but they cannot hear you."
+          >
+            {busyControl === "repair-mic" ? "កំពុងជួសជុល..." : "ជួសជុល Mic"}
+          </button>
+          <button
+            className={cn("h-10 rounded-lg px-4 py-2 text-white", audioUnlocked ? "bg-leaf" : "bg-white/10")}
+            type="button"
+            disabled={Boolean(busyControl)}
+            onClick={() => runControl("audio", unlockSpeakerAudio)}
+            title="Click once if you can see participants but cannot hear their voices."
+          >
+            {audioUnlocked ? "សំឡេងបើកហើយ" : "បើកសំឡេង"}
+          </button>
         </div>
-        <span className="w-28 text-right">{micLevel}%</span>
-      </div>
-      <p className="mt-1 text-center text-xs text-white/50">{micTrackState}</p>
+        <div className="mx-auto mt-3 flex max-w-xl items-center gap-3">
+          <span className="shrink-0 font-semibold">Mic signal</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={cn("h-full rounded-full transition-all", micLevel > 8 ? "bg-leaf" : "bg-saffron")}
+              style={{ width: `${micLevel}%` }}
+            />
+          </div>
+          <span className="w-14 text-right">{micLevel}%</span>
+        </div>
+        <p className="mt-1 text-center text-white/50">{micTrackState}</p>
+      </details>
       {micNotice ? <p className="mt-2 text-center text-xs text-white/70">{micNotice}</p> : null}
     </div>
   );
