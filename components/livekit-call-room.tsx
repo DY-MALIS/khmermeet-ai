@@ -462,6 +462,24 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   const [busyControl, setBusyControl] = useState<"mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave" | "">("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [micNotice, setMicNotice] = useState("");
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
+
+  useEffect(() => {
+    void loadAudioDevices();
+  }, []);
+
+  function microphoneOptions(): MediaTrackConstraints {
+    return selectedAudioDeviceId
+      ? { ...callAudioConstraints, deviceId: { exact: selectedAudioDeviceId } }
+      : callAudioConstraints;
+  }
+
+  async function loadAudioDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    setAudioDevices(devices.filter((device) => device.kind === "audioinput"));
+  }
 
   async function runControl(name: "mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
     if (busyControl) return;
@@ -486,22 +504,40 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setMicNotice("កំពុង restart microphone...");
     await localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
     await new Promise((resolve) => window.setTimeout(resolve, 300));
-    const publication = await localParticipant.setMicrophoneEnabled(true, callAudioConstraints);
+    const publication = await localParticipant.setMicrophoneEnabled(true, microphoneOptions());
     const mediaTrack = publication?.track?.mediaStreamTrack;
     if (!mediaTrack || mediaTrack.readyState !== "live") {
       throw new Error("Browser បានអនុញ្ញាត mic ប៉ុន្តែ app មិនទទួលបាន live microphone track ទេ។ សូមជ្រើស microphone ក្នុង Chrome/Windows ហើយចុចជួសជុល Mic ម្តងទៀត។");
     }
+    await loadAudioDevices();
     setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
   }
 
   return (
     <div className="border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
       <div className="flex flex-wrap items-center justify-center gap-2">
+      <select
+        className="h-10 max-w-56 rounded-lg border border-white/10 bg-slate-900 px-3 text-sm text-white"
+        value={selectedAudioDeviceId}
+        onChange={(event) => {
+          setSelectedAudioDeviceId(event.target.value);
+          setMicNotice("បានជ្រើស microphone។ ចុច ជួសជុល Mic ដើម្បីប្រើ device ថ្មី។");
+        }}
+        onFocus={() => void loadAudioDevices()}
+        title="Choose the microphone used by this call."
+      >
+        <option value="">Default microphone</option>
+        {audioDevices.map((device, index) => (
+          <option key={device.deviceId || index} value={device.deviceId}>
+            {device.label || `Microphone ${index + 1}`}
+          </option>
+        ))}
+      </select>
       <button
         className={cn("rounded-lg px-4 py-2 text-white", isMicrophoneEnabled ? "bg-white/10" : "bg-red-500/80")}
         type="button"
         disabled={Boolean(busyControl)}
-        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, callAudioConstraints))}
+        onClick={() => runControl("mic", () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, microphoneOptions()))}
       >
         <Mic className="mr-2 inline h-4 w-4" />
         {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
