@@ -32,7 +32,19 @@ function createRoomCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-function readMeetingParams() {
+type MeetingParams = {
+  hasInviteRoom: boolean;
+  room: string;
+  title: string;
+};
+
+type MeetingParamSetters = {
+  setRoom: (value: string) => void;
+  setTitle: (value: string) => void;
+  setIsInviteGuest: (value: boolean) => void;
+};
+
+function readMeetingParams(): MeetingParams {
   if (typeof window === "undefined") {
     return { hasInviteRoom: false, room: "MEETING", title: "" };
   }
@@ -45,6 +57,14 @@ function readMeetingParams() {
     room: inviteRoom || createRoomCode(),
     title: inviteTitle
   };
+}
+
+function syncMeetingParams({ setRoom, setTitle, setIsInviteGuest }: MeetingParamSetters) {
+  const nextMeeting = readMeetingParams();
+  setRoom(nextMeeting.room);
+  setTitle(nextMeeting.title);
+  setIsInviteGuest(nextMeeting.hasInviteRoom);
+  return nextMeeting;
 }
 
 function formatTime(seconds: number) {
@@ -116,10 +136,7 @@ export function LiveKitCallRoom() {
   const manualLeaveRef = useRef(false);
 
   useEffect(() => {
-    const initialMeeting = readMeetingParams();
-    setRoom(initialMeeting.room);
-    setTitle(initialMeeting.title);
-    setIsInviteGuest(initialMeeting.hasInviteRoom);
+    syncMeetingParams({ setRoom, setTitle, setIsInviteGuest });
     setParamsReady(true);
   }, []);
 
@@ -173,10 +190,13 @@ export function LiveKitCallRoom() {
   }
 
   async function joinRoom() {
+    if (!paramsReady) return;
     setJoining(true);
     setError("");
     setNotice("");
     try {
+      const latestMeeting = syncMeetingParams({ setRoom, setTitle, setIsInviteGuest });
+      const roomToJoin = latestMeeting.room;
       const media = await checkMediaDeviceSupport(cameraOn, microphoneOn);
       const nextCameraOn = cameraOn && media.hasCamera;
       const nextMicrophoneOn = microphoneOn && media.hasMicrophone;
@@ -192,7 +212,7 @@ export function LiveKitCallRoom() {
       const response = await fetch("/api/livekit-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room, name })
+        body: JSON.stringify({ room: roomToJoin, name })
       });
       const data = await readJsonResponse<TokenPayload & { error?: string }>(response);
       if (!response.ok) throw new Error(extractApiError(data));
@@ -344,9 +364,9 @@ export function LiveKitCallRoom() {
             បើក microphone ពេលចូល
           </label>
         </div>
-        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining}>
+        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady}>
           {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-          Join HD Video Call
+          {paramsReady ? "Join HD Video Call" : "Preparing call..."}
         </button>
       </div>
       <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm leading-7 text-ink">
@@ -433,9 +453,10 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     isScreenShareEnabled,
     localParticipant
   } = useLocalParticipant();
-  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "screen" | "leave" | "">("");
+  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "screen" | "audio" | "leave" | "">("");
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
-  async function runControl(name: "mic" | "camera" | "screen" | "leave", action: () => Promise<unknown>) {
+  async function runControl(name: "mic" | "camera" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
     if (busyControl) return;
     setBusyControl(name);
     try {
@@ -443,6 +464,12 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     } finally {
       setBusyControl("");
     }
+  }
+
+  async function unlockSpeakerAudio() {
+    const audioElements = Array.from(document.querySelectorAll("audio"));
+    await Promise.all(audioElements.map((element) => element.play().catch(() => undefined)));
+    setAudioUnlocked(true);
   }
 
   return (
@@ -455,6 +482,15 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
       >
         <Mic className="mr-2 inline h-4 w-4" />
         {isMicrophoneEnabled ? "Microphone" : "បិទ Microphone"}
+      </button>
+      <button
+        className={cn("rounded-lg px-4 py-2 text-white", audioUnlocked ? "bg-leaf" : "bg-saffron/80")}
+        type="button"
+        disabled={Boolean(busyControl)}
+        onClick={() => runControl("audio", unlockSpeakerAudio)}
+        title="Click once if you can see participants but cannot hear their voices."
+      >
+        {audioUnlocked ? "សំឡេងបើកហើយ" : "បើកសំឡេង"}
       </button>
       <button
         className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
