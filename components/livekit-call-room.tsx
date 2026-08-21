@@ -827,9 +827,8 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
 }
 
 type LiveRecordingSignal =
-  | { type: "khmermeet-record-start"; meetingId: string; languageMode: "km" | "en" | "km-en"; recordingStartedAt: number }
-  | { type: "khmermeet-record-stop" }
-  | { type: "khmermeet-participant-name"; identity: string; name: string };
+  | { type: "khmermeet-participant-name"; identity: string; name: string }
+  | { type: "khmermeet-participant-name-request" };
 
 type EgressTrackJob = {
   egressId: string;
@@ -886,7 +885,7 @@ function LiveKitMeetingAgent({
   // True on participants who received the start signal but weren't the one
   // who clicked the button - shown as a passive "recording" indicator only,
   // they have no controls of their own.
-  const [remoteRecordingActive, setRemoteRecordingActive] = useState(false);
+  const remoteRecordingActive = false;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const segmentRecorderRef = useRef<MediaRecorder | null>(null);
@@ -991,14 +990,24 @@ function LiveKitMeetingAgent({
     const displayName = participantName.trim() || room.localParticipant.name || cleanParticipantIdentity(identity);
     setAnnouncedSpeakerNames((current) => ({ ...current, [identity]: displayName }));
 
-    const signal: LiveRecordingSignal = {
-      type: "khmermeet-participant-name",
-      identity,
-      name: displayName
+    function announceName() {
+      const signal: LiveRecordingSignal = {
+        type: "khmermeet-participant-name",
+        identity,
+        name: displayName
+      };
+      room.localParticipant
+        .publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true })
+        .catch(() => undefined);
+    }
+
+    announceName();
+    const timer = window.setInterval(announceName, 3000);
+    const stopTimer = window.setTimeout(() => window.clearInterval(timer), 30000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stopTimer);
     };
-    room.localParticipant
-      .publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true })
-      .catch(() => undefined);
   }, [participantName, room]);
 
   // Older deployments used data-channel start/stop signals for per-participant
@@ -1011,17 +1020,18 @@ function LiveKitMeetingAgent({
       } catch {
         return;
       }
-      if (message.type === "khmermeet-record-start") {
-        setRemoteRecordingActive(true);
-        void startLocalTrackRecording(message.meetingId, message.languageMode, message.recordingStartedAt);
-      } else if (message.type === "khmermeet-record-stop") {
-        setRemoteRecordingActive(false);
-        void stopLocalTrackRecording();
-      } else if (message.type === "khmermeet-participant-name") {
+      if (message.type === "khmermeet-participant-name") {
         const identity = message.identity.trim();
         const name = message.name.trim();
         if (!identity || !name) return;
         setAnnouncedSpeakerNames((current) => ({ ...current, [identity]: name }));
+      } else if (message.type === "khmermeet-participant-name-request") {
+        const identity = room.localParticipant.identity;
+        const name = participantName.trim() || room.localParticipant.name || cleanParticipantIdentity(identity);
+        const signal: LiveRecordingSignal = { type: "khmermeet-participant-name", identity, name };
+        room.localParticipant
+          .publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true })
+          .catch(() => undefined);
       }
     }
 
@@ -1063,6 +1073,13 @@ function LiveKitMeetingAgent({
         ...current,
         [participant.identity]: participant.name || cleanParticipantIdentity(participant.identity)
       }));
+      const request: LiveRecordingSignal = { type: "khmermeet-participant-name-request" };
+      room.localParticipant
+        .publishData(new TextEncoder().encode(JSON.stringify(request)), {
+          reliable: true,
+          destinationIdentities: [participant.identity]
+        })
+        .catch(() => undefined);
       if (serverRecordingRef.current) window.setTimeout(connectAvailableAudioTracks, 0);
     }
 
@@ -1087,7 +1104,7 @@ function LiveKitMeetingAgent({
   function connectAvailableAudioTracks() {
     const audioContext = mixAudioContextRef.current;
     const input = mixInputRef.current;
-    if (!audioContext || !input) return;
+    if (!audioContext || !input) return 0;
     const nodes = mixNodesRef.current;
 
     const connectTrack = (track: MediaStreamTrack | undefined | null) => {
@@ -1101,6 +1118,7 @@ function LiveKitMeetingAgent({
     for (const ref of audioTracks) {
       connectTrack(ref.publication?.track?.mediaStreamTrack);
     }
+    return nodes.size;
   }
 
   function stopMixedAudioContext() {
@@ -1137,7 +1155,7 @@ function LiveKitMeetingAgent({
     mixInputRef.current = compressor;
     mixNodesRef.current = new Map();
 
-    connectAvailableAudioTracks();
+    const connectedTrackCount = connectAvailableAudioTracks();
 
     // A MediaStreamAudioDestinationNode's .stream always reports exactly one
     // (silent) audio track from the moment it's created, even with zero
@@ -1146,9 +1164,13 @@ function LiveKitMeetingAgent({
     // to guard against, so recording silently started and produced a
     // completely silent file instead of surfacing an error. Check how many
     // sources were actually wired up instead.
-    if (mixNodesRef.current.size === 0) {
+    if (connectedTrackCount === 0) {
       stopMixedAudioContext();
       throw new Error("No microphone tracks are available yet. Please unmute microphone first.");
+    }
+    if (room.remoteParticipants.size > 0 && connectedTrackCount <= 1) {
+      stopMixedAudioContext();
+      throw new Error("មានអ្នកចូលរួមផ្សេងទៀតក្នុង call ប៉ុន្តែ recorder ចាប់បាន microphone តែ 1 track ប៉ុណ្ណោះ។ សូមរង់ចាំឲ្យសំឡេងអ្នកផ្សេងលឺ/ឲ្យគេបើក mic រួចចុចថតម្ដងទៀត។");
     }
 
     cleanupRef.current = stopMixedAudioContext;
@@ -1461,6 +1483,8 @@ function LiveKitMeetingAgent({
     return true;
   }
 
+  // Kept for compatibility with old in-room signals until all active clients refresh to the mixed-audio recorder.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function startLocalTrackRecording(meetingId: string, languageMode: "km" | "en" | "km-en", recordingStartedAt: number) {
     if (trackSegmentingRef.current) return;
     const requestId = trackStartRequestRef.current + 1;
@@ -1474,6 +1498,7 @@ function LiveKitMeetingAgent({
     void tryStartPendingLocalTrackRecording();
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function stopLocalTrackRecording() {
     trackStartRequestRef.current += 1;
     pendingLocalRecordingRef.current = null;
