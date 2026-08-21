@@ -58,18 +58,15 @@ export default async function TranscriptsPage() {
             ).slice(0, 50);
             const transcript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
             const usableTranscript = hasUsableTranscript(transcript);
-            const audioItems = [
-              ...(meeting.audioUrl
-                ? [{ key: "meeting-audio", label: "Recorded audio", audioUrl: meeting.audioUrl }]
-                : []),
-              ...meeting.transcriptSegments
-                .filter((segment) => segment.audioUrl)
-                .map((segment) => ({
-                  key: segment.id,
-                  label: segment.speakerName || segment.speakerIdentity || "Participant audio",
-                  audioUrl: segment.audioUrl as string
-                }))
-            ];
+            const audioItems = meeting.audioUrl
+              ? [{ key: "meeting-audio", label: "Recorded audio", audioUrl: meeting.audioUrl }]
+              : meeting.transcriptSegments
+                  .filter((segment) => segment.audioUrl)
+                  .map((segment) => ({
+                    key: segment.id,
+                    label: segment.speakerName || segment.speakerIdentity || "Participant audio",
+                    audioUrl: segment.audioUrl as string
+                  }));
 
             return (
               <article className="kh-card p-5" key={meeting.id}>
@@ -89,7 +86,7 @@ export default async function TranscriptsPage() {
                 {audioItems.length ? (
                   <div className="mb-4 space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      {audioItems.length > 1 ? "Recorded participant audio" : "Recorded audio"}
+                      Recorded audio
                     </p>
                     {audioItems.map((item) => (
                       <RecordedAudioPlayer
