@@ -2,7 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
@@ -24,9 +24,14 @@ export function TranscribeAudioButton({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [speakerNamesInput, setSpeakerNamesInput] = useState(speakerNames.join("\n"));
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
+
+  useEffect(() => {
+    setSpeakerNamesInput(speakerNames.join("\n"));
+  }, [speakerNames]);
 
   async function transcribe() {
     setPending(true);
@@ -36,7 +41,7 @@ export function TranscribeAudioButton({
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode, speakerNames })
+        body: JSON.stringify({ languageMode, speakerNames: parseSpeakerNames(speakerNamesInput) })
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
@@ -79,6 +84,17 @@ export function TranscribeAudioButton({
         ) : null}
       </div>
 
+      <label className="block space-y-1">
+        <span className="text-xs font-semibold text-slate-600">Speaker names</span>
+        <textarea
+          className="kh-input min-h-20 text-sm"
+          value={speakerNamesInput}
+          onChange={(event) => setSpeakerNamesInput(event.target.value)}
+          placeholder={"ដារ៉ា\nសុខា\nចាន់ថា"}
+          disabled={pending}
+        />
+      </label>
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
           className="kh-input max-w-xs"
@@ -110,4 +126,15 @@ export function TranscribeAudioButton({
       ) : null}
     </div>
   );
+}
+
+function parseSpeakerNames(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[,，\n]/)
+        .map((name) => name.trim())
+        .filter(Boolean)
+    )
+  ].slice(0, 50);
 }
