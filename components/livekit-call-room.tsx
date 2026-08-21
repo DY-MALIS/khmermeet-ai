@@ -875,7 +875,8 @@ function LiveKitMeetingAgent({
   const [savedAudioUrl, setSavedAudioUrl] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
   const [localBackupUrl, setLocalBackupUrl] = useState("");
-  const [announcedSpeakerNames, setAnnouncedSpeakerNames] = useState<Record<string, string>>({});
+  const [, setAnnouncedSpeakerNames] = useState<Record<string, string>>({});
+  const announcedSpeakerNamesRef = useRef<Record<string, string>>({});
   // One-click mixed recording: the host browser records one mixed audio file
   // containing the local microphone plus every subscribed remote microphone.
   // This keeps the saved meeting to one audio player while still letting the
@@ -985,10 +986,18 @@ function LiveKitMeetingAgent({
     };
   }, [localBackupUrl]);
 
+  function rememberSpeakerName(identity: string, name: string) {
+    const cleanIdentity = identity.trim();
+    const cleanName = name.trim();
+    if (!cleanIdentity || !cleanName) return;
+    announcedSpeakerNamesRef.current = { ...announcedSpeakerNamesRef.current, [cleanIdentity]: cleanName };
+    setAnnouncedSpeakerNames(announcedSpeakerNamesRef.current);
+  }
+
   useEffect(() => {
     const identity = room.localParticipant.identity;
     const displayName = participantName.trim() || room.localParticipant.name || cleanParticipantIdentity(identity);
-    setAnnouncedSpeakerNames((current) => ({ ...current, [identity]: displayName }));
+    rememberSpeakerName(identity, displayName);
 
     function announceName() {
       const signal: LiveRecordingSignal = {
@@ -1024,7 +1033,7 @@ function LiveKitMeetingAgent({
         const identity = message.identity.trim();
         const name = message.name.trim();
         if (!identity || !name) return;
-        setAnnouncedSpeakerNames((current) => ({ ...current, [identity]: name }));
+        rememberSpeakerName(identity, name);
       } else if (message.type === "khmermeet-participant-name-request") {
         const identity = room.localParticipant.identity;
         const name = participantName.trim() || room.localParticipant.name || cleanParticipantIdentity(identity);
@@ -1069,10 +1078,7 @@ function LiveKitMeetingAgent({
         return;
       }
 
-      setAnnouncedSpeakerNames((current) => ({
-        ...current,
-        [participant.identity]: participant.name || cleanParticipantIdentity(participant.identity)
-      }));
+      rememberSpeakerName(participant.identity, participant.name || cleanParticipantIdentity(participant.identity));
       const request: LiveRecordingSignal = { type: "khmermeet-participant-name-request" };
       room.localParticipant
         .publishData(new TextEncoder().encode(JSON.stringify(request)), {
@@ -1235,14 +1241,15 @@ function LiveKitMeetingAgent({
   }
 
   function getCurrentSpeakerNames() {
+    const announcedNames = announcedSpeakerNamesRef.current;
     const names = [
-      announcedSpeakerNames[room.localParticipant.identity] ||
+      announcedNames[room.localParticipant.identity] ||
         participantName ||
         room.localParticipant.name ||
         cleanParticipantIdentity(room.localParticipant.identity),
       ...[...room.remoteParticipants.values()].map(
         (participant) =>
-          announcedSpeakerNames[participant.identity] ||
+          announcedNames[participant.identity] ||
           participant.name ||
           cleanParticipantIdentity(participant.identity)
       )
@@ -1304,6 +1311,19 @@ function LiveKitMeetingAgent({
     };
     recorder.start(5000);
     serverMixedRecorderRef.current = recorder;
+  }
+
+  function participantCount() {
+    return 1 + room.remoteParticipants.size;
+  }
+
+  async function requestParticipantNames() {
+    const request: LiveRecordingSignal = { type: "khmermeet-participant-name-request" };
+    await room.localParticipant
+      .publishData(new TextEncoder().encode(JSON.stringify(request)), { reliable: true })
+      .catch(() => undefined);
+    await new Promise((resolve) => window.setTimeout(resolve, 1800));
+    return getCurrentSpeakerNames();
   }
 
   function stopServerMixedBackup(
@@ -1538,10 +1558,17 @@ function LiveKitMeetingAgent({
     setSavedMeetingId("");
     setSavedAudioUrl("");
     try {
+      const speakers = await requestParticipantNames();
+      const expectedParticipants = participantCount();
+      if (speakers.length < expectedParticipants) {
+        throw new Error(
+          `មិនទាន់រក្សា​ឈ្មោះអ្នកចូលរួមបានគ្រប់គ្នាទេ (${speakers.length}/${expectedParticipants})។ សូមឲ្យអ្នកចូលរួមទាំងអស់នៅក្នុង call រួចរង់ចាំ 2-3 វិនាទី បន្ទាប់មកចុចថតម្ដងទៀត។`
+        );
+      }
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, speakerNames: getCurrentSpeakerNames() })
+        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, speakerNames: speakers })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
       if (!response.ok || !data.meetingId) {

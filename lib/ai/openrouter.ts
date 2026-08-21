@@ -279,7 +279,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   // as a hint before it actually listens gives it a real chance to
   // recognize a name correctly from the audio itself.
   const knownSpeakerInstruction = speakerNames.length
-    ? ` Known meeting participants: ${speakerNames.join(", ")}. Use these names as speaker labels when the voice or spoken context makes the identity clear. If you can hear multiple speakers but cannot confidently identify which known participant is speaking, use Speaker 1:, Speaker 2:, etc. consistently instead of guessing a real name.`
+    ? ` Known meeting participants, in speaker-label order: ${speakerNames.join(", ")}. Use only these participant names as speaker labels. Do not output Speaker 1:, Speaker 2:, Participant 1:, or other generic speaker labels. If the audio has generic speaker turns or you cannot identify the voice confidently, assign turns to the known names by chronological speaker order: first distinct speaker is ${speakerNames[0]}${speakerNames[1] ? `, second distinct speaker is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, third distinct speaker is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}.`
     : "";
 
   return [
@@ -300,7 +300,9 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     // speaker label applied downstream.
     singleSpeaker
       ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
-      : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a speaker label. Prefer a known participant name when you can identify the speaker; otherwise use consistent labels such as Speaker 1:, Speaker 2:, etc. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
+      : speakerNames.length
+        ? "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with one of the known participant names followed by a colon. Never use Speaker 1:, Speaker 2:, Speaker 3:, Participant 1:, or Unknown Speaker: when known participant names were provided. If only one speaker is audible, label that speech with the first matching known participant name."
+        : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a speaker label. Use consistent labels such as Speaker 1:, Speaker 2:, etc. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
     "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
@@ -441,7 +443,7 @@ export async function refineOpenRouterTranscript(
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
   const speakerInstruction = speakerNames.length
-    ? `Known speaker names, in the same order entered by the user: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert generic labels by order when possible: Speaker 1 is ${speakerNames[0]}${speakerNames[1] ? `, Speaker 2 is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, Speaker 3 is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}. Every spoken turn must start with a name followed by a colon when the speaker can be identified. If the source does not make the identity clear and there is no stable Speaker number, use Unknown Speaker: instead of inventing a name. If there is only one known speaker, prefix each spoken line with that speaker name.`
+    ? `Known speaker names, in the same order entered by the user: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert all generic labels by order: Speaker 1 is ${speakerNames[0]}${speakerNames[1] ? `, Speaker 2 is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, Speaker 3 is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}. Every spoken turn must start with one of these names followed by a colon. Never return Speaker 1:, Speaker 2:, Participant 1:, User 1:, or Unknown Speaker: when known speaker names are provided. If there is only one known speaker, prefix each spoken line with that speaker name.`
     : "Preserve Speaker 1, Speaker 2 labels if present. Do not invent real person names.";
 
   const prompt = [
