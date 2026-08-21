@@ -95,22 +95,30 @@ function cleanTranscriptionText(text: string) {
   return rejoinKhmerWordSpacing(cleaned);
 }
 
-function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
+export function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
   const names = normalizeSpeakerNames(speakerNames);
   if (!names.length || !transcript.trim()) return transcript;
 
   return transcript
     .split(/\n+/)
     .map((line) => {
-      const match = line.match(/^Speaker\s*(\d+)\s*:\s*(.*)$/i);
-      if (!match) return line;
-      const speakerIndex = Number(match[1]) - 1;
+      const numberedMatch = line.match(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*([0-9០-៩]+)\s*[:：]\s*(.*)$/i);
+      if (!numberedMatch) {
+        const genericMatch = line.match(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*[:：]\s*(.*)$/i);
+        return genericMatch && names.length === 1 ? `${names[0]}: ${genericMatch[1].trim()}` : line;
+      }
+      const speakerIndex = speakerNumberToIndex(numberedMatch[1]);
       const speakerName = names[speakerIndex];
       if (!speakerName) return line;
-      return `${speakerName}: ${match[2].trim()}`;
+      return `${speakerName}: ${numberedMatch[2].trim()}`;
     })
     .join("\n")
     .trim();
+}
+
+function speakerNumberToIndex(value: string) {
+  const normalized = value.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
+  return Number(normalized) - 1;
 }
 
 export function forceSingleSpeakerLabel(transcript: string, speakerName: string) {
@@ -122,7 +130,9 @@ export function forceSingleSpeakerLabel(transcript: string, speakerName: string)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const withoutGenericSpeaker = line.replace(/^Speaker\s*\d+\s*:\s*/i, "").trim();
+      const withoutGenericSpeaker = line
+        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
+        .trim();
       const withoutMatchingName = withoutGenericSpeaker.replace(new RegExp(`^${escapeRegExp(name)}\\s*:\\s*`, "i"), "").trim();
       return withoutMatchingName ? `${name}: ${withoutMatchingName}` : "";
     })
@@ -618,7 +628,12 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => (/^[^:\n]{1,60}:\s/.test(line) ? line : `${speakerName}: ${line}`))
+    .map((line) => {
+      const withoutGenericSpeaker = line
+        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
+        .trim();
+      return /^[^:\n]{1,60}:\s/.test(withoutGenericSpeaker) ? withoutGenericSpeaker : `${speakerName}: ${withoutGenericSpeaker}`;
+    })
     .join("\n");
 }
 

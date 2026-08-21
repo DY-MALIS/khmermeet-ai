@@ -8,6 +8,7 @@ import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
+import { applyKnownSpeakerLabels } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,7 +46,18 @@ export default async function TranscriptsPage() {
       {!dbUnavailable && meetings.length ? (
         <div className="grid gap-4 xl:grid-cols-2">
           {meetings.map((meeting) => {
-            const usableTranscript = hasUsableTranscript(meeting.transcript ?? "");
+            const speakerNames = Array.from(
+              new Set(
+                [
+                  ...(meeting.speakerNames ?? []),
+                  ...meeting.transcriptSegments.map((segment) => segment.speakerName || segment.speakerIdentity)
+                ]
+                  .map((name) => name.trim())
+                  .filter(Boolean)
+              )
+            ).slice(0, 50);
+            const transcript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
+            const usableTranscript = hasUsableTranscript(transcript);
             const audioItems = [
               ...(meeting.audioUrl
                 ? [{ key: "meeting-audio", label: "Recorded audio", audioUrl: meeting.audioUrl }]
@@ -97,8 +109,8 @@ export default async function TranscriptsPage() {
                 )}
                 {usableTranscript ? (
                   <div className="space-y-3">
-                    <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{meeting.transcript}</p>
-                    <AnalyzeInWorkspaceButton transcript={meeting.transcript ?? ""} />
+                    <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-7 text-slate-700">{transcript}</p>
+                    <AnalyzeInWorkspaceButton transcript={transcript} />
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-600">

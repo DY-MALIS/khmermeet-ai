@@ -12,7 +12,7 @@ export default function MeetingCallPage() {
     <div className="space-y-6">
       <div>
         <p className="text-sm font-semibold text-leaf">Video meeting</p>
-        <h1 className="text-3xl font-bold text-ink">HD Video Meeting</h1>
+        <h1 className="text-3xl font-bold text-ink">Video Call Room</h1>
         <p className="mt-2 text-slate-500">
           {provider === "livekit"
             ? "LiveKit SFU mode for production audio/video, screen share, chat, recording, and Meeting Agent."

@@ -10,7 +10,7 @@ import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { applyKnownSpeakerLabels, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 
@@ -70,8 +70,19 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   if (!meeting) notFound();
 
-  const transcriptIsUsable = hasUsableTranscript(meeting.transcript ?? "");
-  const transcriptText = transcriptIsUsable ? meeting.transcript ?? "" : "";
+  const speakerNames = Array.from(
+    new Set(
+      [
+        ...(meeting.speakerNames ?? []),
+        ...meeting.transcriptSegments.map((segment) => segment.speakerName || segment.speakerIdentity)
+      ]
+        .map((name) => name.trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 50);
+  const labeledTranscript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
+  const transcriptIsUsable = hasUsableTranscript(labeledTranscript);
+  const transcriptText = transcriptIsUsable ? labeledTranscript : "";
   const summaryText = transcriptIsUsable ? meeting.summary : null;
 
   return (
@@ -130,9 +141,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           meetingId={meeting.id}
           audioUrl={meeting.audioUrl}
           initialTranscript={transcriptText}
-          rawTranscript={meeting.transcript}
+          rawTranscript={labeledTranscript}
           transcriptIsUsable={transcriptIsUsable}
-          speakerNames={meeting.speakerNames}
+          speakerNames={speakerNames}
         />
 
         <section className="kh-card p-5">

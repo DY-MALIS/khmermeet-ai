@@ -35,6 +35,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "speakerIdentity, audioUrl, and durationMs are required." }, { status: 400 });
     }
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
+    const displayName = speakerName || speakerIdentity;
+    const speakerNames = Array.from(new Set([...(meeting.speakerNames ?? []), displayName].map((name) => name.trim()).filter(Boolean)));
 
     // Idempotent: a retry from the same participant replaces their prior
     // (possibly partial/failed) registration instead of creating a
@@ -46,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       data: {
         meetingId: id,
         speakerIdentity,
-        speakerName: speakerName || speakerIdentity,
+        speakerName: displayName,
         segmentIndex: 1,
         startMs: 0,
         endMs: Math.round(durationMs),
@@ -54,6 +56,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         audioUrl,
         languageMode
       }
+    });
+    await prisma.meeting.update({
+      where: { id },
+      data: { speakerNames }
     });
 
     return NextResponse.json({ registered: true });
