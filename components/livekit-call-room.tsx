@@ -158,7 +158,7 @@ export function LiveKitCallRoom() {
   const [title, setTitle] = useState("");
   const [isInviteGuest, setIsInviteGuest] = useState(false);
   const [paramsReady, setParamsReady] = useState(false);
-  const [cameraOn, setCameraOn] = useState(true);
+  const [cameraOn, setCameraOn] = useState(false);
   const [microphoneOn, setMicrophoneOn] = useState(true);
   const [callMedia, setCallMedia] = useState({ audio: true, video: true });
   const [tokenPayload, setTokenPayload] = useState<TokenPayload | null>(null);
@@ -291,7 +291,7 @@ export function LiveKitCallRoom() {
     return (
       <div className="space-y-5">
         <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
-          HD mode ប្រើ LiveKit SFU ដើម្បីឲ្យអ្នកចូលរួមមើលមុខគ្នា និងនិយាយលឺគ្នាជាច្រើននាក់។ Meeting: <b>{meetingTitle()}</b> · Room: <b>{tokenPayload.room}</b>
+          HD mode ប្រើ LiveKit SFU សម្រាប់ call ក្រុមធំ។ Meeting: <b>{meetingTitle()}</b> · Room: <b>{tokenPayload.room}</b>
         </div>
         {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
         <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -407,7 +407,7 @@ export function LiveKitCallRoom() {
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={cameraOn} onChange={(event) => setCameraOn(event.target.checked)} type="checkbox" />
             <Camera className="h-4 w-4 text-slate-500" />
-            បើកកាមេរ៉ាពេលចូល
+            បើកកាមេរ៉ាពេលចូល (សម្រាប់ 100 នាក់ សូមទុកបិទជាមុន)
           </label>
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={microphoneOn} onChange={(event) => setMicrophoneOn(event.target.checked)} type="checkbox" />
@@ -421,7 +421,7 @@ export function LiveKitCallRoom() {
         </button>
       </div>
       <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm leading-7 text-ink">
-        LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងសមស្របជាង WebRTC mesh សម្រាប់ 10-20 នាក់។
+        LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងអាចប្រើសម្រាប់ក្រុមធំ។ សម្រាប់ 100 នាក់ សូមប្រើ audio-first ហើយបើក camera តែអ្នកត្រូវនិយាយ/បង្ហាញ។
         ប្រសិនបើកុំព្យូទ័រមិនមាន camera អ្នកអាចបិទ “បើកកាមេរ៉ា” ហើយចូលនិយាយដោយ microphone បាន។
         បើអ្នកចូលរួមបើកកាមេរ៉ាមិនបាន សូមចុច icon camera ក្នុង toolbar ខាងក្រោម call ហើយជ្រើស Allow នៅ browser permission។
       </div>
@@ -439,8 +439,9 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
     ],
     { onlySubscribed: false }
   );
-  // Joining is uncapped, but rendering unlimited live video tiles at once
-  // would overwhelm the browser - the grid only ever shows the first 20.
+  // Joining is not capped by this UI, but rendering unlimited live video
+  // tiles at once would overwhelm browsers in large meetings. The room can
+  // have many audio participants; the grid only shows the first 20 videos.
   const visibleTracks = tracks.slice(0, 20);
   const grid = getCallGridMetrics(visibleTracks.length);
 
@@ -448,7 +449,7 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
     <section className="bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
         <span>
-          កំពុងបង្ហាញ {visibleTracks.length} នៃ {tracks.length} អ្នកចូលរួម
+          កំពុងបង្ហាញ video {visibleTracks.length} នៃ {tracks.length} tracks
         </span>
         <span>ទិដ្ឋភាព Grid តែមួយអេក្រង់</span>
       </div>
