@@ -55,7 +55,7 @@ export default async function TranscriptsPage() {
                   .map((name) => name.trim())
                   .filter(Boolean)
               )
-            ).slice(0, 50);
+            ).slice(0, 100);
             const transcript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
             const usableTranscript = hasUsableTranscript(transcript);
             const audioItems = meeting.audioUrl

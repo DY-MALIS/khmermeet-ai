@@ -7,6 +7,7 @@ import {
   RoomAudioRenderer,
   VideoTrack,
   useLocalParticipant,
+  useParticipants,
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
@@ -432,6 +433,7 @@ export function LiveKitCallRoom() {
 }
 
 function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => void }) {
+  const participants = useParticipants();
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -449,7 +451,7 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
     <section className="bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
         <span>
-          កំពុងបង្ហាញ video {visibleTracks.length} នៃ {tracks.length} tracks
+          អ្នកចូលរួម {participants.length} នាក់ · កំពុងបង្ហាញ video {visibleTracks.length} នៃ {tracks.length} tracks
         </span>
         <span>ទិដ្ឋភាព Grid តែមួយអេក្រង់</span>
       </div>
@@ -1268,10 +1270,7 @@ function LiveKitMeetingAgent({
       )
     ];
 
-    return [...new Set(names.map((name) => name?.trim()).filter((name): name is string => Boolean(name)))].slice(
-      0,
-      50
-    );
+    return [...new Set(names.map((name) => name?.trim()).filter((name): name is string => Boolean(name)))].slice(0, 100);
   }
 
   // Hidden fallback for the old mixed-track recorder; the visible UI now uses one Server Rec button.
@@ -1578,10 +1577,13 @@ function LiveKitMeetingAgent({
           `មិនទាន់រក្សា​ឈ្មោះអ្នកចូលរួមបានគ្រប់គ្នាទេ (${speakers.length}/${expectedParticipants})។ សូមឲ្យអ្នកចូលរួមទាំងអស់នៅក្នុង call រួចរង់ចាំ 2-3 វិនាទី បន្ទាប់មកចុចថតម្ដងទៀត។`
         );
       }
+      if (expectedParticipants > 100) {
+        throw new Error(`Call នេះមានអ្នកចូលរួម ${expectedParticipants} នាក់។ KhmerMeet កំណត់ការរក្សាឈ្មោះ/ថតសម្រាប់អតិបរមា 100 នាក់ ដើម្បីឲ្យ transcript label ត្រឹមត្រូវ។`);
+      }
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, speakerNames: speakers })
+        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, speakerNames: speakers, participantCount: expectedParticipants })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
       if (!response.ok || !data.meetingId) {

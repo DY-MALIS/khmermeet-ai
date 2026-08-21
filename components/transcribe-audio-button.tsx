@@ -136,5 +136,5 @@ function parseSpeakerNames(value: string) {
         .map((name) => name.trim())
         .filter(Boolean)
     )
-  ].slice(0, 50);
+  ].slice(0, 100);
 }

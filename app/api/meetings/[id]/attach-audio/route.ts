@@ -23,7 +23,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     const nextSpeakerNames = [
       ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
-    ].slice(0, 50);
+    ].slice(0, 100);
 
     await prisma.meeting.update({
       where: { id },
@@ -63,5 +63,5 @@ function normalizeSpeakerNames(value: unknown) {
         .map((name) => (typeof name === "string" ? name.trim() : ""))
         .filter(Boolean)
     )
-  ].slice(0, 50);
+  ].slice(0, 100);
 }

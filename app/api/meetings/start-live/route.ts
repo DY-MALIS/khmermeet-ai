@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
     const speakerNames = normalizeSpeakerNames(body.speakerNames);
+    const participantCount = clampParticipantCount(body.participantCount, speakerNames.length);
 
     await prisma.user.upsert({
       where: { id: user.id },
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         status: "recording",
         duration: 0,
         speakerNames,
+        smartNote: { participantCount, speakerNameCount: speakerNames.length },
         createdById: user.id
       }
     });
@@ -63,5 +65,11 @@ function normalizeSpeakerNames(value: unknown) {
         .map((name) => (typeof name === "string" ? name.trim() : ""))
         .filter(Boolean)
     )
-  ].slice(0, 50);
+  ].slice(0, 100);
+}
+
+function clampParticipantCount(value: unknown, fallback: number) {
+  const count = typeof value === "number" ? value : typeof value === "string" ? Number(value) : fallback;
+  if (!Number.isFinite(count)) return fallback;
+  return Math.max(1, Math.min(100, Math.floor(count)));
 }

@@ -79,7 +79,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         .map((name) => name.trim())
         .filter(Boolean)
     )
-  ).slice(0, 50);
+  ).slice(0, 100);
   const labeledTranscript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
   const transcriptIsUsable = hasUsableTranscript(labeledTranscript);
   const transcriptText = transcriptIsUsable ? labeledTranscript : "";

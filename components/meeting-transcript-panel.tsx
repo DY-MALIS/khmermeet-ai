@@ -55,7 +55,7 @@ export function MeetingTranscriptPanel({
   const hasAnyTranscript = Boolean(rawTranscript?.trim() || transcript.trim());
   const meetingSpeakerNames = Array.from(
     new Set((speakerNames ?? []).map((name) => name.trim()).filter(Boolean))
-  ).slice(0, 50);
+  ).slice(0, 100);
 
   return (
     <section className="kh-card p-5" id="transcript">

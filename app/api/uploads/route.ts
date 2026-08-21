@@ -87,7 +87,7 @@ function parseSpeakerNames(value: string) {
       .filter((speaker): speaker is string => typeof speaker === "string")
       .map((speaker) => speaker.trim())
       .filter(Boolean)
-      .slice(0, 50);
+      .slice(0, 100);
   } catch {
     return [];
   }

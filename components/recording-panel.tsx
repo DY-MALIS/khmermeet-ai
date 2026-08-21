@@ -512,7 +512,7 @@ export function RecordingPanel() {
         .split(/[,，\n]/)
         .map((name) => name.trim())
         .filter(Boolean)
-        .slice(0, 50);
+        .slice(0, 100);
       const response = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

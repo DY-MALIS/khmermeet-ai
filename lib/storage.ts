@@ -612,7 +612,7 @@ function normalizeSpeakerNames(speakerNames: string[]) {
   return speakerNames
     .map((name) => name.trim())
     .filter(Boolean)
-    .slice(0, 50);
+    .slice(0, 100);
 }
 
 function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
