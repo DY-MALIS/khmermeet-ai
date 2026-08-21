@@ -39,10 +39,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
     const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
+    const shouldUseMixedAudio =
+      Boolean(meeting.audioUrl) &&
+      (!participantAudioSegments.length || participantAudioSegments.length < 2 || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
     let transcriptSpeakerNames = speakerNames;
 
-    if (participantAudioSegments.length) {
+    if (shouldUseMixedAudio && meeting.audioUrl) {
+      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
+      if (audioFile.size < 1500) {
+        return NextResponse.json(
+          {
+            error:
+              "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
+          },
+          { status: 422 }
+        );
+      }
+      rawTranscript = await transcribeStoredTrackRecording(meeting.audioUrl, languageMode, Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000), {
+        speakerNames,
+        singleSpeaker: false
+      });
+    } else if (participantAudioSegments.length) {
       const parts = await Promise.all(
         participantAudioSegments.map(async (segment) => {
           const speakerName = segment.speakerName || segment.speakerIdentity;
@@ -77,7 +95,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       rawTranscript = await transcribeStoredTrackRecording(meeting.audioUrl, languageMode, Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000), {
         speakerNames,
-        singleSpeaker: speakerNames.length === 1
+        singleSpeaker: false
       });
     }
 

@@ -18,8 +18,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const duration = "duration" in body ? clampMeetingDurationSeconds(body.duration) : undefined;
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
+    const speakerNames = normalizeSpeakerNames(body.speakerNames);
     const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
+    const nextSpeakerNames = [
+      ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
+    ].slice(0, 50);
 
     await prisma.meeting.update({
       where: { id },
@@ -27,6 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         audioUrl,
         language: languageMode,
         duration: duration ?? meeting.duration,
+        speakerNames: nextSpeakerNames,
         status: meeting.status === "recording" ? "recorded" : meeting.status
       }
     });
@@ -43,4 +48,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { status: 500 }
     );
   }
+}
+
+function normalizeSpeakerNames(value: unknown) {
+  const rawNames = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,，\n]/)
+      : [];
+
+  return [
+    ...new Set(
+      rawNames
+        .map((name) => (typeof name === "string" ? name.trim() : ""))
+        .filter(Boolean)
+    )
+  ].slice(0, 50);
 }

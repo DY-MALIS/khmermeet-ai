@@ -94,10 +94,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // refine call below (its own 55s internal ceiling) real room to run.
     await catchUpPendingSegments(segments, Date.now() + 200000);
 
-    const rawTranscript = segments
-      .filter((segment) => segment.text.trim())
-      .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
-      .join("\n");
+    const speakerNames = [
+      ...new Set(
+        [...(meeting.speakerNames ?? []), ...segments.map((segment) => segment.speakerName || segment.speakerIdentity)]
+          .map((name) => name.trim())
+          .filter(Boolean)
+      )
+    ];
+    const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
+    const shouldUseMixedAudio =
+      Boolean(meeting.audioUrl) &&
+      (usableSegmentCount < 2 || (speakerNames.length > 1 && usableSegmentCount < speakerNames.length));
+
+    const rawTranscript =
+      shouldUseMixedAudio && meeting.audioUrl
+        ? await transcribeStoredTrackRecording(
+            meeting.audioUrl,
+            normalizeTranscriptionLanguageMode(meeting.language),
+            180000,
+            { speakerNames, singleSpeaker: false }
+          ).catch(() =>
+            segments
+              .filter((segment) => segment.text.trim())
+              .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+              .join("\n")
+          )
+        : segments
+            .filter((segment) => segment.text.trim())
+            .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+            .join("\n");
     let transcript = rawTranscript;
     if (hasUsableTranscript(rawTranscript)) {
       // Each segment was transcribed live (mode:"live"), which skips the
@@ -105,7 +130,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // with every syllable space-separated instead of properly joined
       // words. One refine pass now that all segments are merged, same as
       // recording-panel.tsx's finalize-transcript step.
-      const speakerNames = [...new Set(segments.map((segment) => segment.speakerName || segment.speakerIdentity))];
       const languageMode = normalizeTranscriptionLanguageMode(meeting.language);
       transcript = await refineSavedTranscript(rawTranscript, languageMode, speakerNames).catch(() => rawTranscript);
       // Don't overwrite `language` here: segments were already transcribed
@@ -114,7 +138,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // choice and made summary/task generation ignore it downstream.
       await prisma.meeting.update({
         where: { id },
-        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration }
+        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration, speakerNames }
       });
     }
 

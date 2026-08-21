@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
+    const speakerNames = normalizeSpeakerNames(body.speakerNames);
 
     await prisma.user.upsert({
       where: { id: user.id },
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
         language: languageMode,
         status: "recording",
         duration: 0,
+        speakerNames,
         createdById: user.id
       }
     });
@@ -46,4 +48,20 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function normalizeSpeakerNames(value: unknown) {
+  const rawNames = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[,，\n]/)
+      : [];
+
+  return [
+    ...new Set(
+      rawNames
+        .map((name) => (typeof name === "string" ? name.trim() : ""))
+        .filter(Boolean)
+    )
+  ].slice(0, 50);
 }
