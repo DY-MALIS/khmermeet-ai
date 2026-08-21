@@ -27,10 +27,22 @@ export const summaryHeadings: Record<DocumentLanguageMode, { overview: string; k
 export function buildSummaryPrompt(transcript: string, language: DocumentLanguageMode) {
   const headings = summaryHeadings[language];
   const noInfo = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
-  return `You are an experienced executive assistant who has just sat in on this meeting and is writing a concise executive summary for people who were NOT there. Write the kind of summary a sharp, senior EA would produce - one that lets a busy executive understand the meeting in 30 seconds. This is not a mechanical extraction exercise: read the full transcript, understand what actually happened and why, and write it up in your own clear words.
+  const contentTypeLabel = language === "en" ? "Content type" : "ប្រភេទអត្ថបទ";
+  const mainIdeaLabel = language === "en" ? "Main idea" : "គំនិតស្នូល";
+  const detailsLabel = language === "en" ? "Important details" : "ចំណុចពន្យល់សំខាន់ៗ";
+  const takeawaysLabel = language === "en" ? "Takeaways" : "មេរៀន/អត្ថន័យដែលយកបាន";
+  const actionsLabel = language === "en" ? "Actions or next steps" : "កិច្ចការ ឬជំហានបន្ទាប់";
+  return `You are KhmerMeet AI's senior summarizer. The input may be a meeting transcript, a task discussion, a lesson, a lecture, a speech, a sermon, training content, or a long personal-development talk. First understand what type of content it is, then summarize it in the structure that fits that content. Do not force every transcript into a meeting-minutes format.
 
 Language rule:
 - ${buildLanguageInstruction(language)}
+
+Content-type rule:
+- Identify the content type from the transcript itself before writing.
+- If it is a meeting or work discussion, use meeting-minutes language: decisions, problems, owners, deadlines, next steps.
+- If it is a lesson, lecture, teaching, speech, sermon, or motivational talk, summarize the lesson: central message, supporting ideas, examples/advice, and practical takeaways. Do not invent meeting decisions or next steps.
+- If it is mostly a task/work instruction, summarize the objective, requirements, constraints, and work to do.
+- If it is mixed, choose the dominant type and mention the secondary type only when it affects the summary.
 
 Quality bar - this is what separates a good summary from a bad one:
 - Synthesize, don't transcribe. Paraphrase in fluent, natural, professional language - never copy sentence fragments verbatim from the transcript.
@@ -40,6 +52,7 @@ Quality bar - this is what separates a good summary from a bad one:
 - Attribute when it matters. Name the person behind a decision, concern, or commitment when the transcript makes that clear (e.g. "Sokha will follow up with the vendor" rather than "someone will follow up").
 - Be concrete. Prefer specific numbers, dates, names, and next actions over vague phrases like "discussed the project" or "talked about issues."
 - Be brief. Remove background chatter, greetings, repeated wording, and low-value details.
+- Match the summary length to the source: short transcripts can have a short summary, but long transcripts need enough substance to preserve the main argument and important supporting points.
 
 Accuracy rules (never break these):
 - Use only facts that are actually in the transcript below - do not add outside knowledge, assumptions, or anything from a previous summary.
@@ -49,12 +62,12 @@ Accuracy rules (never break these):
 
 Formatting rules:
 - Do not return a table, JSON, code fences, or markdown bold markers like **.
-- "${headings.overview}" is the only section written as a short paragraph: 1-2 sentences maximum.
-- Every other section is short, clear bullet points: 1 line per bullet, maximum 4 bullets per section.
-- If a section has more than 4 possible points, keep only the 4 most important.
-- The full summary should normally fit on one screen.
+- The overview/main idea section is a short paragraph: 2-4 sentences for long transcripts, 1-2 sentences for short transcripts.
+- Every other section is clear bullet points: 1-2 lines per bullet.
+- For long transcripts, use 5-8 bullets in the important-details section when needed; for short transcripts, use fewer.
+- The full summary should be concise but not shallow. Do not compress a long lesson or speech into only a few generic lines.
 
-Return exactly this structure, using these exact section headings:
+For meeting/work discussions, return exactly this structure:
 
 ${headings.overview}
 (one short paragraph)
@@ -70,6 +83,23 @@ ${headings.problems}
 
 ${headings.nextSteps}
 - concrete next actions, with owner and deadline whenever the transcript gives one
+
+For lessons, speeches, lectures, sermons, training, or personal-development content, return exactly this structure instead:
+
+${contentTypeLabel}
+- the detected type and topic
+
+${mainIdeaLabel}
+(2-4 sentence paragraph explaining the core message)
+
+${detailsLabel}
+- the most important supporting ideas, advice, examples, or arguments
+
+${takeawaysLabel}
+- practical lessons the listener should remember or apply
+
+${actionsLabel}
+- only real actions/advice stated in the transcript; otherwise write "${noInfo}"
 
 Transcript:
 ${transcript}`;

@@ -92,16 +92,22 @@ export async function POST(request: Request) {
       language === "en"
         ? "Meeting overview, Key points, Decisions, Problems raised, Next steps"
         : "សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត, បញ្ហាដែលបានលើកឡើង, ជំហានបន្ទាប់";
+    const adaptiveSectionLabels =
+      language === "en"
+        ? "Content type, Main idea, Important details, Takeaways, Actions or next steps"
+        : "ប្រភេទអត្ថបទ, គំនិតស្នូល, ចំណុចពន្យល់សំខាន់ៗ, មេរៀន/អត្ថន័យដែលយកបាន, កិច្ចការ ឬជំហានបន្ទាប់";
     const missingInfoPlaceholder = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
     const prompt = [
       "You are KhmerMeet AI Summary Agent for Cambodian teams.",
-      "Your job is to answer the user's command using only the meeting transcript, current summary, and tasks provided below.",
+      "Your job is to answer the user's command using only the transcript, current summary, and tasks provided below.",
       buildLanguageInstruction(language),
+      "The transcript may be a meeting, task discussion, lesson, lecture, speech, sermon, training content, or personal-development talk. First identify the content type from the transcript. Do not force a lesson or speech into a meeting-minutes format.",
+      "If it is a meeting or work discussion, summarize decisions, problems, owners, deadlines, and next steps. If it is a lesson, lecture, speech, sermon, or motivational talk, summarize the central message, supporting ideas, advice, and practical takeaways. If it is a task instruction, summarize the objective, requirements, constraints, and work to do.",
       "Do not invent facts, people, dates, decisions, problems, or tasks.",
       `If the transcript does not contain enough information for a requested section, write: ${missingInfoPlaceholder}`,
       "Do not use markdown bold markers like **.",
       "Keep the answer clean, readable, and grouped into short sections or bullets.",
-      "Default style: concise, clear, and executive-ready. Use 1-2 sentences for overview and no more than 4 one-line bullets per section unless the user explicitly asks for detail.",
+      "Default style: concise, clear, and useful. For long transcripts, include enough detail to preserve the main argument; do not return a shallow two-line summary. Use 5-8 important-detail bullets when the source is long or when the user asks for a longer summary.",
       "",
       `User command: ${command}`,
       "",
@@ -116,7 +122,7 @@ export async function POST(request: Request) {
       `Action tasks:\n${taskText}`,
       "",
       regeneratingSummary
-        ? `If the user does not specify a format, return exactly these sections: ${sectionLabels}. Keep the full summary short enough to scan on one screen.`
+        ? `If the transcript is a meeting or work discussion and the user does not specify a format, return these sections: ${sectionLabels}. If it is a lesson, speech, lecture, sermon, training, or motivational talk, return these sections instead: ${adaptiveSectionLabels}.`
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 
