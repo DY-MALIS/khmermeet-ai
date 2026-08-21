@@ -165,31 +165,27 @@ export async function startLiveKitRoomRecording(room: string, title?: string) {
   const trackJobs: TrackJobInfo[] = [];
   try {
     const participants = await roomServiceClient().listParticipants(room);
-    const speakers = participants.flatMap((participant) => {
-      const micTrack = participant.tracks.find((track) => track.source === TrackSource.MICROPHONE);
-      return micTrack ? [{ participant, micTrack }] : [];
-    });
 
     // Start track-egress jobs in bounded-concurrency batches instead of one at
     // a time - a meeting can have dozens of participants, and starting jobs
     // sequentially risks blowing past this route's maxDuration before everyone
     // is hooked up for recording.
     const concurrency = 8;
-    for (let i = 0; i < speakers.length; i += concurrency) {
-      const batch = speakers.slice(i, i + concurrency);
-      const jobs = await Promise.all(
-        batch.map(({ participant, micTrack }) =>
-          startTrackEgressJob(
-            client,
-            room,
-            recordingBase,
-            participant.identity,
-            participant.name || participant.identity,
-            micTrack.sid,
-            recordingStartedAt
-          )
-        )
-      );
+    for (let i = 0; i < participants.length; i += concurrency) {
+      const batch = participants.slice(i, i + concurrency);
+      const jobs = await Promise.all(batch.map(async (participant) => {
+        const speaker = await waitForMicrophoneTrack(room, participant.identity, 4, 1000);
+        if (!speaker) return null;
+        return startTrackEgressJob(
+          client,
+          room,
+          recordingBase,
+          participant.identity,
+          participant.name || participant.identity,
+          speaker.micTrack.sid,
+          recordingStartedAt
+        );
+      }));
       for (const job of jobs) if (job) trackJobs.push(job);
     }
   } catch {
@@ -219,17 +215,19 @@ export async function startParticipantTrackEgress(
 ): Promise<TrackJobInfo | null> {
   const client = egressClient();
   // ParticipantConnected can fire slightly before that participant's mic
-  // track is actually published, so retry briefly before giving up.
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const participants = await roomServiceClient().listParticipants(room);
-    const participant = participants.find((entry) => entry.identity === identity);
-    const micTrack = participant?.tracks.find((track) => track.source === TrackSource.MICROPHONE);
-    if (micTrack) {
-      return startTrackEgressJob(client, room, recordingBase, identity, name || identity, micTrack.sid, recordingStartedAt);
-    }
-    if (attempt < 3) await sleep(1500);
-  }
-  return null;
+  // track is actually published, so wait long enough for browser permission,
+  // LiveKit publish, and server participant state to settle.
+  const speaker = await waitForMicrophoneTrack(room, identity);
+  if (!speaker) return null;
+  return startTrackEgressJob(
+    client,
+    room,
+    recordingBase,
+    identity,
+    name || speaker.participant.name || identity,
+    speaker.micTrack.sid,
+    recordingStartedAt
+  );
 }
 
 type EgressPollResult =
@@ -240,6 +238,22 @@ type EgressPollResult =
 
 async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function findMicrophoneTrack(room: string, identity: string) {
+  const participants = await roomServiceClient().listParticipants(room);
+  const participant = participants.find((entry) => entry.identity === identity);
+  const micTrack = participant?.tracks.find((track) => track.source === TrackSource.MICROPHONE);
+  return participant && micTrack ? { participant, micTrack } : null;
+}
+
+async function waitForMicrophoneTrack(room: string, identity: string, attempts = 8, intervalMs = 1500) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const speaker = await findMicrophoneTrack(room, identity);
+    if (speaker) return speaker;
+    if (attempt < attempts) await sleep(intervalMs);
+  }
+  return null;
 }
 
 async function pollEgressStatus(

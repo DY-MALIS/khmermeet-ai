@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
-import { requireUser } from "@/lib/session";
+import { createHmac, timingSafeEqual } from "crypto";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +16,46 @@ function cleanDisplayName(value: unknown) {
   return name.slice(0, 80) || "KhmerMeet User";
 }
 
+function inviteSecret() {
+  return process.env.NEXTAUTH_SECRET || process.env.LIVEKIT_API_SECRET || "khmermeet-local-invite-secret";
+}
+
+function signInvite(room: string, expiresAt: number) {
+  return createHmac("sha256", inviteSecret()).update(`${room}.${expiresAt}`).digest("base64url");
+}
+
+function createInviteToken(room: string) {
+  const expiresAt = Date.now() + 2 * 60 * 60 * 1000;
+  return `${room}.${expiresAt}.${signInvite(room, expiresAt)}`;
+}
+
+function verifyInviteToken(room: string, value: unknown) {
+  if (typeof value !== "string") return false;
+  const [tokenRoom, expiresAtText, signature] = value.split(".");
+  const expiresAt = Number(expiresAtText);
+  if (tokenRoom !== room || !Number.isFinite(expiresAt) || expiresAt < Date.now() || !signature) return false;
+
+  const expected = Buffer.from(signInvite(room, expiresAt));
+  const actual = Buffer.from(signature);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
 export async function POST(request: Request) {
   try {
-    await requireUser();
     const body = await request.json().catch(() => ({}));
     const room = cleanRoomName(body.room);
     const name = cleanDisplayName(body.name);
+    const session = await getServerSession(authOptions);
     const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL?.trim() || process.env.LIVEKIT_URL?.trim();
     const apiKey = process.env.LIVEKIT_API_KEY?.trim();
     const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
 
     if (!room) {
       return NextResponse.json({ error: "Room code is required." }, { status: 400 });
+    }
+
+    if (!session?.user?.id && !verifyInviteToken(room, body.inviteToken)) {
+      return NextResponse.json({ error: "Invite link is required to join this call as a guest." }, { status: 401 });
     }
 
     if (!livekitUrl || !apiKey || !apiSecret) {
@@ -42,13 +72,10 @@ export async function POST(request: Request) {
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
       name,
-      // LiveKit only checks the token at connect/reconnect time, not
-      // continuously, so an already-open call survives past its TTL - but
-      // any reconnect after expiry (network blip, laptop sleep, Wi-Fi
-      // hiccup) gets rejected as an expired token, permanently dropping the
-      // participant and cutting off local recording tied to that
-      // connection. 24h comfortably covers any realistic meeting length.
-      ttl: "24h"
+      // Guests can join calls without email/login, so keep tokens short.
+      // Existing connected calls continue; reconnecting after expiry needs
+      // opening the invite again.
+      ttl: "2h"
     });
 
     token.addGrant({
@@ -64,7 +91,8 @@ export async function POST(request: Request) {
       livekitUrl,
       room,
       identity,
-      name
+      name,
+      inviteToken: createInviteToken(room)
     });
   } catch (error) {
     return NextResponse.json(

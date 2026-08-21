@@ -26,6 +26,7 @@ type TokenPayload = {
   room: string;
   identity: string;
   name: string;
+  inviteToken?: string;
 };
 
 function createRoomCode() {
@@ -59,6 +60,11 @@ function readMeetingParams(): MeetingParams {
     room: inviteRoom || savedRoom || createRoomCode(),
     title: inviteTitle || savedTitle
   };
+}
+
+function readInviteToken() {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("invite")?.trim() ?? "";
 }
 
 function readSavedParticipantName() {
@@ -178,11 +184,9 @@ export function LiveKitCallRoom() {
       const nextUrl = new URL(target.href, window.location.href);
       if (nextUrl.href === window.location.href) return;
 
-      const shouldLeave = window.confirm("កំពុងស្ថិតក្នុង video call។ ចង់ចេញពី call ទៅទំព័រផ្សេងមែនទេ?");
-      if (!shouldLeave) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      window.alert("កំពុងស្ថិតក្នុង video call។ ដើម្បីកុំឲ្យ call ចេញ សូមប្រើ Mini video ឬបើក browser tab ថ្មីសម្រាប់ទំព័រផ្សេង។ ចុច ចាកចេញ ក្នុង call មុន ប្រសិនបើចង់បិទ call។");
+      event.preventDefault();
+      event.stopPropagation();
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -202,6 +206,7 @@ export function LiveKitCallRoom() {
     const url = new URL(`${window.location.origin}/meetings/call`);
     url.searchParams.set("room", nextRoom);
     if (title.trim()) url.searchParams.set("title", title.trim());
+    if (tokenPayload?.inviteToken) url.searchParams.set("invite", tokenPayload.inviteToken);
     return url.toString();
   }
 
@@ -233,7 +238,7 @@ export function LiveKitCallRoom() {
       const response = await fetch("/api/livekit-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: roomToJoin, name: participantName })
+        body: JSON.stringify({ room: roomToJoin, name: participantName, inviteToken: readInviteToken() })
       });
       const data = await readJsonResponse<TokenPayload & { error?: string }>(response);
       if (!response.ok) throw new Error(extractApiError(data));
@@ -474,7 +479,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     isScreenShareEnabled,
     localParticipant
   } = useLocalParticipant();
-  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave" | "">("");
+  const [busyControl, setBusyControl] = useState<"mic" | "camera" | "repair-mic" | "screen" | "audio" | "mini" | "leave" | "">("");
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [micNotice, setMicNotice] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -615,7 +620,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setMicTrackState("Manual mic track live");
   }
 
-  async function runControl(name: "mic" | "camera" | "repair-mic" | "screen" | "audio" | "leave", action: () => Promise<unknown>) {
+  async function runControl(name: "mic" | "camera" | "repair-mic" | "screen" | "audio" | "mini" | "leave", action: () => Promise<unknown>) {
     if (busyControl) return;
     setBusyControl(name);
     try {
@@ -664,6 +669,26 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
   }
 
+  async function openMiniVideo() {
+    if (!document.pictureInPictureEnabled) {
+      throw new Error("Browser នេះមិនគាំទ្រ Mini video/Picture-in-Picture ទេ។ សូមប្រើ Chrome ឬ Edge ថ្មីៗ។");
+    }
+
+    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>(".kh-livekit-stage video"));
+    const activeVideo = videos.find((video) => video.readyState >= 2 && !video.paused) ?? videos.find((video) => video.readyState >= 2);
+    if (!activeVideo) {
+      throw new Error("មិនទាន់មាន video track សម្រាប់បង្ហាញជា Mini video ទេ។ សូមបើក camera ឬរង់ចាំអ្នកចូលរួមបើក camera។");
+    }
+
+    if (document.pictureInPictureElement === activeVideo) {
+      await document.exitPictureInPicture();
+      return;
+    }
+
+    await activeVideo.requestPictureInPicture();
+    setMicNotice("Mini video បានបើកហើយ។ អ្នកអាចទៅ browser tab ផ្សេង ដោយ call នៅបន្តដំណើរការ។");
+  }
+
   async function toggleMicrophone() {
     if (isMicrophoneEnabled) {
       await localParticipant.setMicrophoneEnabled(false);
@@ -706,6 +731,15 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
         >
           <Share2 className="mr-2 inline h-4 w-4" />
           {isScreenShareEnabled ? "បញ្ឈប់ការចែករំលែក" : "ចែករំលែកអេក្រង់"}
+        </button>
+        <button
+          className="rounded-lg bg-white/10 px-4 py-2 text-white"
+          type="button"
+          disabled={Boolean(busyControl)}
+          onClick={() => runControl("mini", openMiniVideo)}
+          title="Show the call video in a small floating window when you switch browser tabs."
+        >
+          {busyControl === "mini" ? "កំពុងបើក..." : "Mini video"}
         </button>
         <button
           className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
@@ -1201,6 +1235,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setRecording(false);
   }
 
+  // Hidden fallback from the old browser-mixed recorder. The visible record button now requires LiveKit Egress.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function startServerMixedBackup() {
     try {
       const mixedStream = buildMixedAudioStream();
@@ -1427,61 +1463,66 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setSavedMeetingId("");
     setSavedAudioUrl("");
     try {
+      const egressResponse = await fetch("/api/livekit-egress/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: room.name, title: meetingTitle })
+      });
+      const egress = await readJsonResponse<{
+        fileEgressId?: string;
+        storageUrl?: string;
+        recordingBase?: string;
+        recordingStartedAt?: number;
+        segmentDurationMs?: number;
+        trackJobs?: EgressTrackJob[];
+        error?: string;
+        hint?: string;
+      }>(egressResponse);
+      if (
+        !egressResponse.ok ||
+        !egress.fileEgressId ||
+        !egress.storageUrl ||
+        !egress.recordingBase ||
+        !Number.isFinite(egress.recordingStartedAt)
+      ) {
+        throw new Error(
+          egress.error || egress.hint || "LiveKit server recording is not ready. Please configure LiveKit Egress before recording."
+        );
+      }
+      const recordingStartedAt = Number(egress.recordingStartedAt);
+
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
-      if (!response.ok || !data.meetingId) throw new Error(data.error ?? "ការថត Server មិនជោគជ័យទេ។");
-
-      const egressResponse = await fetch("/api/livekit-egress/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: room.name, title: meetingTitle })
-      });
-      if (egressResponse.ok) {
-        const egress = await readJsonResponse<{
-          fileEgressId: string;
-          storageUrl: string;
-          recordingBase: string;
-          recordingStartedAt: number;
-          segmentDurationMs: number;
-          trackJobs: EgressTrackJob[];
-        }>(egressResponse);
-        setSavedMeetingId(data.meetingId);
-        setSavedAudioUrl(egress.storageUrl);
-        setEgressRecording({
-          meetingId: data.meetingId,
-          fileEgressId: egress.fileEgressId,
-          storageUrl: egress.storageUrl,
-          recordingBase: egress.recordingBase,
-          recordingStartedAt: egress.recordingStartedAt,
-          segmentDurationMs: egress.segmentDurationMs,
-          trackJobs: egress.trackJobs ?? []
-        });
-        setSeconds(0);
-        setNotice("បានចាប់ផ្តើមថតពី server។ Host ចុចតែម្តង ប៉ុន្តែ server នឹងចាប់សំឡេង room និង microphone track របស់អ្នកចូលរួមនីមួយៗ ដើម្បីដាក់ឈ្មោះអ្នកនិយាយឲ្យច្បាស់។");
-        return;
+      if (!response.ok || !data.meetingId) {
+        await fetch("/api/livekit-egress/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileEgressId: egress.fileEgressId, trackEgressIds: egress.trackJobs?.map((job) => job.egressId) ?? [] })
+        }).catch(() => undefined);
+        throw new Error(data.error ?? "ការថត Server មិនជោគជ័យទេ។");
       }
 
-      const egressError: { error?: string; hint?: string } = await readJsonResponse<{ error?: string; hint?: string }>(egressResponse).catch(() => ({}));
-      const recordingStartedAt = Date.now();
-      const signal: LiveRecordingSignal = {
-        type: "khmermeet-record-start",
+      setSavedMeetingId(data.meetingId);
+      setSavedAudioUrl(egress.storageUrl);
+      setEgressRecording({
         meetingId: data.meetingId,
-        languageMode: transcriptionLanguage,
-        recordingStartedAt
-      };
-      await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true });
-      // publishData never delivers back to the sender - this participant has
-      // to be told to start recording itself the same way every remote
-      // participant just was.
-      void startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
-      startServerMixedBackup();
-      setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
+        fileEgressId: egress.fileEgressId,
+        storageUrl: egress.storageUrl,
+        recordingBase: egress.recordingBase,
+        recordingStartedAt,
+        segmentDurationMs: egress.segmentDurationMs ?? 0,
+        trackJobs: egress.trackJobs ?? []
+      });
+      setSeconds(0);
+      const capturedCount = egress.trackJobs?.length ?? 0;
       setNotice(
-        `បានចាប់ផ្តើមថតដោយ browser fallback។ LiveKit Egress មិនទាន់ប្រើបាន${egressError.error ? `៖ ${egressError.error}` : ""}។ Browser របស់អ្នកចូលរួមម្នាក់ៗនឹងថតសំឡេងខ្លួនឯងដាច់ដោយឡែកដោយស្វ័យប្រវត្តិ។`
+        capturedCount > 1
+          ? `បានចាប់ផ្តើមថតពី server។ Server ចាប់បាន microphone track ${capturedCount} នាក់ ហើយនឹងដាក់ transcript តាមឈ្មោះអ្នកនិយាយ។`
+          : "បានចាប់ផ្តើមថតពី server ប៉ុន្តែឥឡូវចាប់បាន microphone track តែ 1 នាក់ប៉ុណ្ណោះ។ សូមឲ្យអ្នកចូលរួមផ្សេងទៀតបើក mic/ចូល call រួចសាកនិយាយ បើមិនដូច្នោះ transcript អាចមានតែឈ្មោះម្នាក់។"
       );
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម Server recording បានទេ។");
@@ -1574,7 +1615,11 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     try {
       let transcribedSegments = 0;
       const jobs = recording.trackJobs;
-      setTranscriptionProgress(`កំពុងរៀបចំ transcript ពី ${jobs.length} អ្នកចូលរួម...`);
+      setTranscriptionProgress(
+        jobs.length > 1
+          ? `កំពុងរៀបចំ transcript ពី ${jobs.length} អ្នកចូលរួម...`
+          : "កំពុងរៀបចំ transcript ពី track តែមួយ។ បើមានមនុស្សច្រើន ត្រូវប្រាកដថា mic របស់ពួកគេត្រូវបានបើកមុន/ពេលថត។"
+      );
 
       for (const job of jobs) {
         const listResponse = await fetch(`/api/livekit-egress/segments?prefix=${encodeURIComponent(job.segmentsPrefix)}`);

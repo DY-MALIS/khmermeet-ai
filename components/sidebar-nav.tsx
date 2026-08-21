@@ -44,9 +44,8 @@ export function SidebarNav() {
 
     const hasActiveCall = sessionStorage.getItem("khmermeet-active-call") === "true";
     if (hasActiveCall) {
-      const shouldLeave = window.confirm("កំពុងស្ថិតក្នុង video call។ ចង់ចេញពី call ទៅទំព័រផ្សេងមែនទេ?");
-      if (!shouldLeave) return;
-      sessionStorage.removeItem("khmermeet-active-call");
+      window.alert("កំពុងស្ថិតក្នុង video call។ ដើម្បីកុំឲ្យ call ចេញ សូមរក្សាទុកទំព័រ call នេះ ហើយប្រើ Mini video ឬ browser tab ថ្មីសម្រាប់ការងារផ្សេង។ ចុច ចាកចេញ ក្នុង call មុន ប្រសិនបើចង់បិទ call។");
+      return;
     }
 
     router.push(href);
