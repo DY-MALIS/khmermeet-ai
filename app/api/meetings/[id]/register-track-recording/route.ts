@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { clampMeetingDurationMs } from "@/lib/meeting-duration";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { verifyInviteToken } from "@/lib/livekit-invite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
+
+function isRecentLiveMeeting(meeting: { status: string; createdAt: Date } | null) {
+  if (!meeting) return false;
+  if (!["recording", "recorded", "transcribed"].includes(meeting.status)) return false;
+  return Date.now() - meeting.createdAt.getTime() < 6 * 60 * 60 * 1000;
+}
 
 // Client-mesh per-speaker recording: each participant's own browser
 // records only its own microphone as one continuous file for the whole
@@ -15,18 +23,21 @@ export const maxDuration = 15;
 // calls this route just to register that upload against the meeting. No
 // AI call happens here; transcription is a separate, later step
 // (transcribe-stored-segment). Same permissive ownership model as the
-// rest of this recording flow - any authenticated participant handed this
-// meetingId can register their own recording, not just the host.
+// rest of this recording flow - any participant handed this live meetingId
+// can register their own recording, including no-email guests.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireUser();
     const { id } = await params;
     const meeting = await prisma.meeting.findUnique({ where: { id } });
-    if (!meeting || meeting.status !== "recording") {
+    if (!meeting || !isRecentLiveMeeting(meeting)) {
       return NextResponse.json({ error: "No live recording found for this meeting." }, { status: 404 });
     }
 
     const body = await request.json().catch(() => ({}));
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id && !verifyInviteToken(body.room, body.inviteToken)) {
+      return NextResponse.json({ error: "Invite link is required to register this recording." }, { status: 401 });
+    }
     const speakerIdentity = String(body.speakerIdentity ?? "").trim();
     const speakerName = String(body.speakerName ?? "").trim();
     const audioUrl = String(body.audioUrl ?? "").trim();

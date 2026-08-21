@@ -335,7 +335,7 @@ export function LiveKitCallRoom() {
           data-lk-theme="default"
         >
           <LiveKitOneScreenConference onLeaveRequest={() => { manualLeaveRef.current = true; }} />
-          <LiveKitMeetingAgent meetingTitle={meetingTitle()} />
+          <LiveKitMeetingAgent meetingTitle={meetingTitle()} recordingRoom={tokenPayload.room} inviteToken={tokenPayload.inviteToken ?? ""} />
         </LiveKitRoom>
         {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       </div>
@@ -835,7 +835,15 @@ type EgressRecording = {
   trackJobs: EgressTrackJob[];
 };
 
-function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
+function LiveKitMeetingAgent({
+  meetingTitle,
+  recordingRoom,
+  inviteToken
+}: {
+  meetingTitle: string;
+  recordingRoom: string;
+  inviteToken: string;
+}) {
   const room = useRoomContext();
   const audioTracks = useTracks([{ source: Track.Source.Microphone, withPlaceholder: false }], {
     onlySubscribed: false
@@ -1235,8 +1243,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setRecording(false);
   }
 
-  // Hidden fallback from the old browser-mixed recorder. The visible record button now requires LiveKit Egress.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Hidden mixed backup for the host's browser only. The visible record button
+  // primarily uses client-mesh per-speaker recording below.
   function startServerMixedBackup() {
     try {
       const mixedStream = buildMixedAudioStream();
@@ -1281,7 +1289,13 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
         }
 
         try {
-          const audioUrl = await uploadRecordingDirect(blob, mimeType.includes("mp4") ? "mixed-meeting.m4a" : "mixed-meeting.webm");
+          const audioUrl = await uploadRecordingDirect(
+            blob,
+            mimeType.includes("mp4") ? "mixed-meeting.m4a" : "mixed-meeting.webm",
+            meetingId,
+            recordingRoom,
+            inviteToken
+          );
           const response = await fetch(`/api/meetings/${meetingId}/attach-audio`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1362,11 +1376,25 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     const identity = room.localParticipant.identity;
     const name = room.localParticipant.name || identity;
     try {
-      const audioUrl = await uploadRecordingDirect(blob, blob.type.includes("mp4") ? "track.m4a" : "track.webm");
+      const audioUrl = await uploadRecordingDirect(
+        blob,
+        blob.type.includes("mp4") ? "track.m4a" : "track.webm",
+        meetingId,
+        recordingRoom,
+        inviteToken
+      );
       const response = await fetch(`/api/meetings/${meetingId}/register-track-recording`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ speakerIdentity: identity, speakerName: name, audioUrl, durationMs, languageMode })
+        body: JSON.stringify({
+          speakerIdentity: identity,
+          speakerName: name,
+          audioUrl,
+          durationMs,
+          languageMode,
+          room: recordingRoom,
+          inviteToken
+        })
       });
       return response.ok;
     } catch {
@@ -1463,34 +1491,6 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
     setSavedMeetingId("");
     setSavedAudioUrl("");
     try {
-      const egressResponse = await fetch("/api/livekit-egress/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: room.name, title: meetingTitle })
-      });
-      const egress = await readJsonResponse<{
-        fileEgressId?: string;
-        storageUrl?: string;
-        recordingBase?: string;
-        recordingStartedAt?: number;
-        segmentDurationMs?: number;
-        trackJobs?: EgressTrackJob[];
-        error?: string;
-        hint?: string;
-      }>(egressResponse);
-      if (
-        !egressResponse.ok ||
-        !egress.fileEgressId ||
-        !egress.storageUrl ||
-        !egress.recordingBase ||
-        !Number.isFinite(egress.recordingStartedAt)
-      ) {
-        throw new Error(
-          egress.error || egress.hint || "LiveKit server recording is not ready. Please configure LiveKit Egress before recording."
-        );
-      }
-      const recordingStartedAt = Number(egress.recordingStartedAt);
-
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1498,34 +1498,29 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
       if (!response.ok || !data.meetingId) {
-        await fetch("/api/livekit-egress/stop", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileEgressId: egress.fileEgressId, trackEgressIds: egress.trackJobs?.map((job) => job.egressId) ?? [] })
-        }).catch(() => undefined);
         throw new Error(data.error ?? "ការថត Server មិនជោគជ័យទេ។");
       }
 
-      setSavedMeetingId(data.meetingId);
-      setSavedAudioUrl(egress.storageUrl);
-      setEgressRecording({
+      const recordingStartedAt = Date.now();
+      const signal: LiveRecordingSignal = {
+        type: "khmermeet-record-start",
         meetingId: data.meetingId,
-        fileEgressId: egress.fileEgressId,
-        storageUrl: egress.storageUrl,
-        recordingBase: egress.recordingBase,
-        recordingStartedAt,
-        segmentDurationMs: egress.segmentDurationMs ?? 0,
-        trackJobs: egress.trackJobs ?? []
-      });
+        languageMode: transcriptionLanguage,
+        recordingStartedAt
+      };
+      await room.localParticipant
+        .publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true })
+        .catch(() => undefined);
+      await startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
+      startServerMixedBackup();
+      setSavedMeetingId(data.meetingId);
+      setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setSeconds(0);
-      const capturedCount = egress.trackJobs?.length ?? 0;
       setNotice(
-        capturedCount > 1
-          ? `បានចាប់ផ្តើមថតពី server។ Server ចាប់បាន microphone track ${capturedCount} នាក់ ហើយនឹងដាក់ transcript តាមឈ្មោះអ្នកនិយាយ។`
-          : "បានចាប់ផ្តើមថតពី server ប៉ុន្តែឥឡូវចាប់បាន microphone track តែ 1 នាក់ប៉ុណ្ណោះ។ សូមឲ្យអ្នកចូលរួមផ្សេងទៀតបើក mic/ចូល call រួចសាកនិយាយ បើមិនដូច្នោះ transcript អាចមានតែឈ្មោះម្នាក់។"
+        `បានចាប់ផ្តើមថត។ ប្រព័ន្ធបានផ្ញើសញ្ញាទៅអ្នកចូលរួម ${getCurrentSpeakerNames().length} នាក់ ដើម្បីថត microphone របស់ខ្លួន ហើយនឹង merge transcript តាមឈ្មោះ។`
       );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម Server recording បានទេ។");
+      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម recording បានទេ។");
     } finally {
       setSaving(false);
     }
@@ -1581,7 +1576,8 @@ function LiveKitMeetingAgent({ meetingTitle }: { meetingTitle: string }) {
       const duration = clampMeetingDurationSeconds(durationMs / 1000);
       setSavedMeetingId(currentRecording.meetingId);
       setServerRecording(null);
-      setNotice("បានឈប់ថត និងរក្សាទុក audio រួច។ Call នៅបន្តធម្មតា ហើយអ្នកអាចចាប់ផ្តើមថតជុំថ្មីបាន។ Transcript/summary កំពុងដំណើរការក្រោយឆាក។");
+      setNotice("បានឈប់ថត។ កំពុងរង់ចាំ audio ពីអ្នកចូលរួមផ្សេងៗ upload មកគ្រប់គ្នា មុន merge transcript។");
+      await new Promise((resolve) => window.setTimeout(resolve, 12000));
       void finalizeServerRecording(currentRecording.meetingId, duration);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save server recording.");

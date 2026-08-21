@@ -25,14 +25,20 @@ function extensionFor(mimeType: string, filename?: string) {
 // passes through our own API). Requires NEXT_PUBLIC_SUPABASE_ANON_KEY to be
 // set - throws if it's missing or if anything in the handoff fails, so
 // callers can fall back to the smaller-recording /api/uploads path.
-export async function uploadRecordingDirect(blob: Blob, filename?: string): Promise<string> {
+export async function uploadRecordingDirect(
+  blob: Blob,
+  filename?: string,
+  meetingId?: string,
+  room?: string,
+  inviteToken?: string
+): Promise<string> {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error("Direct upload is not configured (missing NEXT_PUBLIC_SUPABASE_ANON_KEY).");
 
   const initResponse = await fetch("/api/uploads/direct-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ext: extensionFor(blob.type, filename) })
+    body: JSON.stringify({ ext: extensionFor(blob.type, filename), meetingId, room, inviteToken })
   });
   const ticket = await readJsonResponse<UploadTicket>(initResponse);
   if (!initResponse.ok || !ticket.token || !ticket.objectPath || !ticket.supabaseUrl || !ticket.bucket || !ticket.audioUrl) {
