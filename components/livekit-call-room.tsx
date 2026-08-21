@@ -103,6 +103,11 @@ const callAudioConstraints: MediaTrackConstraints = {
   autoGainControl: true
 };
 
+const callVideoConstraints = {
+  resolution: { width: 640, height: 360, frameRate: 15 },
+  frameRate: { ideal: 15, max: 20 }
+};
+
 function extractApiError(value: unknown) {
   if (value && typeof value === "object" && "error" in value && typeof value.error === "string") {
     return value.error;
@@ -311,15 +316,22 @@ export function LiveKitCallRoom() {
           token={tokenPayload.token}
           serverUrl={tokenPayload.livekitUrl}
           connect
+          options={{
+            adaptiveStream: true,
+            dynacast: true
+          }}
           audio={callMedia.audio ? callAudioConstraints : false}
-          video={callMedia.video}
-          onDisconnected={() => {
+          video={callMedia.video ? callVideoConstraints : false}
+          onDisconnected={(reason) => {
             if (manualLeaveRef.current) {
               manualLeaveRef.current = false;
               setTokenPayload(null);
               return;
             }
-            setError("Call disconnected unexpectedly. The call screen was kept open; check your connection, then rejoin if audio/video stopped.");
+            setError(`Call disconnected unexpectedly${reason ? ` (${reason})` : ""}. The call screen was kept open; check your connection, then rejoin if audio/video stopped.`);
+          }}
+          onMediaDeviceFailure={(failure, kind) => {
+            setError(`មិនអាចបើក ${kind ?? "media device"} បានទេ${failure ? ` (${failure})` : ""}។ សូមពិនិត្យ browser permission/camera/microphone រួចចូលម្តងទៀត។`);
           }}
           onError={(error) => {
             const message = error.message || "មិនអាចភ្ជាប់ camera/microphone បានទេ។";
