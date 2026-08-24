@@ -34,10 +34,10 @@ function fallbackAgentAnswer(command: string, meeting: { title: string; summary:
   return [
     `Summary Agent: ${meeting.title}`,
     "",
-    "OPEN_ROUTER_API_KEY មិនទាន់ដំណើរការ ដូច្នេះនេះជា fallback answer ពីទិន្នន័យដែលមាន។",
+    "OPEN_ROUTER_API_KEY is not active yet, so this is a fallback answer from the available data.",
     "",
-    command ? `ពាក្យបញ្ជា: ${command}` : "",
-    excerpt || "មិនទាន់មាន transcript ឬ summary សម្រាប់ Agent វិភាគ។"
+    command ? `Command: ${command}` : "",
+    excerpt || "No transcript or summary is available for the Agent to analyze yet."
   ].filter(Boolean).join("\n");
 }
 
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Transcript មិនទាន់ច្បាស់គ្រប់គ្រាន់សម្រាប់សង្ខេបទេ។ សូម Transcribe audio ម្តងទៀត ឬកែ transcript ដោយដៃ មុនប្រើ Summary Agent។"
+            "The transcript is not clear enough for summarizing yet. Transcribe the audio again or edit the transcript manually before using Summary Agent."
         },
         { status: 400 }
       );

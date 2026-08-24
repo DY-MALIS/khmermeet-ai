@@ -113,11 +113,11 @@ export async function POST(request: Request) {
       {
         error:
           isVercel && isDatabaseError
-            ? "Database មិនទាន់ត្រូវបាន configure សម្រាប់ Vercel ទេ។ សូមប្រើ PostgreSQL/Supabase/Neon DATABASE_URL ជំនួស SQLite local file។"
+            ? "The database is not configured for Vercel yet. Use a PostgreSQL/Supabase/Neon DATABASE_URL instead of a local SQLite file."
             : message,
         hint:
           isVercel
-            ? "Vercel មិនរក្សា SQLite/local uploads ជាអចិន្ត្រៃយ៍ទេ។ សូមដាក់ production PostgreSQL DATABASE_URL និង OPEN_ROUTER_API_KEY ក្នុង Vercel Environment Variables។"
+            ? "Vercel does not persist SQLite or local uploads permanently. Add production DATABASE_URL and OPEN_ROUTER_API_KEY in Vercel Environment Variables."
             : undefined
       },
       { status: 500 }
