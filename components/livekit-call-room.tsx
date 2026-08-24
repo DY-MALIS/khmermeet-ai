@@ -13,7 +13,7 @@ import {
 } from "@livekit/components-react";
 import { createLocalAudioTrack, RemoteParticipant, RoomEvent, Track } from "livekit-client";
 import type { LocalAudioTrack } from "livekit-client";
-import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
+import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, ScreenShare, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
@@ -780,12 +780,13 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           {isCameraEnabled ? "Camera" : "Camera off"}
         </button>
         <button
-          className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
+          className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-sky/80 hover:bg-sky")}
           type="button"
           disabled={Boolean(busyControl)}
           onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
+          title="Share your screen with everyone in the video call."
         >
-          <Share2 className="mr-2 inline h-4 w-4" />
+          <ScreenShare className="mr-2 inline h-4 w-4" />
           {isScreenShareEnabled ? "Stop sharing" : "Share screen"}
         </button>
         <button
