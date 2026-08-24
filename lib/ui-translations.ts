@@ -215,7 +215,18 @@ export const uiText = {
     quickShortSummary: "សង្ខេបឲ្យខ្លី",
     quickLongSummary: "សង្ខេបឲ្យវែងជាងនេះ",
     quickDecisions: "បង្ហាញការសម្រេចចិត្ត",
-    quickNextSteps: "បង្ហាញ next steps"
+    quickNextSteps: "បង្ហាញ next steps",
+    translateSummary: "បកប្រែ Summary",
+    translatingSummary: "កំពុងបកប្រែ...",
+    translateSummaryTo: "បកប្រែ summary ទៅ",
+    translatedSummary: "Summary ដែលបានបកប្រែ",
+    summaryTranslateFailed: "មិនអាចបកប្រែ summary បានទេ។",
+    indonesianOutput: "លទ្ធផលជាភាសាឥណ្ឌូណេស៊ី",
+    thaiOutput: "លទ្ធផលជាភាសាថៃ",
+    chineseOutput: "លទ្ធផលជាភាសាចិន",
+    vietnameseOutput: "លទ្ធផលជាភាសាវៀតណាម",
+    otherLanguage: "ភាសាផ្សេងទៀត",
+    customLanguagePlaceholder: "ឧ. Japanese, Korean, French"
   },
   en: {
     appSubtitle: "AI meeting tracker",
@@ -431,7 +442,18 @@ export const uiText = {
     quickShortSummary: "Make it shorter",
     quickLongSummary: "Make it longer",
     quickDecisions: "Show decisions",
-    quickNextSteps: "Show next steps"
+    quickNextSteps: "Show next steps",
+    translateSummary: "Translate summary",
+    translatingSummary: "Translating...",
+    translateSummaryTo: "Translate summary to",
+    translatedSummary: "Translated summary",
+    summaryTranslateFailed: "Could not translate the summary.",
+    indonesianOutput: "Indonesian output",
+    thaiOutput: "Thai output",
+    chineseOutput: "Chinese output",
+    vietnameseOutput: "Vietnamese output",
+    otherLanguage: "Other language",
+    customLanguagePlaceholder: "e.g. Japanese, Korean, French"
   },
   id: {
     appSubtitle: "Pelacak rapat AI",
@@ -647,7 +669,18 @@ export const uiText = {
     quickShortSummary: "Buat lebih pendek",
     quickLongSummary: "Buat lebih panjang",
     quickDecisions: "Tampilkan keputusan",
-    quickNextSteps: "Tampilkan langkah berikutnya"
+    quickNextSteps: "Tampilkan langkah berikutnya",
+    translateSummary: "Terjemahkan ringkasan",
+    translatingSummary: "Menerjemahkan...",
+    translateSummaryTo: "Terjemahkan ringkasan ke",
+    translatedSummary: "Ringkasan terjemahan",
+    summaryTranslateFailed: "Tidak dapat menerjemahkan ringkasan.",
+    indonesianOutput: "Output Indonesia",
+    thaiOutput: "Output Thai",
+    chineseOutput: "Output Mandarin",
+    vietnameseOutput: "Output Vietnam",
+    otherLanguage: "Bahasa lain",
+    customLanguagePlaceholder: "mis. Jepang, Korea, Prancis"
   }
 } satisfies Record<DisplayLanguage, Record<string, string>>;
 

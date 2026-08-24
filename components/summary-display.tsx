@@ -1,3 +1,5 @@
+import { SummaryTranslator } from "@/components/summary-translator";
+
 const khmerSummaryHeadings = [
   "\u179f\u1784\u17d2\u1781\u17c1\u1794\u1794\u17d2\u179a\u1787\u17bb\u17c6",
   "\u1785\u17c6\u178e\u17bb\u1785\u179f\u17c6\u1781\u17b6\u1793\u17cb\u17d7",
@@ -63,7 +65,12 @@ export function SummaryDisplay({ summary }: { summary: string }) {
   });
 
   if (!sections.length) {
-    return <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{summary}</div>;
+    return (
+      <div className="space-y-3">
+        <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{summary}</div>
+        <SummaryTranslator summary={summary} />
+      </div>
+    );
   }
 
   return (
@@ -85,6 +92,7 @@ export function SummaryDisplay({ summary }: { summary: string }) {
           )}
         </div>
       ))}
+      <SummaryTranslator summary={summary} />
     </div>
   );
 }
