@@ -1,7 +1,7 @@
 import { FileText, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { AnalyzeInWorkspaceButton } from "@/components/analyze-in-workspace-button";
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
@@ -17,7 +17,7 @@ export default async function TranscriptsPage() {
   const user = await requireUser();
   const data = await prisma.meeting
     .findMany({
-      where: { createdById: user.id },
+      where: ownerWhere(user),
       include: {
         transcriptSegments: {
           where: { audioUrl: { not: null } },

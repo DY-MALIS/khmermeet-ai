@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
@@ -16,7 +16,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     const limited = await rateLimitResponse(user.id, "ai-generate");
     if (limited) return limited;
     const { id } = await params;
-    const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+    const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
 
     if (!meeting) {
       return NextResponse.json({ error: "No meeting found." }, { status: 404 });

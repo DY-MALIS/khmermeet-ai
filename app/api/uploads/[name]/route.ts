@@ -3,7 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { getLocalAudioPath } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 
 function contentTypeFromName(name: string) {
   return name.endsWith(".webm")
@@ -81,7 +81,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
 
   const user = await requireUser();
   const owned = await prisma.meeting.findFirst({
-    where: { audioUrl: `/api/uploads/${safeName}`, createdById: user.id },
+    where: { audioUrl: `/api/uploads/${safeName}`, ...ownerWhere(user) },
     select: { id: true }
   });
   if (!owned) {

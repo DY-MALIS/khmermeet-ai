@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CalendarClock, Plus, Trash2, UserRound } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { createTask, deleteTask, updateTask } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
@@ -18,7 +18,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const data = await prisma.task
     .findMany({
       where: {
-        meeting: { createdById: user.id },
+        ...meetingOwnerWhere(user),
         status: params.status ? (params.status as TaskStatus) : undefined,
         priority: params.priority ? (params.priority as TaskPriority) : undefined,
         deadline: params.overdue === "true" ? { lt: now } : undefined,
@@ -32,7 +32,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const { tasks, dbUnavailable } = data;
   const meetings = await prisma.meeting
     .findMany({
-      where: { createdById: user.id },
+      where: ownerWhere(user),
       orderBy: { createdAt: "desc" },
       take: 30
     })

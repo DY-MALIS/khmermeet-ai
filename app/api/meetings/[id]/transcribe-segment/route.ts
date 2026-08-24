@@ -1,7 +1,7 @@
 import path from "path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { getEgressSegmentDurationSeconds } from "@/lib/livekit-egress";
 import { downloadSupabaseAudio, normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const limited = await rateLimitResponse(user.id, "ai-transcribe");
     if (limited) return limited;
     const { id } = await params;
-    const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+    const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
 
     if (!meeting) {
       return NextResponse.json({ error: "No meeting found." }, { status: 404 });

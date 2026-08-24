@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, normalizeTranscriptionLanguageMode } from "@/lib/storage";
@@ -28,7 +28,7 @@ function revalidateMeetingViews(meetingId?: string) {
 export async function getMeetingById(id: string) {
   const user = await requireUser();
   return prisma.meeting.findFirst({
-    where: { id, createdById: user.id },
+    where: { id, ...ownerWhere(user) },
     include: {
       tasks: { orderBy: { createdAt: "desc" } },
       decisions: { orderBy: { createdAt: "desc" } },
@@ -52,7 +52,7 @@ export async function updateTranscript(formData: FormData) {
   const transcript = formString(formData, "transcript");
   if (!transcript) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text.");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
   if (!meeting) throw new Error("No meeting found.");
   await prisma.$transaction([
     prisma.task.deleteMany({ where: { meetingId: id } }),
@@ -67,7 +67,7 @@ export async function updateTranscript(formData: FormData) {
 export async function generateSummary(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before summarizing.");
@@ -79,7 +79,7 @@ export async function generateSummary(formData: FormData) {
 export async function extractTasks(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before extracting tasks.");
@@ -111,7 +111,7 @@ export async function createTask(formData: FormData) {
   const meetingId = formString(formData, "meetingId");
   const title = formString(formData, "title");
   const priority = formString(formData, "priority") || "medium";
-  const meeting = await prisma.meeting.findFirst({ where: { id: meetingId, createdById: user.id } });
+  const meeting = await prisma.meeting.findFirst({ where: { id: meetingId, ...ownerWhere(user) } });
   if (!meeting) throw new Error("No meeting found.");
   if (!title) throw new Error("Task title is required.");
   if (!["low", "medium", "high"].includes(priority)) throw new Error("Invalid task priority.");
@@ -131,7 +131,7 @@ export async function createTask(formData: FormData) {
 export async function updateTask(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const task = await prisma.task.findFirst({ where: { id, meeting: { createdById: user.id } } });
+  const task = await prisma.task.findFirst({ where: { id, ...meetingOwnerWhere(user) } });
   if (!task) throw new Error("No task found.");
   const status = formString(formData, "status") as TaskStatus;
   if (!["not_started", "in_progress", "completed"].includes(status)) throw new Error("Invalid task status.");
@@ -151,7 +151,7 @@ export async function updateTask(formData: FormData) {
 export async function deleteTask(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const task = await prisma.task.findFirst({ where: { id, meeting: { createdById: user.id } } });
+  const task = await prisma.task.findFirst({ where: { id, ...meetingOwnerWhere(user) } });
   if (!task) throw new Error("No task found.");
   await prisma.task.delete({ where: { id } });
   revalidateMeetingViews(task.meetingId);
@@ -160,7 +160,7 @@ export async function deleteTask(formData: FormData) {
 export async function deleteMeeting(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+  const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
   if (!meeting) throw new Error("No meeting found.");
   await prisma.meeting.delete({ where: { id } });
   await deleteStoredAudio(meeting.audioUrl).catch(() => undefined);

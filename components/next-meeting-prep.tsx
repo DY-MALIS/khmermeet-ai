@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { CalendarClock, ListTodo, MessagesSquare, ScrollText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { ownerWhere } from "@/lib/session";
 
-export async function NextMeetingPrep({ userId }: { userId: string }) {
+export async function NextMeetingPrep({ user }: { user: { id: string; email?: string | null } }) {
   const lastMeeting = await prisma.meeting
     .findFirst({
-      where: { createdById: userId, transcript: { not: null } },
+      where: { ...ownerWhere(user), transcript: { not: null } },
       orderBy: { createdAt: "desc" },
       include: {
         tasks: { where: { status: { not: "completed" } }, orderBy: { createdAt: "desc" }, take: 6 },

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { forceSingleSpeakerLabel, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (limited) return limited;
     const { id } = await params;
     const meeting = await prisma.meeting.findFirst({
-      where: { id, createdById: user.id },
+      where: { id, ...ownerWhere(user) },
       include: {
         transcriptSegments: {
           where: { audioUrl: { not: null } },

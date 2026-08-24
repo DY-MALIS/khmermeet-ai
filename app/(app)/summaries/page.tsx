@@ -1,6 +1,6 @@
 import { Bot, CheckSquare, Lightbulb, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 import { SummaryDisplay } from "@/components/summary-display";
 import { getServerUiText } from "@/lib/server-ui-text";
@@ -14,7 +14,7 @@ export default async function SummariesPage() {
   const data = await prisma.meeting
     .findMany({
       where: {
-        createdById: user.id,
+        ...ownerWhere(user),
         OR: [{ summary: { not: null } }, { transcript: { not: null } }]
       },
       include: { tasks: true },

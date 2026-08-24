@@ -5,7 +5,7 @@ import { RecordingPanel } from "@/components/recording-panel";
 import { NextMeetingPrep } from "@/components/next-meeting-prep";
 import { deleteMeeting } from "@/lib/actions";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 import { getServerUiText } from "@/lib/server-ui-text";
@@ -18,7 +18,7 @@ export default async function NewMeetingPage() {
   const { text } = await getServerUiText();
   const recordings = await prisma.meeting
     .findMany({
-      where: { createdById: user.id, audioUrl: { not: null } },
+      where: { ...ownerWhere(user), audioUrl: { not: null } },
       orderBy: { createdAt: "desc" },
       take: 8
     })
@@ -32,7 +32,7 @@ export default async function NewMeetingPage() {
         <p className="mt-2 text-slate-500">{text.newMeetingDescription}</p>
         <a className="kh-button-secondary mt-4" href="/meetings/call">{text.openVideoMeeting}</a>
       </div>
-      <NextMeetingPrep userId={user.id} />
+      <NextMeetingPrep user={user} />
       <RecordingPanel />
       <ExternalMediaUploadPanel />
       <section className="kh-card p-5">

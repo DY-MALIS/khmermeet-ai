@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-html-link-for-pages */
 import { CheckCircle2, Clock, FileAudio, Mic, ListTodo, Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 import { PersonalAssistant } from "@/components/personal-assistant";
 import {
@@ -18,14 +18,14 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const data = await Promise.all([
     prisma.meeting.findMany({
-      where: { createdById: user.id },
+      where: ownerWhere(user),
       include: { tasks: true, decisions: true },
       orderBy: { createdAt: "desc" },
       take: 20
     }),
-    prisma.task.findMany({ where: { meeting: { createdById: user.id } }, include: { meeting: true }, orderBy: { createdAt: "desc" } }),
+    prisma.task.findMany({ where: meetingOwnerWhere(user), include: { meeting: true }, orderBy: { createdAt: "desc" } }),
     prisma.meetingTranscriptSegment.findMany({
-      where: { meeting: { createdById: user.id } },
+      where: meetingOwnerWhere(user),
       select: { speakerName: true, speakerIdentity: true, startMs: true, endMs: true },
       take: 5000
     })

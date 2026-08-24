@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     if (mentionsMeeting) {
       const meetings = await prisma.meeting.findMany({
-        where: { createdById: user.id },
+        where: ownerWhere(user),
         orderBy: { createdAt: "desc" },
         take: 5
       });
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
 
     const tasks = await prisma.task.findMany({
       where: {
-        meeting: { createdById: user.id },
+        ...meetingOwnerWhere(user),
         status: { not: "completed" },
         deadline: deadlineFilter
       },

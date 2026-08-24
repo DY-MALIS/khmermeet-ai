@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { generateOpenRouterContent, hasOpenRouterKey } from "@/lib/ai/openrouter";
 import { buildLanguageInstruction } from "@/lib/ai/prompts/languageInstruction";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     if (!command) return NextResponse.json({ error: "Command is required." }, { status: 400 });
 
     const meeting = await prisma.meeting.findFirst({
-      where: { id: meetingId, createdById: user.id },
+      where: { id: meetingId, ...ownerWhere(user) },
       include: { tasks: { orderBy: { createdAt: "desc" } } }
     });
 

@@ -6,6 +6,7 @@ import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { getServerUiText } from "@/lib/server-ui-text";
+import { ownerWhere } from "@/lib/session";
 import type { Prisma } from "@prisma/client";
 
 type MeetingWithTasks = Prisma.MeetingGetPayload<{ include: { tasks: true } }>;
@@ -17,7 +18,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
   const data = await prisma.meeting
     .findMany({
       where: {
-        createdById: user.id,
+        ...ownerWhere(user),
         title: params.q ? { contains: params.q } : undefined,
         createdAt: params.date ? { gte: new Date(params.date), lt: new Date(new Date(params.date).getTime() + 86400000) } : undefined
       },

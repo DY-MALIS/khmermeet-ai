@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseSignedUrl } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +20,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   // (see components/livekit-call-room.tsx), so ownership also has to be
   // checked there, through the segment's parent meeting.
   const [ownedMeeting, ownedSegment] = await Promise.all([
-    prisma.meeting.findFirst({ where: { audioUrl, createdById: user.id }, select: { id: true } }),
+    prisma.meeting.findFirst({ where: { audioUrl, ...ownerWhere(user) }, select: { id: true } }),
     prisma.meetingTranscriptSegment.findFirst({
-      where: { audioUrl, meeting: { createdById: user.id } },
+      where: { audioUrl, ...meetingOwnerWhere(user) },
       select: { id: true }
     })
   ]);

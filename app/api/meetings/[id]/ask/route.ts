@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { ownerWhere, requireUser } from "@/lib/session";
 import { answerMeetingQuestion } from "@/lib/ai/openrouter";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
@@ -19,7 +19,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const limited = await rateLimitResponse(user.id, "ai-generate");
     if (limited) return limited;
     const { id } = await params;
-    const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
+    const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     if (!meeting.transcript?.trim() || !hasUsableTranscript(meeting.transcript)) {
       return NextResponse.json({ error: "Transcript has no clear speech text yet." }, { status: 400 });
