@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, LayoutGrid, Settings, Sparkles, Video } from "lucide-react";
+import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, LayoutGrid, Settings, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/components/ui";
@@ -14,7 +14,6 @@ type NavigationLabelKey =
   | "recorder"
   | "transcript"
   | "aiSummary"
-  | "studio"
   | "tasks"
   | "history"
   | "settings"
@@ -26,7 +25,6 @@ const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarC
   { href: "/meetings/new", labelKey: "recorder", icon: CalendarPlus },
   { href: "/transcripts", labelKey: "transcript", icon: FileText },
   { href: "/summaries", labelKey: "aiSummary", icon: Bot },
-  { href: "/studio", labelKey: "studio", icon: Sparkles },
   { href: "/ai-workspace", labelKey: "aiWorkspace", icon: LayoutGrid },
   { href: "/tasks", labelKey: "tasks", icon: CheckSquare },
   { href: "/meetings", labelKey: "history", icon: History },
@@ -61,8 +59,7 @@ export function SidebarNav() {
           (item.href === "/meetings" &&
             pathname.startsWith("/meetings/") &&
             pathname !== "/meetings/new" &&
-            pathname !== "/meetings/call") ||
-          (item.href === "/studio" && pathname.startsWith("/studio/"));
+            pathname !== "/meetings/call");
         return (
           <Link
             key={item.href}
