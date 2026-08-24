@@ -286,6 +286,9 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
     languageInstruction + knownSpeakerInstruction,
     properNounRule,
+    "Before writing the final transcript, carefully listen through the audio and mentally verify each line against the sound. Prioritize what is actually audible over what seems likely from context.",
+    "If two possible words sound similar, choose the one that is clearly supported by the audio. If neither is clearly supported, write [unclear] for that span instead of guessing.",
+    "Pay extra attention to Khmer names, repeated speaker turns, and mixed Khmer-English phrases. Do not replace one known participant's name with another person's name unless the audio clearly identifies that speaker.",
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
@@ -339,6 +342,7 @@ async function callMultimodalTranscription(
       body: JSON.stringify({
         model,
         temperature: 0,
+        top_p: 0.1,
         messages: [
           {
             role: "user",
@@ -386,7 +390,8 @@ export async function transcribeOpenRouterAudioViaChat(
   language: "km" | "en" | "km-en",
   timeoutMs = 55000,
   speakerNames: string[] = [],
-  singleSpeaker = false
+  singleSpeaker = false,
+  preferAccuracy = false
 ) {
   // Callers size timeoutMs against their own serverless maxDuration budget
   // (e.g. 45s timeout inside a 60s function) - a naive second full-length
@@ -396,7 +401,7 @@ export async function transcribeOpenRouterAudioViaChat(
   // left, if the primary attempt returned quickly (an empty result from a
   // real timeout would already have thrown, not returned empty).
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  const primaryModel = multimodalTranscriptionModel();
+  const primaryModel = preferAccuracy ? TRANSCRIPTION_SAFETY_NET_MODEL : multimodalTranscriptionModel();
   const result = await callMultimodalTranscription(
     primaryModel,
     audio,

@@ -35,6 +35,10 @@ type TranscriptionOptions = {
   // advance they don't fit chirp-3's window, so they skip straight to the
   // fallback instead of paying that cost on every chunk.
   skipPrimaryModel?: boolean;
+  // Use the higher-accuracy multimodal model first. This is slower and more
+  // expensive, but saved/re-transcribe flows happen after recording and are
+  // where users expect the app to listen carefully before replacing text.
+  preferAccuracy?: boolean;
 };
 
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
@@ -457,7 +461,8 @@ export async function transcribeAudio(
       normalizedLanguageMode,
       timeoutMs,
       normalizeSpeakerNames(speakerNames),
-      options.singleSpeaker ?? false
+      options.singleSpeaker ?? false,
+      options.preferAccuracy ?? options.mode !== "live"
     );
     const cleanedFallback = applyKnownSpeakerLabels(
       addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
@@ -520,7 +525,8 @@ export async function transcribeStoredTrackRecording(
     mode: "live",
     timeoutMs,
     singleSpeaker: options.singleSpeaker ?? true,
-    skipPrimaryModel: true
+    skipPrimaryModel: true,
+    preferAccuracy: true
   };
   const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
