@@ -27,21 +27,21 @@ export default async function StudioPage() {
           <Sparkles className="h-4 w-4" />
           Scribe Studio
         </p>
-        <h1 className="text-3xl font-bold text-ink">កែសម្រួល Transcript</h1>
+        <h1 className="text-3xl font-bold text-ink">Edit transcript</h1>
         <p className="mt-2 text-sm text-slate-500">
-          បិទភ្ជាប់ transcript ណាមួយ (មិនចាំបាច់ជាប្រជុំ) ដើម្បី clean, translate, និង summarize ដោយ AI, ព្រមទាំងរក្សា version history។
+          Paste any transcript to clean, translate, and summarize it with AI while keeping version history.
         </p>
       </div>
 
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          មិនអាចភ្ជាប់ production database បានទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase រួចសាកម្តងទៀត។
+          Could not connect to the production database. Check DATABASE_URL and Supabase, then try again.
         </div>
       ) : null}
 
       <form action={createStudioProject} className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_auto]">
-        <input className="kh-input" name="title" placeholder="ចំណងជើងគម្រោង ឧ. ការសម្ភាសន៍អតិថិជន" required />
-        <ActionButton>បង្កើតគម្រោងថ្មី</ActionButton>
+        <input className="kh-input" name="title" placeholder="Project title, e.g. Customer interview" required />
+        <ActionButton>Create new project</ActionButton>
       </form>
 
       {!dbUnavailable && projects.length ? (
@@ -70,7 +70,7 @@ export default async function StudioPage() {
           ))}
         </div>
       ) : !dbUnavailable ? (
-        <EmptyState title="មិនទាន់មានគម្រោង" description="បង្កើតគម្រោងថ្មីខាងលើ ដើម្បីចាប់ផ្តើមកែសម្រួល transcript ដោយ AI។" />
+        <EmptyState title="No projects yet" description="Create a new project above to start editing transcripts with AI." />
       ) : null}
     </div>
   );

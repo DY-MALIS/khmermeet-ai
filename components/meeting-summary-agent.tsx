@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
+import { useUiText } from "@/components/localized-text";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: string; hasTranscript: boolean }) {
   const router = useRouter();
+  const text = useUiText();
   const [command, setCommand] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
@@ -30,7 +32,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
       setAnswer(data.answer ?? "");
       if (data.updatedSummary) router.refresh();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Summary Agent មិនអាចដំណើរការ។");
+      setError(error instanceof Error ? error.message : text.summaryAgentFailed);
     } finally {
       setLoading(false);
     }
@@ -48,7 +50,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
             <Sparkles className="h-3.5 w-3.5" />
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            បញ្ជាឲ្យ Agent សង្ខេបខ្លី/វែង, ជ្រើសសេចក្តីសម្រេចចិត្ត, next steps, ឬកែសង្ខេបឲ្យអានងាយ។
+            {text.summaryAgentDescription}
           </p>
         </div>
       </div>
@@ -61,17 +63,17 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
           onKeyDown={(event) => {
             if (event.key === "Enter") void runAgent();
           }}
-          placeholder={hasTranscript ? "ឧទាហរណ៍៖ សង្ខេបឲ្យខ្លី និងបង្ហាញ next steps" : "ត្រូវមាន transcript មុនពេលប្រើ Agent"}
+          placeholder={hasTranscript ? text.summaryAgentPlaceholder : text.summaryAgentNeedsTranscript}
           disabled={!hasTranscript || loading}
         />
         <button className="kh-button-primary shrink-0" type="button" onClick={() => void runAgent()} disabled={!hasTranscript || loading || !command.trim()}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          បញ្ជា
+          {text.command}
         </button>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {["សង្ខេបឲ្យខ្លី", "សង្ខេបឲ្យវែងជាងនេះ", "បង្ហាញការសម្រេចចិត្ត", "បង្ហាញ next steps"].map((quickCommand) => (
+        {[text.quickShortSummary, text.quickLongSummary, text.quickDecisions, text.quickNextSteps].map((quickCommand) => (
           <button
             className="rounded-full border border-leaf/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-leaf/10 hover:text-leaf disabled:opacity-50"
             disabled={!hasTranscript || loading}
@@ -90,7 +92,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
       {error ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</div> : null}
       {answer ? (
         <div className="mt-3 rounded-lg bg-white p-3">
-          <p className="mb-2 text-xs font-bold uppercase text-leaf">Agent answer</p>
+          <p className="mb-2 text-xs font-bold uppercase text-leaf">{text.agentAnswer}</p>
           <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{answer}</div>
         </div>
       ) : null}

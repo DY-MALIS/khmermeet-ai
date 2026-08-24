@@ -7,22 +7,22 @@ import { hasEmailSeparatorTypo } from "@/lib/auth-input";
 import { PasswordInput } from "@/components/password-input";
 
 const errorMessages: Record<string, string> = {
-  CredentialsSignin: "ចូលប្រើមិនបានទេ។ បើ email នេះធ្លាប់ចូលប្រើរួច សូមពិនិត្យ password ឬចុច ភ្លេចពាក្យសម្ងាត់។"
+  CredentialsSignin: "Could not sign in. If this email already has an account, check the password or click Forgot password."
 };
 
 const registerErrorMessages: Record<string, string> = {
-  invalid: "សូមបញ្ចូលឈ្មោះ, អ៊ីមែល, និងពាក្យសម្ងាត់យ៉ាងតិច 6 តួ។",
-  exists: "អ៊ីមែលនេះមានគណនីរួចហើយ។ សូមចូលប្រើវិញ ឬប្រើអ៊ីមែលផ្សេង។",
-  unknown: "មិនអាចបង្កើតគណនីបានទេ។ សូមសាកល្បងម្តងទៀត។"
+  invalid: "Enter a name, email, and password with at least 6 characters.",
+  exists: "This email already has an account. Sign in or use another email.",
+  unknown: "Could not create the account. Please try again."
 };
 
 const forgotPasswordErrorMessages: Record<string, string> = {
-  invalid: "សូមបញ្ចូល email។",
-  ratelimit: "ស្នើសុំកំណត់ password ថ្មីច្រើនដងពេក។ សូមរង់ចាំ ១ម៉ោង រួចសាកល្បងម្តងទៀត។"
+  invalid: "Enter an email.",
+  ratelimit: "Too many password reset requests. Wait 1 hour, then try again."
 };
 
 const resetPasswordErrorMessages: Record<string, string> = {
-  short: "ពាក្យសម្ងាត់ត្រូវការយ៉ាងតិច ៦ តួអក្សរ។"
+  short: "Password must be at least 6 characters."
 };
 
 // searchParams are read server-side by each (auth) page and passed down as
@@ -80,33 +80,33 @@ export function LoginForm({
       <input type="hidden" name="csrfToken" value={csrfToken} />
       <input type="hidden" name="callbackUrl" value={callbackUrl} />
       {justRegistered ? (
-        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">បានបង្កើតគណនីរួចរាល់! សូមចូលប្រើដោយប្រើអ៊ីមែល និងពាក្យសម្ងាត់ដែលទើបបង្កើត។</p>
+        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">Account created. Sign in with the email and password you just created.</p>
       ) : null}
       {justReset ? (
-        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">ពាក្យសម្ងាត់ត្រូវបានកំណត់ថ្មីរួចរាល់! សូមចូលប្រើដោយពាក្យសម្ងាត់ថ្មី។</p>
+        <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">Password reset complete. Sign in with your new password.</p>
       ) : null}
       {csrfFailed ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          មិនអាចត្រៀមទំព័រ login បានទេ (មិនអាចទាញ security token)។ សូម refresh ទំព័រ ហើយសាកល្បងម្ដងទៀត។
+          Could not prepare the login page because the security token could not be loaded. Refresh the page and try again.
         </p>
       ) : null}
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {errorMessages[errorCode] ?? `ចូលប្រើមិនបានទេ។ លម្អិត technical: ${errorCode}`}
+          {errorMessages[errorCode] ?? `Could not sign in. Technical detail: ${errorCode}`}
         </p>
       ) : null}
       {emailSeparatorTypo ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលចូលប្រើ។
+          The email has a / or \ before @. We will clean it before signing in.
         </p>
       ) : null}
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
-      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់" required />
+      <input className="kh-input" name="email" type="email" placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      <PasswordInput name="password" placeholder="Password" required />
       <button className="kh-button-primary w-full" type="submit" disabled={!csrfToken}>
-        {csrfToken ? "ចូលប្រើ" : "កំពុងត្រៀម..."}
+        {csrfToken ? "Sign in" : "Preparing..."}
       </button>
       <p className="text-center text-sm text-slate-500">
-        <Link className="font-semibold text-leaf" href="/forgot-password">ភ្លេចពាក្យសម្ងាត់?</Link>
+        <Link className="font-semibold text-leaf" href="/forgot-password">Forgot password?</Link>
       </p>
     </form>
   );
@@ -120,20 +120,20 @@ export function RegisterForm({ errorCode }: { errorCode: string | null }) {
     <form method="POST" action="/api/register" className="space-y-4">
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {registerErrorMessages[errorCode] ?? `មិនអាចបង្កើតគណនីបានទេ។ លម្អិត technical: ${errorCode}`}
+          {registerErrorMessages[errorCode] ?? `Could not create the account. Technical detail: ${errorCode}`}
         </p>
       ) : null}
-      <input className="kh-input" name="name" placeholder="ឈ្មោះ" required />
+      <input className="kh-input" name="name" placeholder="Name" required />
       {emailSeparatorTypo ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលបង្កើតគណនី។
+          The email has a / or \ before @. We will clean it before creating the account.
         </p>
       ) : null}
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
-      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់យ៉ាងតិច 6 តួ" minLength={6} required />
-      <button className="kh-button-primary w-full">បង្កើតគណនី</button>
+      <input className="kh-input" name="email" type="email" placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      <PasswordInput name="password" placeholder="Password, at least 6 characters" minLength={6} required />
+      <button className="kh-button-primary w-full">Create account</button>
       <p className="text-center text-sm text-slate-500">
-        មានគណនីរួចហើយ? <Link className="font-semibold text-leaf" href="/login">ចូលប្រើ</Link>
+        Already have an account? <Link className="font-semibold text-leaf" href="/login">Sign in</Link>
       </p>
     </form>
   );
@@ -147,30 +147,30 @@ export function ForgotPasswordForm({ sent, errorCode }: { sent: boolean; errorCo
     return (
       <div className="space-y-4 text-center">
         <p className="rounded-lg bg-leaf/10 p-4 text-sm text-leaf">
-          បើ email នេះមានគណនីចុះឈ្មោះ យើងបានផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅហើយ។ សូមពិនិត្យ inbox (និង spam/junk folder)។
+          If this email has a registered account, we sent a password reset link. Check your inbox and spam or junk folder.
         </p>
-        <Link className="font-semibold text-leaf" href="/login">ត្រឡប់ទៅចូលប្រើ</Link>
+        <Link className="font-semibold text-leaf" href="/login">Back to sign in</Link>
       </div>
     );
   }
 
   return (
     <form method="POST" action="/api/forgot-password" className="space-y-4">
-      <p className="text-sm text-slate-500">វាយ email របស់អ្នក យើងនឹងផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មីទៅ inbox របស់អ្នក។</p>
+      <p className="text-sm text-slate-500">Enter your email and we will send a password reset link to your inbox.</p>
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {forgotPasswordErrorMessages[errorCode] ?? `មិនអាចផ្ញើបានទេ។ សូមសាកល្បងម្តងទៀត។ (${errorCode})`}
+          {forgotPasswordErrorMessages[errorCode] ?? `Could not send the email. Please try again. (${errorCode})`}
         </p>
       ) : null}
       {emailSeparatorTypo ? (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          Email មានសញ្ញា / ឬ \ នៅមុន @។ យើងនឹងសម្អាតវា មុនពេលស្វែងរកគណនី។
+          The email has a / or \ before @. We will clean it before looking up the account.
         </p>
       ) : null}
-      <input className="kh-input" name="email" type="email" placeholder="អ៊ីមែល" value={email} onChange={(event) => setEmail(event.target.value)} required />
-      <button className="kh-button-primary w-full" type="submit">ផ្ញើ link កំណត់ពាក្យសម្ងាត់ថ្មី</button>
+      <input className="kh-input" name="email" type="email" placeholder="Email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+      <button className="kh-button-primary w-full" type="submit">Send password reset link</button>
       <p className="text-center text-sm text-slate-500">
-        <Link className="font-semibold text-leaf" href="/login">ត្រឡប់ទៅចូលប្រើ</Link>
+        <Link className="font-semibold text-leaf" href="/login">Back to sign in</Link>
       </p>
     </form>
   );
@@ -182,11 +182,11 @@ export function ResetPasswordForm({ token, errorCode }: { token: string; errorCo
       <input type="hidden" name="token" value={token} />
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {resetPasswordErrorMessages[errorCode] ?? `មិនអាចកំណត់ពាក្យសម្ងាត់ថ្មីបានទេ។ (${errorCode})`}
+          {resetPasswordErrorMessages[errorCode] ?? `Could not reset the password. (${errorCode})`}
         </p>
       ) : null}
-      <PasswordInput name="password" placeholder="ពាក្យសម្ងាត់ថ្មីយ៉ាងតិច 6 តួ" minLength={6} required />
-      <button className="kh-button-primary w-full" type="submit">កំណត់ពាក្យសម្ងាត់ថ្មី</button>
+      <PasswordInput name="password" placeholder="New password, at least 6 characters" minLength={6} required />
+      <button className="kh-button-primary w-full" type="submit">Reset password</button>
     </form>
   );
 }

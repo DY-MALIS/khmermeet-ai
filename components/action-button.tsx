@@ -16,7 +16,7 @@ export function ActionButton({
   const { pending } = useFormStatus();
   return (
     <button className={className} disabled={pending || disabled} form={form}>
-      {pending ? "កំពុងដំណើរការ..." : children}
+      {pending ? "Working..." : children}
     </button>
   );
 }

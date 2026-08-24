@@ -9,12 +9,14 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 import { applyKnownSpeakerLabels } from "@/lib/storage";
+import { getServerUiText } from "@/lib/server-ui-text";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function TranscriptsPage() {
   const user = await requireUser();
+  const { text } = await getServerUiText();
   const data = await prisma.meeting
     .findMany({
       where: ownerWhere(user),
@@ -35,12 +37,12 @@ export default async function TranscriptsPage() {
     <div className="space-y-6">
       <div>
         <p className="text-sm font-semibold text-leaf">Transcript</p>
-        <h1 className="text-3xl font-bold text-ink">អត្ថបទប្រជុំ</h1>
-        <p className="mt-2 text-sm text-slate-500">មើលអក្សរដែលបានបម្លែងពីសំឡេង ឬបានបញ្ចូលដោយ Meeting Agent។</p>
+        <h1 className="text-3xl font-bold text-ink">{text.transcriptTitle}</h1>
+        <p className="mt-2 text-sm text-slate-500">{text.transcriptDescription}</p>
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          មិនអាចភ្ជាប់ production database បានទេ។ Transcript មិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase។
+          {text.transcriptDbUnavailable}
         </div>
       ) : null}
       {!dbUnavailable && meetings.length ? (
@@ -86,7 +88,7 @@ export default async function TranscriptsPage() {
                 {audioItems.length ? (
                   <div className="mb-4 space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Recorded audio
+                      {text.recordedAudio}
                     </p>
                     {audioItems.map((item) => (
                       <RecordedAudioPlayer
@@ -98,9 +100,9 @@ export default async function TranscriptsPage() {
                   </div>
                 ) : (
                   <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
-                    <p className="font-semibold">Recorded audio មិនមានសម្រាប់ record នេះ</p>
+                    <p className="font-semibold">{text.noRecordedAudioForRecord}</p>
                     <p className="mt-1 text-slate-600">
-                      Record នេះមានតែ transcript ប៉ុណ្ណោះ។ សម្រាប់ការថតថ្មីៗ KhmerMeet នឹងរក្សា audio player ពេលមាន file សំឡេងត្រូវបាន upload ឬថតជោគជ័យ។
+                      {text.noRecordedAudioForRecordDescription}
                     </p>
                   </div>
                 )}
@@ -111,9 +113,9 @@ export default async function TranscriptsPage() {
                   </div>
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-600">
-                    <p className="font-semibold text-ink">មិនទាន់មាន transcript ពិត</p>
+                    <p className="font-semibold text-ink">{text.noRealTranscript}</p>
                   <p className="mt-1">
-                    Audio ត្រូវបានរក្សាទុក ប៉ុន្តែអត្ថបទដែលបានបម្លែងមិនមានពាក្យនិយាយច្បាស់ ឬមានតែលេខ timestamp។ បើក meeting detail ដើម្បីបញ្ចូល transcript ពិត។
+                    {text.noRealTranscriptDescription}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {meeting.audioUrl || meeting.transcriptSegments.some((segment) => segment.audioUrl) ? (
@@ -130,7 +132,7 @@ export default async function TranscriptsPage() {
           })}
         </div>
       ) : !dbUnavailable ? (
-        <EmptyState title="មិនទាន់មានអត្ថបទប្រជុំ" description="ថតប្រជុំ ឬប្រើ Meeting Agent ដើម្បីបង្កើត transcript។ ប្រសិនបើមានតែ audio វានឹងបង្ហាញនៅទីនេះដែរ។" />
+        <EmptyState title={text.noTranscriptsYet} description={text.noTranscriptsYetDescription} />
       ) : null}
     </div>
   );

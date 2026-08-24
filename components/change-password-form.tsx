@@ -24,14 +24,14 @@ export function ChangePasswordForm() {
       });
       const data = await readJsonResponse<{ ok?: boolean; error?: string }>(response);
       if (!response.ok || !data.ok) {
-        setError(data.error ?? "មិនអាចប្តូរពាក្យសម្ងាត់បានទេ។");
+        setError(data.error ?? "Could not change the password.");
         return;
       }
       setSuccess(true);
       setCurrentPassword("");
       setNewPassword("");
     } catch {
-      setError("មិនអាចប្តូរពាក្យសម្ងាត់បានទេ (ប្រហែលជាបញ្ហាបណ្តាញ)។ សូមសាកល្បងម្ដងទៀត។");
+      setError("Could not change the password. This may be a network issue. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -39,23 +39,23 @@ export function ChangePasswordForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      {success ? <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">ប្តូរពាក្យសម្ងាត់ជោគជ័យ!</p> : null}
+      {success ? <p className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">Password changed successfully.</p> : null}
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <PasswordInput
-        placeholder="ពាក្យសម្ងាត់បច្ចុប្បន្ន"
+        placeholder="Current password"
         value={currentPassword}
         onChange={(event) => setCurrentPassword(event.target.value)}
         required
       />
       <PasswordInput
-        placeholder="ពាក្យសម្ងាត់ថ្មី (យ៉ាងតិច 6 តួ)"
+        placeholder="New password, at least 6 characters"
         minLength={6}
         value={newPassword}
         onChange={(event) => setNewPassword(event.target.value)}
         required
       />
       <button className="kh-button-primary" disabled={loading} type="submit">
-        {loading ? "កំពុងប្តូរ..." : "ប្តូរពាក្យសម្ងាត់"}
+        {loading ? "Changing..." : "Change password"}
       </button>
     </form>
   );

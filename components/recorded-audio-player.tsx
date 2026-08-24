@@ -15,7 +15,7 @@ export function RecordedAudioPlayer({ src, label, audioId }: { src: string; labe
         preload="metadata"
         src={src}
         onCanPlay={() => setError("")}
-        onError={() => setError("Audio file មិនអាចចាក់ក្នុង player បានទេ។ សូមបើក audio ដោយផ្ទាល់។")}
+        onError={() => setError("The audio file cannot play in the player. Open the audio directly.")}
       />
       {error ? (
         <p className="text-xs text-red-600">

@@ -179,12 +179,12 @@ export function ExportButton({
       // primary language.
       const isEnglish = language === "en";
       const labels = {
-        summary: isEnglish ? "Summary" : "សង្ខេប (Summary)",
-        summaryPage: isEnglish ? "Summary" : "សង្ខេប",
-        tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
-        tasksPage: isEnglish ? "Tasks" : "កិច្ចការ",
-        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។",
-        outline: isEnglish ? "Outline" : "មាតិកា (Outline)"
+        summary: isEnglish ? "Summary" : "Summary",
+        summaryPage: isEnglish ? "Summary" : "Summary",
+        tasks: isEnglish ? "Tasks" : "Tasks",
+        tasksPage: isEnglish ? "Tasks" : "Tasks",
+        noSummary: isEnglish ? "No summary available." : "No summary available.",
+        outline: isEnglish ? "Outline" : "Outline"
       };
 
       // The AI summary text already comes back structured as

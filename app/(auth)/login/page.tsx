@@ -11,8 +11,8 @@ export default async function LoginPage({
     <main className="grid min-h-screen place-items-center px-4">
       <section className="kh-card w-full max-w-md p-6">
         <div className="mb-6 text-center">
-          <p className="text-2xl font-bold text-ink">ចូលប្រើគណនី</p>
-          <p className="mt-2 text-sm text-slate-500">ចូលប្រើ KhmerMeet AI ជាមួយគណនីរបស់អ្នក</p>
+          <p className="text-2xl font-bold text-ink">Sign in</p>
+          <p className="mt-2 text-sm text-slate-500">Sign in to KhmerMeet AI with your account.</p>
         </div>
         <LoginForm
           justRegistered={params.registered === "1"}

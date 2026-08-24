@@ -26,9 +26,9 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
         >
           <section style={{ maxWidth: 560, border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "center" }}>
             <p style={{ color: "#dc2626", fontWeight: 700, margin: 0 }}>Application error</p>
-            <h1 style={{ margin: "8px 0 0", fontSize: 28 }}>មានបញ្ហាក្នុងការបើក App</h1>
+            <h1 style={{ margin: "8px 0 0", fontSize: 28 }}>Something went wrong loading the app</h1>
             <p style={{ color: "#475569", lineHeight: 1.7 }}>
-              សូមចុច Try again។ បើនៅតែមានបញ្ហា សូមពិនិត្យ Runtime Logs នៅ Vercel។
+              Click Try again. If the problem continues, check Runtime Logs in Vercel.
             </p>
             {error.digest ? <p style={{ color: "#94a3b8", fontSize: 12 }}>Digest: {error.digest}</p> : null}
             <button

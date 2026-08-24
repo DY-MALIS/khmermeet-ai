@@ -17,9 +17,9 @@ export default function AppError({ error, reset }: AppErrorProps) {
     <main className="grid min-h-screen place-items-center px-4 py-10">
       <section className="kh-card w-full max-w-xl p-6 text-center">
         <p className="text-sm font-semibold text-red-600">Application error</p>
-        <h1 className="mt-2 text-2xl font-bold text-ink">មានបញ្ហាក្នុងការបើកទំព័រ</h1>
+        <h1 className="mt-2 text-2xl font-bold text-ink">Something went wrong loading this page</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          សូមសាកល្បងម្តងទៀត។ បើនៅតែមានបញ្ហា សូមពិនិត្យ Vercel Runtime Logs ឬត្រឡប់ទៅ Dashboard។
+          Please try again. If the problem continues, check Vercel Runtime Logs or return to the dashboard.
         </p>
         {error.digest ? <p className="mt-3 text-xs text-slate-400">Digest: {error.digest}</p> : null}
         <div className="mt-6 flex flex-wrap justify-center gap-3">

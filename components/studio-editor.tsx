@@ -37,21 +37,21 @@ const targetLanguageOptions = [
 const stageLabels: Record<StageKind, { title: string; helper: string; button: string; success: string }> = {
   clean: {
     title: "Clean transcript",
-    helper: "កែសម្រួល punctuation, filler words, និង format ដោយមិនប្តូរខ្លឹមសារ។",
+    helper: "Fix punctuation, filler words, and formatting without changing the meaning.",
     button: "Clean transcript",
-    success: "បាន clean transcript រួចរាល់។"
+    success: "Transcript cleaned."
   },
   translate: {
     title: "Translate",
-    helper: "បកប្រែពី clean transcript (ឬ raw ប្រសិនបើមិនទាន់ clean) ទៅជាភាសាគោលដៅ។",
+    helper: "Translate from the clean transcript, or raw transcript if it has not been cleaned yet, into the target language.",
     button: "Translate",
-    success: "បានបកប្រែរួចរាល់។"
+    success: "Translation complete."
   },
   summarize: {
     title: "Summarize",
-    helper: "បង្កើត summary: Overview, Key points, Decisions, Action items, Next steps។",
+    helper: "Create a summary with overview, key points, decisions, action items, and next steps.",
     button: "Summarize",
-    success: "បានបង្កើត summary រួចរាល់។"
+    success: "Summary created."
   }
 };
 
@@ -112,7 +112,7 @@ export function StudioEditor({ project }: { project: StudioProject }) {
     try {
       await persistProject({ rawTranscript });
       await addVersion("raw", rawTranscript);
-      setMessage("បានរក្សាទុក transcript ដើម។");
+      setMessage("Raw transcript saved.");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save transcript.");
@@ -125,7 +125,7 @@ export function StudioEditor({ project }: { project: StudioProject }) {
     const sourceText =
       action === "clean" ? rawTranscript : action === "translate" ? cleanTranscript || rawTranscript : cleanTranscript || translatedText || rawTranscript;
     if (!sourceText.trim()) {
-      setError("សូមបញ្ចូល transcript ជាមុនសិន។");
+      setError("Enter a transcript first.");
       return;
     }
     setRunningAction(action);
@@ -157,13 +157,13 @@ export function StudioEditor({ project }: { project: StudioProject }) {
     else if (version.kind === "translate") setTranslatedText(version.content);
     else if (version.kind === "summarize") setSummaryResult(version.content);
     else setRawTranscript(version.content);
-    setMessage("បានទាញយក version ចាស់មកវិញ - ចុច Save ដើម្បីរក្សាទុក។");
+    setMessage("Previous version restored. Click Save to keep it.");
   }
 
   async function copyText(value: string) {
     if (!value.trim()) return;
     await navigator.clipboard.writeText(value);
-    setMessage("បាន copy លទ្ធផល។");
+    setMessage("Result copied.");
   }
 
   return (
@@ -178,11 +178,11 @@ export function StudioEditor({ project }: { project: StudioProject }) {
             className="kh-input min-h-72 bg-white leading-7"
             value={rawTranscript}
             onChange={(event) => setRawTranscript(event.target.value)}
-            placeholder="បិទភ្ជាប់ ឬវាយ transcript នៅទីនេះ..."
+            placeholder="Paste or type the transcript here..."
           />
           <button className="kh-button-primary" type="button" disabled={savingRaw} onClick={() => void saveRawTranscript()}>
             {savingRaw ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            រក្សាទុក raw transcript
+            Save raw transcript
           </button>
         </section>
 
@@ -208,7 +208,7 @@ export function StudioEditor({ project }: { project: StudioProject }) {
               ))}
             </select>
           </label>
-          <p className="text-xs leading-5 text-slate-500">Target language អនុវត្តលើ Translate និង Summarize។</p>
+          <p className="text-xs leading-5 text-slate-500">Target language applies to Translate and Summarize.</p>
         </section>
       </div>
 
@@ -241,7 +241,7 @@ export function StudioEditor({ project }: { project: StudioProject }) {
               className="kh-input min-h-48 bg-white leading-7"
               value={stageValue[stage]}
               onChange={(event) => stageSetter[stage](event.target.value)}
-              placeholder="លទ្ធផលនឹងបង្ហាញនៅទីនេះ..."
+              placeholder="Results will appear here..."
             />
             <button
               className="kh-button-secondary w-full justify-center"
@@ -279,7 +279,7 @@ export function StudioEditor({ project }: { project: StudioProject }) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-slate-500">មិនទាន់មាន version ណាមួយទេ។ រាល់ការ save ឬ AI action នឹងបង្កើត version ថ្មី។</p>
+          <p className="text-sm text-slate-500">No versions yet. Each save or AI action will create a new version.</p>
         )}
       </section>
     </div>

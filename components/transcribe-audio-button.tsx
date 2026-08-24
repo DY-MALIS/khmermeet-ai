@@ -3,6 +3,7 @@
 import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useUiText } from "@/components/localized-text";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
@@ -21,6 +22,7 @@ export function TranscribeAudioButton({
   onTranscribed
 }: TranscribeAudioButtonProps) {
   const router = useRouter();
+  const text = useUiText();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -47,14 +49,10 @@ export function TranscribeAudioButton({
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
       const nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
       if (!nextTranscript) {
-        throw new Error("Transcription finished, but no speech text was returned. Please try again with clearer audio.");
+        throw new Error(text.transcribeMissingSpeech);
       }
       onTranscribed?.(nextTranscript);
-      setMessage(
-        hasTranscript
-          ? "Transcript replaced below. Refreshing meeting data..."
-          : "Transcription saved below. Refreshing meeting data..."
-      );
+      setMessage(hasTranscript ? text.transcriptReplaced : text.transcriptSaved);
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not transcribe audio.");
@@ -67,12 +65,10 @@ export function TranscribeAudioButton({
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
       <div>
         <p className="font-semibold text-ink">
-          {hasTranscript ? "ស្តាប់សំឡេងឡើងវិញ (Re-transcribe audio)" : "ថតបំលែងសំឡេងទៅជាអត្ថបទ (Transcribe audio)"}
+          {hasTranscript ? text.reTranscribeAudioTitle : text.transcribeAudioTitle}
         </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          {hasTranscript
-            ? "AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្តងទៀត ហើយជំនួស transcript បច្ចុប្បន្នទាំងស្រុង។ ប្រើពេល transcript មានពាក្យខុសពីអ្វីដែលបាននិយាយ។"
-            : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
+          {hasTranscript ? text.reTranscribeAudioDescription : text.transcribeAudioDescription}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
           Khmer mode outputs Khmer only. English mode outputs English only. Use mixed mode only when you want to keep both Khmer and English as spoken.
@@ -85,12 +81,12 @@ export function TranscribeAudioButton({
       </div>
 
       <label className="block space-y-1">
-        <span className="text-xs font-semibold text-slate-600">Speaker names</span>
+        <span className="text-xs font-semibold text-slate-600">{text.speakerNames}</span>
         <textarea
           className="kh-input min-h-20 text-sm"
           value={speakerNamesInput}
           onChange={(event) => setSpeakerNamesInput(event.target.value)}
-          placeholder={"ដារ៉ា\nសុខា\nចាន់ថា"}
+          placeholder={text.speakerNamesPlaceholder}
           disabled={pending}
         />
       </label>
@@ -102,9 +98,9 @@ export function TranscribeAudioButton({
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km">លទ្ធផលជាភាសាខ្មែរ</option>
-          <option value="en">លទ្ធផលជាភាសាអង់គ្លេស</option>
-          <option value="km-en">រក្សាទាំងខ្មែរ និងអង់គ្លេស</option>
+          <option value="km">{text.khmerOutput}</option>
+          <option value="en">{text.englishOutput}</option>
+          <option value="km-en">{text.mixedOutput}</option>
         </select>
         <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

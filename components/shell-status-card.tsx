@@ -1,10 +1,8 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { useDisplayLanguage } from "@/lib/display-language";
 
 export function ShellStatusCard() {
-  const [language] = useDisplayLanguage();
   const { data: session } = useSession();
 
   return (
@@ -16,7 +14,7 @@ export function ShellStatusCard() {
         onClick={() => void signOut({ callbackUrl: "/login" })}
         className="mt-2 text-xs font-semibold text-leaf hover:underline"
       >
-        {language === "en" ? "Sign out" : "ចាកចេញ"}
+        Sign out
       </button>
     </div>
   );

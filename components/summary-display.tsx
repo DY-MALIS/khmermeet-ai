@@ -1,9 +1,9 @@
 const khmerSummaryHeadings = [
-  "សង្ខេបប្រជុំ",
-  "ចំណុចសំខាន់ៗ",
-  "ការសម្រេចចិត្ត",
-  "បញ្ហាដែលបានលើកឡើង",
-  "ជំហានបន្ទាប់"
+  "\u179f\u1784\u17d2\u1781\u17c1\u1794\u1794\u17d2\u179a\u1787\u17bb\u17c6",
+  "\u1785\u17c6\u178e\u17bb\u1785\u179f\u17c6\u1781\u17b6\u1793\u17cb\u17d7",
+  "\u1780\u17b6\u179a\u179f\u1798\u17d2\u179a\u17c1\u1785\u1785\u17b7\u178f\u17d2\u178f",
+  "\u1794\u1789\u17d2\u17a0\u17b6\u178a\u17c2\u179b\u1794\u17b6\u1793\u179b\u17be\u1780\u17a1\u17be\u1784",
+  "\u1787\u17c6\u17a0\u17b6\u1793\u1794\u1793\u17d2\u1791\u17b6\u1794\u17cb"
 ];
 
 const englishSummaryHeadings = [
@@ -31,7 +31,7 @@ function isSummaryHeading(line: string) {
 }
 
 function defaultSummaryTitle(summary: string) {
-  return /[\u1780-\u17ff]/.test(summary) ? "សង្ខេបប្រជុំ" : "Meeting overview";
+  return /[\u1780-\u17ff]/.test(summary) ? "Meeting overview" : "Meeting overview";
 }
 
 export function SummaryDisplay({ summary }: { summary: string }) {
@@ -81,7 +81,7 @@ export function SummaryDisplay({ summary }: { summary: string }) {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-slate-500">មិនមានព័ត៌មានច្បាស់លាស់</p>
+            <p className="text-sm text-slate-500">No clear information available.</p>
           )}
         </div>
       ))}
