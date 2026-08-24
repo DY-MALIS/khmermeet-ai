@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, Loader2, Send, Sparkles } from "lucide-react";
 import { useUiText } from "@/components/localized-text";
+import { SummaryTranslator } from "@/components/summary-translator";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: string; hasTranscript: boolean }) {
@@ -94,6 +95,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
         <div className="mt-3 rounded-lg bg-white p-3">
           <p className="mb-2 text-xs font-bold uppercase text-leaf">{text.agentAnswer}</p>
           <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{answer}</div>
+          <SummaryTranslator summary={answer} />
         </div>
       ) : null}
     </div>
