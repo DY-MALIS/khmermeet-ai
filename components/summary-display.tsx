@@ -10,21 +10,36 @@ const khmerSummaryHeadings = [
 
 const englishSummaryHeadings = [
   "Meeting overview",
+  "Key points",
   "Key discussion points",
+  "Important details",
   "Decisions made",
+  "Decisions",
   "Problems mentioned",
-  "Next steps"
+  "Problems raised",
+  "Next steps",
+  "Content type",
+  "Main idea",
+  "Takeaways",
+  "Actions or next steps"
 ];
 
 const summaryHeadings = [...khmerSummaryHeadings, ...englishSummaryHeadings];
+const canonicalHeadingLabels: Record<string, string> = {
+  "key discussion points": "Key points",
+  "decisions made": "Decisions",
+  "problems mentioned": "Problems raised"
+};
 
 function normalizeSummaryHeading(line: string) {
-  return line
+  const cleaned = line
     .replace(/\*\*/g, "")
+    .replace(/^[-•*]\s*/, "")
     .replace(/^\d+\.\s*/, "")
     .replace(/^#+\s*/, "")
     .replace(/:$/, "")
     .trim();
+  return canonicalHeadingLabels[cleaned.toLowerCase()] ?? cleaned;
 }
 
 function isSummaryHeading(line: string) {
