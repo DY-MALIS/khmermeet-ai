@@ -11,8 +11,8 @@ import {
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
-import { createLocalAudioTrack, RoomEvent, Track } from "livekit-client";
-import type { LocalAudioTrack, RemoteParticipant } from "livekit-client";
+import { createLocalAudioTrack, RemoteParticipant, RoomEvent, Track } from "livekit-client";
+import type { LocalAudioTrack } from "livekit-client";
 import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -70,7 +70,9 @@ function readInviteToken() {
 
 function readSavedParticipantName() {
   if (typeof window === "undefined") return "Local User";
-  return localStorage.getItem("khmermeet-participant-name")?.trim() || "Local User";
+  const savedName = localStorage.getItem("khmermeet-participant-name")?.trim() || "";
+  if (new URLSearchParams(window.location.search).has("invite")) return savedName;
+  return savedName || "Local User";
 }
 
 function syncMeetingParams({ setRoom, setTitle, setIsInviteGuest }: MeetingParamSetters) {
@@ -97,6 +99,8 @@ function getRecorderMimeType() {
 function getLongRecordingOptions(mimeType: string) {
   return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
 }
+
+const maxParticipants = 100;
 
 const callAudioConstraints: MediaTrackConstraints = {
   echoCancellation: true,
@@ -216,12 +220,29 @@ export function LiveKitCallRoom() {
     return title.trim() || `Video call ${room}`;
   }
 
-  function inviteLink(nextRoom = room) {
+  function inviteLink(nextRoom = room, inviteToken = tokenPayload?.inviteToken) {
     const url = new URL(`${window.location.origin}/meetings/call`);
     url.searchParams.set("room", nextRoom);
     if (title.trim()) url.searchParams.set("title", title.trim());
-    if (tokenPayload?.inviteToken) url.searchParams.set("invite", tokenPayload.inviteToken);
+    if (inviteToken) url.searchParams.set("invite", inviteToken);
     return url.toString();
+  }
+
+  async function getInviteUrl(nextRoom = room) {
+    const roomToInvite = nextRoom.trim().toUpperCase() || createRoomCode();
+    setRoom(roomToInvite);
+    localStorage.setItem("khmermeet-meeting-room", roomToInvite);
+    if (title.trim()) localStorage.setItem("khmermeet-meeting-title", title.trim());
+    if (tokenPayload?.inviteToken) return inviteLink(roomToInvite, tokenPayload.inviteToken);
+
+    const response = await fetch("/api/livekit-invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room: roomToInvite })
+    });
+    const data = await readJsonResponse<{ inviteToken?: string; error?: string }>(response);
+    if (!response.ok || !data.inviteToken) throw new Error(data.error ?? "Could not create invite link.");
+    return inviteLink(roomToInvite, data.inviteToken);
   }
 
   async function joinRoom() {
@@ -236,6 +257,9 @@ export function LiveKitCallRoom() {
       localStorage.setItem("khmermeet-meeting-room", roomToJoin);
       if (titleToSave) localStorage.setItem("khmermeet-meeting-title", titleToSave);
       const participantName = name.trim() || readSavedParticipantName();
+      if (isInviteGuest && !participantName.trim()) {
+        throw new Error("សូមបំពេញឈ្មោះរបស់អ្នក មុនចូលរួម call ដើម្បីឱ្យ transcript ចាប់ឈ្មោះបានត្រឹមត្រូវ។");
+      }
       localStorage.setItem("khmermeet-participant-name", participantName);
       const media = await checkMediaDeviceSupport(cameraOn, microphoneOn);
       const nextCameraOn = cameraOn && media.hasCamera;
@@ -261,7 +285,7 @@ export function LiveKitCallRoom() {
       setCallMedia({ audio: nextMicrophoneOn, video: nextCameraOn });
       setTokenPayload(data);
       if (notices.length) setNotice(notices.join(" "));
-      window.history.replaceState(null, "", inviteLink(data.room));
+      window.history.replaceState(null, "", inviteLink(data.room, data.inviteToken));
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចូល HD video call បានទេ។");
     } finally {
@@ -270,13 +294,17 @@ export function LiveKitCallRoom() {
   }
 
   async function copyInvite() {
-    const url = inviteLink();
-    await navigator.clipboard?.writeText(url).catch(() => undefined);
-    setNotice("បានចម្លង Invite link ។ អ្នកចូលរួមគ្រាន់តែវាយឈ្មោះ រួចចូលរួមបាន។");
+    try {
+      const url = await getInviteUrl();
+      await navigator.clipboard?.writeText(url).catch(() => undefined);
+      setNotice("បានចម្លង Invite link ។ អ្នកចូលរួមបើក link បំពេញឈ្មោះ រួចចូល call បានភ្លាមៗ ដោយមិនបាច់ email/password។");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "មិនអាចចម្លង invite link បានទេ។");
+    }
   }
 
   async function shareInvite() {
-    const url = inviteLink();
+    const url = await getInviteUrl();
     if (navigator.share) {
       await navigator.share({
         title: meetingTitle(),
@@ -416,7 +444,7 @@ export function LiveKitCallRoom() {
             បើក microphone ពេលចូល
           </label>
         </div>
-        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady}>
+        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady || (isInviteGuest && !name.trim())}>
           {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
           {paramsReady ? "Join HD Video Call" : "Preparing call..."}
         </button>
@@ -892,10 +920,8 @@ function LiveKitMeetingAgent({
   const [localBackupUrl, setLocalBackupUrl] = useState("");
   const [, setAnnouncedSpeakerNames] = useState<Record<string, string>>({});
   const announcedSpeakerNamesRef = useRef<Record<string, string>>({});
-  // One-click mixed recording: the host browser records one mixed audio file
-  // containing the local microphone plus every subscribed remote microphone.
-  // This keeps the saved meeting to one audio player while still letting the
-  // transcript use the participant names saved at recording start.
+  // Legacy browser-mixed recording state. The visible call recorder now uses
+  // LiveKit Egress so each participant's microphone is captured separately.
   const [serverRecording, setServerRecording] = useState<{ meetingId: string; recordingStartedAt: number } | null>(null);
   const [egressRecording, setEgressRecording] = useState<EgressRecording | null>(null);
   // True on participants who received the start signal but weren't the one
@@ -919,6 +945,7 @@ function LiveKitMeetingAgent({
     serverRecordingRef.current = serverRecording;
   }, [serverRecording]);
   const egressRecordingRef = useRef(egressRecording);
+  const pendingEgressTrackIdentitiesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     egressRecordingRef.current = egressRecording;
   }, [egressRecording]);
@@ -960,12 +987,9 @@ function LiveKitMeetingAgent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, serverRecording, egressRecording]);
 
-  // buildMixedAudioStream() only wires up whatever microphone tracks are
-  // already live when recording starts. Without this, anyone who joins (or
-  // whose mic finishes subscribing) after that moment is silently missing
-  // from the mixed recording even though they're audible live via
-  // RoomAudioRenderer - this keeps the mix in sync with the room for both
-  // Start Agent and Server Rec's primary mixed-audio recording.
+  // Legacy browser-mixed recording only wires up whatever microphone tracks
+  // are already live when recording starts. Keep it in sync for the hidden
+  // compatibility recorder while new call recordings use LiveKit Egress.
   useEffect(() => {
     if (!recording && !serverRecording) return;
     connectAvailableAudioTracks();
@@ -1034,8 +1058,8 @@ function LiveKitMeetingAgent({
     };
   }, [participantName, room]);
 
-  // Older deployments used data-channel start/stop signals for per-participant
-  // recording. New recordings intentionally save one mixed audio file only.
+  // Participants announce display names over the data channel so egress track
+  // jobs and transcript labels can use human-readable names.
   useEffect(() => {
     function handleData(payload: Uint8Array) {
       let message: LiveRecordingSignal;
@@ -1068,28 +1092,8 @@ function LiveKitMeetingAgent({
 
   useEffect(() => {
     function handleConnected(participant: RemoteParticipant) {
-      const currentEgress = egressRecordingRef.current;
-      if (currentEgress) {
-        fetch("/api/livekit-egress/track/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            room: room.name,
-            identity: participant.identity,
-            name: participant.name || participant.identity,
-            recordingBase: currentEgress.recordingBase,
-            recordingStartedAt: currentEgress.recordingStartedAt
-          })
-        })
-          .then((response) => (response.ok ? readJsonResponse<EgressTrackJob & { skipped?: boolean }>(response) : null))
-          .then((job) => {
-            if (!job || job.skipped || !job.egressId) return;
-            setEgressRecording((current) => {
-              if (!current || current.trackJobs.some((existing) => existing.egressId === job.egressId)) return current;
-              return { ...current, trackJobs: [...current.trackJobs, job] };
-            });
-          })
-          .catch(() => undefined);
+      if (egressRecordingRef.current) {
+        void startEgressForParticipant(participant);
         return;
       }
 
@@ -1107,6 +1111,57 @@ function LiveKitMeetingAgent({
     room.on(RoomEvent.ParticipantConnected, handleConnected);
     return () => {
       room.off(RoomEvent.ParticipantConnected, handleConnected);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room]);
+
+  function startEgressForParticipant(participant: RemoteParticipant) {
+    const currentEgress = egressRecordingRef.current;
+    const identity = participant.identity;
+    if (!currentEgress) return Promise.resolve();
+    if (currentEgress.trackJobs.some((job) => job.identity === identity)) return Promise.resolve();
+    if (pendingEgressTrackIdentitiesRef.current.has(identity)) return Promise.resolve();
+    pendingEgressTrackIdentitiesRef.current.add(identity);
+
+    return fetch("/api/livekit-egress/track/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        room: room.name,
+        identity,
+        name: participant.name || announcedSpeakerNamesRef.current[identity] || cleanParticipantIdentity(identity),
+        recordingBase: currentEgress.recordingBase,
+        recordingStartedAt: currentEgress.recordingStartedAt
+      })
+    })
+      .then((response) => (response.ok ? readJsonResponse<EgressTrackJob & { skipped?: boolean }>(response) : null))
+      .then((job) => {
+        if (!job || job.skipped || !job.egressId) return;
+        setEgressRecording((current) => {
+          if (!current || current.trackJobs.some((existing) => existing.identity === job.identity || existing.egressId === job.egressId)) {
+            return current;
+          }
+          return { ...current, trackJobs: [...current.trackJobs, job] };
+        });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        pendingEgressTrackIdentitiesRef.current.delete(identity);
+      });
+  }
+
+  useEffect(() => {
+    function handleTrackMayBeReady(...args: unknown[]) {
+      const participant = args.find((value): value is RemoteParticipant => value instanceof RemoteParticipant);
+      if (!participant || !egressRecordingRef.current) return;
+      window.setTimeout(() => void startEgressForParticipant(participant), 500);
+    }
+
+    room.on(RoomEvent.TrackPublished, handleTrackMayBeReady);
+    room.on(RoomEvent.TrackUnmuted, handleTrackMayBeReady);
+    return () => {
+      room.off(RoomEvent.TrackPublished, handleTrackMayBeReady);
+      room.off(RoomEvent.TrackUnmuted, handleTrackMayBeReady);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room]);
@@ -1309,20 +1364,6 @@ function LiveKitMeetingAgent({
       recorderRef.current.stop();
     }
     setRecording(false);
-  }
-
-  // The single saved recording: one mixed audio file for the whole call.
-  function startServerMixedBackup() {
-    const mixedStream = buildMixedAudioStream();
-    const mimeType = getRecorderMimeType();
-    const recorder = new MediaRecorder(mixedStream, getLongRecordingOptions(mimeType));
-    serverMixedChunksRef.current = [];
-    serverMixedMimeTypeRef.current = mimeType || recorder.mimeType || "audio/webm";
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) serverMixedChunksRef.current.push(event.data);
-    };
-    recorder.start(5000);
-    serverMixedRecorderRef.current = recorder;
   }
 
   function participantCount() {
@@ -1577,8 +1618,8 @@ function LiveKitMeetingAgent({
           `មិនទាន់រក្សា​ឈ្មោះអ្នកចូលរួមបានគ្រប់គ្នាទេ (${speakers.length}/${expectedParticipants})។ សូមឲ្យអ្នកចូលរួមទាំងអស់នៅក្នុង call រួចរង់ចាំ 2-3 វិនាទី បន្ទាប់មកចុចថតម្ដងទៀត។`
         );
       }
-      if (expectedParticipants > 100) {
-        throw new Error(`Call នេះមានអ្នកចូលរួម ${expectedParticipants} នាក់។ KhmerMeet កំណត់ការរក្សាឈ្មោះ/ថតសម្រាប់អតិបរមា 100 នាក់ ដើម្បីឲ្យ transcript label ត្រឹមត្រូវ។`);
+      if (expectedParticipants > maxParticipants) {
+        throw new Error(`Call នេះមានអ្នកចូលរួម ${expectedParticipants} នាក់។ KhmerMeet កំណត់ការរក្សាឈ្មោះ/ថតសម្រាប់អតិបរមា ${maxParticipants} នាក់ ដើម្បីឲ្យ transcript label ត្រឹមត្រូវ។`);
       }
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
@@ -1590,13 +1631,31 @@ function LiveKitMeetingAgent({
         throw new Error(data.error ?? "ការថត Server មិនជោគជ័យទេ។");
       }
 
-      const recordingStartedAt = Date.now();
-      startServerMixedBackup();
       setSavedMeetingId(data.meetingId);
-      setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setSeconds(0);
-      setNotice(
-        `បានចាប់ផ្តើមថត audio តែមួយ។ Audio នេះកំពុងចាប់សំឡេងពីអ្នកចូលរួម ${getCurrentSpeakerNames().length} នាក់ក្នុង call។`
+
+      const egressResponse = await fetch("/api/livekit-egress/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: recordingRoom, title: meetingTitle })
+      });
+      const egressData = await readJsonResponse<(EgressRecording & { error?: string; hint?: string; missingVariables?: string[] })>(egressResponse);
+
+      if (egressResponse.ok && egressData.fileEgressId) {
+        setEgressRecording({ ...egressData, meetingId: data.meetingId });
+        setNotice(
+          `Server Rec បានចាប់ផ្តើមលើ LiveKit។ អាចគាំទ្រអ្នកចូលរួមដល់ ${maxParticipants} នាក់; audio មេ និង participant tracks កំពុងថតលើ server។`
+        );
+        return;
+      }
+
+      await fetch(`/api/meetings/${data.meetingId}/merge-transcript`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ duration: 0 })
+      }).catch(() => undefined);
+      throw new Error(
+        `${egressData.error ?? "Server Rec មិនទាន់ដំណើរការ។"} សូម configure LiveKit Egress/Supabase Storage មុន។ KhmerMeet មិនប្រើ browser fallback សម្រាប់ call recording ទៀតទេ ព្រោះវាចាប់សំឡេងអ្នកចូលរួមច្រើនមិនបានល្អ។`
       );
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម recording បានទេ។");
@@ -1867,9 +1926,9 @@ function LiveKitMeetingAgent({
             <Bot className="h-4 w-4" />
             Meeting Agent
           </p>
-          <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
+          <h2 className="mt-1 text-xl font-bold text-ink">Server recording សម្រាប់ប្រជុំធំ</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ចុចថតម្តង ដើម្បីរក្សាទុក audio តែមួយដែលមានសំឡេងអ្នកចូលរួមគ្រប់គ្នា ហើយបំលែងជា transcript មានឈ្មោះអ្នកនិយាយ។
+            ចុចថតម្តង ដើម្បីឱ្យ LiveKit ថតនៅលើ server សម្រាប់ក្រុមធំ។ KhmerMeet ប្រើតែ Server Rec សម្រាប់ call recording ដើម្បីចាប់សំឡេងអ្នកចូលរួមច្រើនឲ្យបានល្អ។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
@@ -1899,7 +1958,7 @@ function LiveKitMeetingAgent({
               type="button"
               onClick={startServerRecording}
               disabled={saving || recording}
-              title="Start one mixed recording for everyone speaking in the call."
+              title="Start server recording for this call."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               ចាប់ផ្តើមថត

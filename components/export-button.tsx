@@ -339,7 +339,7 @@ export function ExportButton({
       const chapterName = (sectionLabel: string) => `${title} — ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
       const contentTop = 1.55;
-      const contentHeight = 3.6;
+      const contentHeight = 3.35;
 
       // Outline slide - numbered pill badges per row instead of a flat
       // "01  text" string, so it reads like a modern deck's table of contents.
@@ -387,29 +387,68 @@ export function ExportButton({
         });
       }
 
+      function bulletLineUnits(text: string) {
+        // Khmer text is often written without spaces, so PowerPoint can wrap
+        // it less predictably than Latin text. Estimate conservatively and
+        // paginate before the textbox reaches the footer.
+        return Math.max(1, Math.ceil(text.length / 54));
+      }
+
+      function paginateBullets(bullets: string[]) {
+        const pages: string[][] = [];
+        let page: string[] = [];
+        let units = 0;
+        const maxUnits = 8;
+        const maxItems = 4;
+
+        for (const bullet of bullets.length ? bullets : [labels.noSummary]) {
+          const nextUnits = bulletLineUnits(bullet) + 0.45;
+          if (page.length && (page.length >= maxItems || units + nextUnits > maxUnits)) {
+            pages.push(page);
+            page = [];
+            units = 0;
+          }
+          page.push(bullet);
+          units += nextUnits;
+        }
+
+        if (page.length) pages.push(page);
+        return pages.length ? pages : [[labels.noSummary]];
+      }
+
       let chapter = 0;
-      const bulletsPerSlide = 7;
       for (const section of sections) {
         chapter += 1;
-        const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
+        const bulletPages = paginateBullets(section.bullets);
+        const pageCount = bulletPages.length;
         for (let p = 0; p < pageCount; p += 1) {
           const slide = pptx.addSlide();
           const sectionLabel = pageCount > 1 ? `(${p + 1}/${pageCount})` : "";
           addHeader(slide, chapterName(section.title), chapter, sectionLabel || labels.summaryPage);
-          const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
+          const pageBullets = bulletPages[p];
           slide.addText(
             (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
               text: line,
               options: {
-                bullet: { indent: 20, characterCode: "25AA", color: BRAND.saffron },
+                bullet: { indent: 16, hanging: 4, characterCode: "25AA", color: BRAND.saffron },
                 color: BRAND.ink,
                 fontFace: KHMER_FONT,
                 breakLine: true,
-                paraSpaceAfter: 14,
-                lineSpacing: 25
+                paraSpaceAfter: 8,
+                lineSpacingMultiple: 0.9
               }
             })),
-            { x: 0.55, y: contentTop, w: 8.9, h: contentHeight, fontSize: 17, valign: "top" }
+            {
+              x: 0.55,
+              y: contentTop,
+              w: 8.9,
+              h: contentHeight,
+              fontSize: 14.5,
+              fit: "shrink",
+              margin: 0.04,
+              breakLine: false,
+              valign: "top"
+            }
           );
         }
       }

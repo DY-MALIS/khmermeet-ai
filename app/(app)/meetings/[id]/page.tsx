@@ -13,6 +13,8 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { applyKnownSpeakerLabels, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
+import { getServerUiText } from "@/lib/server-ui-text";
+import type { UiTextKey } from "@/lib/ui-translations";
 
 function meetingLoadErrorMessage(error: unknown) {
   const code =
@@ -37,6 +39,7 @@ function meetingLoadErrorMessage(error: unknown) {
 
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const { text } = await getServerUiText();
   const meetingResult = await getMeetingById(id)
     .then((meeting) => ({ meeting, error: "" }))
     .catch((error) => ({
@@ -49,19 +52,19 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     return (
       <div className="mx-auto max-w-3xl space-y-5">
         <div>
-          <p className="text-sm font-semibold text-leaf">Meeting detail</p>
-          <h1 className="text-3xl font-bold text-ink">Cannot open meeting</h1>
+          <p className="text-sm font-semibold text-leaf">{text.meetingDetail}</p>
+          <h1 className="text-3xl font-bold text-ink">{text.cannotOpenMeeting}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            The app is still running, but the meeting record could not be loaded from the database.
+            {text.meetingLoadFailed}
           </p>
         </div>
         <ErrorState message={error} />
         <div className="flex flex-wrap gap-2">
           <Link className="kh-button-primary" href="/meetings">
-            Back to history
+            {text.backToHistory}
           </Link>
           <Link className="kh-button-secondary" href="/dashboard">
-            Back to dashboard
+            {text.backToDashboard}
           </Link>
         </div>
       </div>
@@ -89,7 +92,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-sm font-semibold text-leaf">Meeting detail</p>
+          <p className="text-sm font-semibold text-leaf">{text.meetingDetail}</p>
           <h1 className="text-3xl font-bold text-ink">{meeting.title}</h1>
           <p className="mt-2 text-sm text-slate-500">
             {meeting.createdAt.toLocaleString()} - {formatMeetingDuration(meeting.duration)}
@@ -98,11 +101,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         <div className="flex flex-wrap gap-2">
           <form action={generateSummary}>
             <input type="hidden" name="id" value={meeting.id} />
-            <ActionButton>Regenerate summary</ActionButton>
+            <ActionButton>{text.regenerateSummary}</ActionButton>
           </form>
           <form action={extractTasks}>
             <input type="hidden" name="id" value={meeting.id} />
-            <ActionButton className="kh-button-secondary">Extract tasks again</ActionButton>
+            <ActionButton className="kh-button-secondary">{text.extractTasksAgain}</ActionButton>
           </form>
         </div>
       </div>
@@ -117,7 +120,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         // player for) - one player per person instead.
         <div className="kh-card space-y-3 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            សំឡេងដែលបានថត (តាមអ្នកនិយាយម្នាក់ៗ)
+            {text.recordedAudioBySpeaker}
           </p>
           {meeting.transcriptSegments.map((segment) => (
             <RecordedAudioPlayer
@@ -129,9 +132,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         </div>
       ) : (
         <div className="kh-card border-saffron/30 bg-saffron/10 p-4 text-sm leading-6 text-ink">
-          <p className="font-semibold">Recorded audio មិនមានសម្រាប់ meeting នេះ</p>
+          <p className="font-semibold">{text.noRecordedAudio}</p>
           <p className="mt-1 text-slate-600">
-            Meeting នេះមាន transcript ប៉ុណ្ណោះ។ Audio player នឹងបង្ហាញនៅទីនេះ នៅពេល meeting មាន audio file ឬ participant recording ដែលបានរក្សាទុក។
+            {text.noRecordedAudioDescription}
           </p>
         </div>
       )}
@@ -147,13 +150,13 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         />
 
         <section className="kh-card p-5">
-          <h2 className="mb-4 text-lg font-bold">AI Summary</h2>
+          <h2 className="mb-4 text-lg font-bold">{text.aiSummaryTitle}</h2>
           {summaryText ? (
             <SummaryDisplay summary={summaryText} />
           ) : (
             <EmptyState
-              title="No summary yet"
-              description="Add a real transcript first, then use Summary Agent or Regenerate summary."
+              title={text.noSummaryYet}
+              description={text.noSummaryYet}
             />
           )}
           <MeetingSummaryAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
@@ -161,7 +164,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">រក្សាទុកជាឯកសារ (Export)</h2>
+        <h2 className="mb-4 text-lg font-bold">{text.exportFile}</h2>
         <ExportButton
           title={meeting.title}
           transcript={transcriptText}
@@ -174,24 +177,24 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       {meeting.tasks.length ? (
         <section className="kh-card overflow-hidden">
           <div className="border-b border-slate-100 p-5">
-            <h2 className="text-lg font-bold">Transcript tools</h2>
+            <h2 className="text-lg font-bold">{text.transcriptTools}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Create action tasks from the transcript.
+              {text.transcriptToolsDescription}
             </p>
           </div>
           <div className="space-y-5 p-5">
             <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
               <div className="border-b border-slate-100 px-4 py-3">
-                <h3 className="font-bold text-ink">Action tasks</h3>
+                <h3 className="font-bold text-ink">{text.actionTasks}</h3>
               </div>
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">Task</th>
-                    <th className="px-4 py-3">Assignee</th>
-                    <th className="px-4 py-3">Deadline</th>
-                    <th className="px-4 py-3">Priority</th>
-                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">{text.task}</th>
+                    <th className="px-4 py-3">{text.assignee}</th>
+                    <th className="px-4 py-3">{text.deadline}</th>
+                    <th className="px-4 py-3">{text.priority}</th>
+                    <th className="px-4 py-3">{text.status}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -207,7 +210,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                         <span className="kh-badge bg-sky/10 text-sky">{task.priority}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`kh-badge ${taskStatusBadgeTone(task)}`}>{taskStatusLabel(task)}</span>
+                        <span className={`kh-badge ${taskStatusBadgeTone(task)}`}>{taskStatusLabel(task, text)}</span>
                       </td>
                     </tr>
                   ))}
@@ -223,11 +226,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   );
 }
 
-function taskStatusLabel(task: { status: string; deadline: Date | null }) {
-  if (task.status !== "completed" && task.deadline && task.deadline < new Date()) return "Overdue";
-  if (task.status === "completed") return "Done";
-  if (task.status === "in_progress") return "In Progress";
-  return "Not started";
+function taskStatusLabel(task: { status: string; deadline: Date | null }, text: Record<UiTextKey, string>) {
+  if (task.status !== "completed" && task.deadline && task.deadline < new Date()) return text.overdue;
+  if (task.status === "completed") return text.done;
+  if (task.status === "in_progress") return text.inProgress;
+  return text.notStarted;
 }
 
 function taskStatusBadgeTone(task: { status: string; deadline: Date | null }) {

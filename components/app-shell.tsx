@@ -3,6 +3,7 @@
 import { SidebarNav } from "@/components/sidebar-nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ShellStatusCard } from "@/components/shell-status-card";
+import { LocalizedText } from "@/components/localized-text";
 import { Menu } from "lucide-react";
 import Link from "next/link";
 
@@ -16,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="grid h-9 w-9 place-items-center rounded-lg bg-leaf text-base font-black text-white">K</div>
               <div>
                 <p className="font-bold text-ink">KhmerMeet AI</p>
-                <p className="text-xs text-slate-500">AI meeting tracker</p>
+                <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
               </div>
             </Link>
             <span className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 text-slate-600">
@@ -38,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="grid h-10 w-10 place-items-center rounded-lg bg-leaf text-lg font-black text-white">K</div>
             <div>
               <p className="font-bold text-ink">KhmerMeet AI</p>
-              <p className="text-xs text-slate-500">AI meeting tracker</p>
+              <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
             </div>
           </Link>
         </div>

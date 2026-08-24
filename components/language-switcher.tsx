@@ -1,6 +1,7 @@
 "use client";
 
 import { Languages } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/components/ui";
 import { languageStorageKey, readDisplayLanguage, useDisplayLanguage } from "@/lib/display-language";
 import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/navigation-labels";
@@ -8,11 +9,13 @@ import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/nav
 export { languageStorageKey, readDisplayLanguage };
 
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
+  const router = useRouter();
   const [language, setLanguage] = useDisplayLanguage();
   const labels = navigationLabels[language];
 
   function changeLanguage(next: DisplayLanguage) {
     setLanguage(next);
+    router.refresh();
   }
 
   return (
@@ -21,8 +24,8 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
         <Languages className="h-4 w-4" />
         {labels.language}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {(["km", "en"] as const).map((item) => (
+      <div className="grid grid-cols-3 gap-2">
+        {(["km", "en", "id"] as const).map((item) => (
           <button
             key={item}
             type="button"

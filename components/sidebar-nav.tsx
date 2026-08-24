@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/components/ui";
 import { useDisplayLanguage } from "@/lib/display-language";
 import { navigationLabels } from "@/lib/navigation-labels";
+import { uiText } from "@/lib/ui-translations";
 
 type NavigationLabelKey =
   | "dashboard"
@@ -37,6 +38,7 @@ export function SidebarNav() {
   const router = useRouter();
   const [language] = useDisplayLanguage();
   const labels = navigationLabels[language];
+  const text = uiText[language];
 
   function navigate(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
     if (pathname === href) return;
@@ -44,7 +46,7 @@ export function SidebarNav() {
 
     const hasActiveCall = sessionStorage.getItem("khmermeet-active-call") === "true";
     if (hasActiveCall) {
-      window.alert("កំពុងស្ថិតក្នុង video call។ ដើម្បីកុំឲ្យ call ចេញ សូមរក្សាទុកទំព័រ call នេះ ហើយប្រើ Mini video ឬ browser tab ថ្មីសម្រាប់ការងារផ្សេង។ ចុច ចាកចេញ ក្នុង call មុន ប្រសិនបើចង់បិទ call។");
+      window.alert(text.activeCallWarning);
       return;
     }
 

@@ -130,15 +130,31 @@ export function forceSingleSpeakerLabel(transcript: string, speakerName: string)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const withoutGenericSpeaker = line
-        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
-        .trim();
-      const withoutMatchingName = withoutGenericSpeaker.replace(new RegExp(`^${escapeRegExp(name)}\\s*:\\s*`, "i"), "").trim();
-      return withoutMatchingName ? `${name}: ${withoutMatchingName}` : "";
+      const spokenText = stripLeadingSpeakerGuess(line, name);
+      return spokenText ? `${name}: ${spokenText}` : "";
     })
     .filter(Boolean)
     .join("\n")
     .trim();
+}
+
+function stripLeadingSpeakerGuess(line: string, speakerName?: string) {
+  let text = line.trim();
+  const name = speakerName?.trim();
+  if (name) {
+    text = text.replace(new RegExp(`^${escapeRegExp(name)}\\s*[:：]\\s*`, "i"), "").trim();
+  }
+  text = text
+    .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
+    .trim();
+
+  // A per-participant recording has exactly one real speaker: the owner of
+  // that microphone track. If the model guessed another name label inside
+  // the track, discard that guessed label and keep only the spoken text.
+  if (!/^\d{1,2}:\d{2}(?::\d{2})?\b/.test(text)) {
+    text = text.replace(/^[^:\n：]{1,60}\s*[:：]\s+/, "").trim();
+  }
+  return text;
 }
 
 function escapeRegExp(value: string) {
@@ -450,7 +466,9 @@ export async function transcribeAudio(
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
   }
 
-  if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
+  if (!cleanedTranscript || options.mode === "live" || process.env.OPEN_ROUTER_REFINE_TRANSCRIPT !== "true") {
+    return cleanedTranscript;
+  }
   assertUsableSavedTranscript(cleanedTranscript);
 
   const refinedTranscript = await refineOpenRouterTranscript(
@@ -629,11 +647,10 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const withoutGenericSpeaker = line
-        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
-        .trim();
-      return /^[^:\n]{1,60}:\s/.test(withoutGenericSpeaker) ? withoutGenericSpeaker : `${speakerName}: ${withoutGenericSpeaker}`;
+      const spokenText = stripLeadingSpeakerGuess(line, speakerName);
+      return spokenText ? `${speakerName}: ${spokenText}` : "";
     })
+    .filter(Boolean)
     .join("\n");
 }
 

@@ -8,11 +8,13 @@ export const languageChangeEvent = "khmermeet-language-change";
 
 export function readDisplayLanguage(): DisplayLanguage {
   if (typeof window === "undefined") return "km";
-  return window.localStorage.getItem(languageStorageKey) === "en" ? "en" : "km";
+  const language = window.localStorage.getItem(languageStorageKey);
+  return language === "en" || language === "id" ? language : "km";
 }
 
 export function writeDisplayLanguage(language: DisplayLanguage) {
   window.localStorage.setItem(languageStorageKey, language);
+  document.cookie = `${languageStorageKey}=${language}; path=/; max-age=31536000; samesite=lax`;
   document.documentElement.lang = language;
   window.dispatchEvent(new CustomEvent<DisplayLanguage>(languageChangeEvent, { detail: language }));
 }
@@ -45,4 +47,3 @@ export function useDisplayLanguage() {
 
   return [language, writeDisplayLanguage] as const;
 }
-

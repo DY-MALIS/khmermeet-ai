@@ -1,8 +1,9 @@
-export type DisplayLanguage = "km" | "en";
+export type DisplayLanguage = "km" | "en" | "id";
 
 export const languageNames: Record<DisplayLanguage, string> = {
   km: "ខ្មែរ",
-  en: "English"
+  en: "English",
+  id: "Indonesia"
 };
 
 export const navigationLabels = {
@@ -33,5 +34,19 @@ export const navigationLabels = {
     language: "Language",
     localMode: "Local MVP mode",
     aiWorkspace: "AI Workspace"
+  },
+  id: {
+    dashboard: "Dasbor",
+    meetings: "Rapat",
+    recorder: "Perekam",
+    transcript: "Transkrip",
+    aiSummary: "Ringkasan AI",
+    studio: "Scribe Studio",
+    tasks: "Tugas",
+    history: "Riwayat",
+    settings: "Pengaturan",
+    language: "Bahasa",
+    localMode: "Mode MVP lokal",
+    aiWorkspace: "Ruang Kerja AI"
   }
 } satisfies Record<DisplayLanguage, Record<string, string>>;

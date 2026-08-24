@@ -66,6 +66,10 @@ Demo login after seeding:
 - Email: `demo@khmermeet.ai`
 - Password: `password123`
 
+## Production Deployment
+
+Before giving KhmerMeet AI to real users, follow the deployment checklist in [`DEPLOYMENT.md`](./DEPLOYMENT.md). It lists the required Vercel environment variables, PostgreSQL setup, Supabase Storage bucket, OpenRouter checks, and LiveKit configuration.
+
 ## Notes
 
 The MVP stores audio files under `uploads/` locally and serves them through `/api/uploads/[name]`. On Vercel, local uploads are temporary, so production should move this adapter in `lib/storage.ts` to S3 or Supabase Storage.

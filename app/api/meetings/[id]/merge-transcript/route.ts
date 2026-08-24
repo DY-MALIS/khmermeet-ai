@@ -101,28 +101,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           .filter(Boolean)
       )
     ];
-    const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
-    const shouldUseMixedAudio =
-      Boolean(meeting.audioUrl) &&
-      (usableSegmentCount < 2 || (speakerNames.length > 1 && usableSegmentCount < speakerNames.length));
-
-    const rawTranscript =
-      shouldUseMixedAudio && meeting.audioUrl
-        ? await transcribeStoredTrackRecording(
-            meeting.audioUrl,
-            normalizeTranscriptionLanguageMode(meeting.language),
-            180000,
-            { speakerNames, singleSpeaker: false }
-          ).catch(() =>
-            segments
-              .filter((segment) => segment.text.trim())
-              .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
-              .join("\n")
-          )
-        : segments
-            .filter((segment) => segment.text.trim())
-            .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
-            .join("\n");
+    const rawTranscript = segments
+      .filter((segment) => segment.text.trim())
+      .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+      .join("\n");
     let transcript = rawTranscript;
     if (hasUsableTranscript(rawTranscript)) {
       // Each segment was transcribed live (mode:"live"), which skips the
@@ -131,7 +113,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // words. One refine pass now that all segments are merged, same as
       // recording-panel.tsx's finalize-transcript step.
       const languageMode = normalizeTranscriptionLanguageMode(meeting.language);
-      transcript = await refineSavedTranscript(rawTranscript, languageMode, speakerNames).catch(() => rawTranscript);
+      transcript =
+        process.env.OPEN_ROUTER_REFINE_TRANSCRIPT === "true"
+          ? await refineSavedTranscript(rawTranscript, languageMode, speakerNames).catch(() => rawTranscript)
+          : rawTranscript;
       // Don't overwrite `language` here: segments were already transcribed
       // using the language mode the user picked when recording, set on the
       // meeting when it was created. Forcing "km-en" here discarded that

@@ -268,9 +268,9 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name. For example, if the audio says \"ABA PayWay\", the transcript must say \"ABA PayWay\" in full, never a shortened \"ABA Pay\". These names can blend together at normal speaking speed - listen closely for every syllable of a name rather than assuming it ends where a natural word would.";
   const languageInstruction =
     language === "km"
-      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
+      ? "Transcribe Khmer speech in Khmer script. Preserve English words, product names, URLs, acronyms, numbers, and any other clearly spoken non-Khmer terms exactly as spoken instead of translating or paraphrasing them. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it."
       : language === "en"
-        ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
+        ? "Transcribe English speech in English. Preserve Khmer words, names, product names, URLs, acronyms, numbers, and any other clearly spoken non-English terms as spoken instead of translating or paraphrasing them."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
   // Speaker names used to only reach the later text-only refine pass, which
   // can't re-listen to the audio - by then a misheard name (confirmed live:
