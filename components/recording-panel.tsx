@@ -6,6 +6,7 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { useUiText } from "@/components/localized-text";
 
 // noiseSuppression + autoGainControl on: on-screen diagnostics proved (not
 // guessed) that MediaRecorder does not faithfully capture what's sent to a
@@ -40,11 +41,16 @@ function formatTime(seconds: number) {
   return h ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
-function defaultMeetingTitle() {
-  return `ការថតសំឡេង ${new Date().toLocaleString()}`;
+function defaultMeetingTitle(prefix: string) {
+  return `${prefix} ${new Date().toLocaleString()}`;
+}
+
+function fillTemplate(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? ""));
 }
 
 export function RecordingPanel() {
+  const text = useUiText();
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
@@ -386,11 +392,11 @@ export function RecordingPanel() {
     setTranscriptionProgress("");
     cleanupRecording();
     if (!supported) {
-      setError("Browser នេះមិនគាំទ្រ audio recording ទេ។ សូមប្រើ Chrome, Edge, ឬ Firefox ថ្មីៗ។");
+      setError(text.browserRecordingUnsupported);
       return;
     }
     if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      setError("Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមប្រើ localhost លើកុំព្យូទ័រ ឬ deploy/open តាម HTTPS ដូចជា Vercel។");
+      setError(text.secureContextRequired);
       return;
     }
     try {
@@ -426,13 +432,9 @@ export function RecordingPanel() {
         // a save that turns out fine beats a block that turns out wrong.
         const analysis = await analyzeRecordedAudio(blob);
         if (maxMicLevelRef.current < silentInputThreshold) {
-          setQuietWarning(
-            "សំឡេងហាក់ស្ងាត់ខ្លាំងកំឡុងពេលថត។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
-          );
+          setQuietWarning(text.quietRecordingWarning);
         } else if (!("decodeError" in analysis) && analysis.peak < silentInputThreshold) {
-          setQuietWarning(
-            "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
-          );
+          setQuietWarning(text.quietFileWarning);
         }
         setUploading(true);
         try {
@@ -455,8 +457,8 @@ export function RecordingPanel() {
               throw new Error(
                 data.error ??
                   (response.status === 413
-                    ? "សំឡេងធំពេក មិនអាច upload បានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
-                    : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
+                    ? text.audioTooLarge
+                    : text.saveAudioFailed)
               );
             }
             uploadedAudioUrl = data.audioUrl;
@@ -466,7 +468,7 @@ export function RecordingPanel() {
           await saveMeetingAuto(uploadedAudioUrl, blobType);
         } catch (error) {
           setError(
-            error instanceof Error ? error.message : "មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។"
+            error instanceof Error ? error.message : text.uploadAudioFailed
           );
         } finally {
           setUploading(false);
@@ -517,7 +519,7 @@ export function RecordingPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || defaultMeetingTitle(),
+          title: title.trim() || defaultMeetingTitle(text.recordingDefaultTitlePrefix),
           audioUrl: savedAudioUrl,
           transcript: "",
           duration: durationSeconds,
@@ -526,11 +528,11 @@ export function RecordingPanel() {
         })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
-      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
+      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? text.saveMeetingFailed);
       setSavedMeetingId(data.meetingId);
       void transcribeAndAttachSegments(data.meetingId, blobType);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "មិនអាចរក្សាទុកប្រជុំបានទេ។ សូមសាកល្បងម្តងទៀត។");
+      setError(error instanceof Error ? error.message : text.saveMeetingFailedRetry);
     } finally {
       setSavingMeeting(false);
     }
@@ -542,7 +544,7 @@ export function RecordingPanel() {
 
     let successfulChunks = 0;
     let lastErrorMessage = "";
-    setTranscriptionProgress(`កំពុងបំលែងសំឡេងជាអក្សរ 0/${audioSegments.length} ចម្រៀក...`);
+    setTranscriptionProgress(fillTemplate(text.transcribingProgress, { current: 0, total: audioSegments.length }));
 
     for (let index = 0; index < audioSegments.length; index += 1) {
       const chunk = audioSegments[index];
@@ -559,7 +561,7 @@ export function RecordingPanel() {
       );
       formData.append("languageMode", transcriptionLanguage);
       formData.append("index", String(index + 1));
-      setTranscriptionProgress(`កំពុងបំលែងសំឡេងជាអក្សរ ${index + 1}/${audioSegments.length} ចម្រៀក...`);
+      setTranscriptionProgress(fillTemplate(text.transcribingProgress, { current: index + 1, total: audioSegments.length }));
 
       const maxAttempts = 3;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -586,16 +588,16 @@ export function RecordingPanel() {
     // so the accumulated transcript comes back with raw, unrefined spacing.
     // One pass over the whole thing now that recording is done.
     if (successfulChunks > 0) {
-      setTranscriptionProgress("កំពុងសម្អាតអត្ថបទ...");
+      setTranscriptionProgress(text.cleaningTranscript);
       await fetch(`/api/meetings/${meetingId}/finalize-transcript`, { method: "POST" }).catch(() => undefined);
     }
 
     setTranscriptionProgress(
       successfulChunks
-        ? `បំលែងជាអក្សររួចរាល់៖ ${successfulChunks}/${audioSegments.length} ចម្រៀកមានអត្ថបទ។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។`
+        ? fillTemplate(text.transcriptionDoneProgress, { success: successfulChunks, total: audioSegments.length })
         : lastErrorMessage
-          ? `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${lastErrorMessage}`
-          : "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែរកមិនឃើញអត្ថបទសំឡេងច្បាស់លាស់ក្នុងចម្រៀកសំឡេងទាំងនោះទេ។"
+          ? fillTemplate(text.transcriptionFailedAfterSave, { error: lastErrorMessage })
+          : text.noClearSpeechAfterSave
     );
   }
 
@@ -625,11 +627,11 @@ export function RecordingPanel() {
   return (
     <div className="kh-card p-5">
       <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
-        សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
+        {text.recordingConsent}
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          មិនអាចត្រួតពិនិត្យស្ថានភាព database ពី browser នេះបានទេ។ អ្នកនៅតែអាចថត ហើយសាកល្បងរក្សាទុកបាន server នឹងបញ្ជាក់នៅពេលរក្សាទុកជោគជ័យ។
+          {text.databaseBrowserWarning}
         </div>
       ) : null}
       {error ? (
@@ -641,7 +643,7 @@ export function RecordingPanel() {
               type="button"
               onClick={() => void saveMeetingAuto(audioUrl, recorder.current?.mimeType || "audio/webm")}
             >
-              សាកល្បងរក្សាទុកម្តងទៀត
+              {text.retrySave}
             </button>
           ) : null}
         </div>
@@ -653,65 +655,65 @@ export function RecordingPanel() {
       ) : null}
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ (ស្រេចចិត្ត)</span>
+          <span className="text-sm font-semibold text-slate-600">{text.optionalMeetingTitle}</span>
           <input
             className="kh-input"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder={defaultMeetingTitle()}
+            placeholder={defaultMeetingTitle(text.recordingDefaultTitlePrefix)}
             disabled={state === "recording" || state === "paused"}
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ភាសាបំលែងជាអក្សរ</span>
+          <span className="text-sm font-semibold text-slate-600">{text.transcriptionLanguage}</span>
           <select
             className="kh-input"
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="km">លទ្ធផលជាភាសាខ្មែរ</option>
-            <option value="en">លទ្ធផលជាភាសាអង់គ្លេស</option>
-            <option value="km-en">រក្សាទាំងខ្មែរ និងអង់គ្លេស</option>
+            <option value="km">{text.khmerOutput}</option>
+            <option value="en">{text.englishOutput}</option>
+            <option value="km-en">{text.mixedOutput}</option>
           </select>
         </label>
       </div>
       <div className="mb-4">
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម (ស្រេចចិត្ត)</span>
+          <span className="text-sm font-semibold text-slate-600">{text.participantNamesOptional}</span>
           <input
             className="kh-input"
             value={speakerNamesInput}
             onChange={(event) => setSpeakerNamesInput(event.target.value)}
-            placeholder="ឧទាហរណ៍៖ ដារ៉ា, ចាន់ថា, សុខា"
+            placeholder={text.participantNamesExample}
             disabled={state === "recording" || state === "paused"}
           />
           <p className="text-xs text-slate-500">
-            ជួយឲ្យការបំលែងជាអក្សរស្គាល់ឈ្មោះត្រឹមត្រូវជាងមុន (ដាក់ក្បាច់ខណ្ឌដោយសញ្ញា ,)
+            {text.participantNamesHelp}
           </p>
         </label>
       </div>
       <div className="mb-4 grid gap-4 sm:grid-cols-[1fr_220px]">
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">Microphone</span>
+          <span className="text-sm font-semibold text-slate-600">{text.microphone}</span>
           <select
             className="kh-input"
             value={selectedDeviceId}
             onChange={(event) => setSelectedDeviceId(event.target.value)}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="">Default microphone</option>
+            <option value="">{text.defaultMicrophone}</option>
             {audioDevices.map((device, index) => (
               <option key={device.deviceId || index} value={device.deviceId}>
                 {device.label || `Microphone ${index + 1}`}
               </option>
             ))}
           </select>
-          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
-          <p className="text-xs text-slate-500">Records from the selected microphone only.</p>
+          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">{text.usingMicrophone}: {activeMicLabel}</p> : null}
+          <p className="text-xs text-slate-500">{text.selectedMicOnly}</p>
         </label>
         <div className="space-y-2">
-          <p className="text-sm font-semibold text-slate-600">Input level</p>
+          <p className="text-sm font-semibold text-slate-600">{text.inputLevel}</p>
           <div className="h-10 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
             <div
               className={`h-full rounded-md transition-all ${micLevel > 0.08 ? "bg-leaf" : "bg-saffron"}`}
@@ -719,49 +721,49 @@ export function RecordingPanel() {
             />
           </div>
           <p className="text-xs text-slate-500">
-            {state === "recording" ? (micLevel > 0.08 ? "Sound detected" : "Speak now - level is low") : "Start recording to test the mic"}
+            {state === "recording" ? (micLevel > 0.08 ? text.soundDetected : text.speakNowLow) : text.startRecordingToTestMic}
           </p>
         </div>
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>
+          <p className="text-sm text-slate-500">{text.recordingTime}</p>
           <p className="text-4xl font-bold tabular-nums text-ink">{formatTime(seconds)}</p>
           <p className="mt-1 text-sm text-slate-500">
-            {state === "recording" ? "កំពុងថត..." : state === "paused" ? "បានផ្អាក" : state === "stopped" ? "ថតរួចរាល់" : "រួចរាល់សម្រាប់ថត"}
+            {state === "recording" ? text.recordingNow : state === "paused" ? text.paused : state === "stopped" ? text.stopped : text.readyToRecord}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {state === "idle" || state === "stopped" ? (
-            <button className="kh-button-primary" onClick={start} type="button"><Mic className="h-4 w-4" />ចាប់ផ្តើមថត</button>
+            <button className="kh-button-primary" onClick={start} type="button"><Mic className="h-4 w-4" />{text.startRecording}</button>
           ) : null}
-          {state === "recording" ? <button className="kh-button-secondary" onClick={pause} type="button"><Pause className="h-4 w-4" />ផ្អាក</button> : null}
-          {state === "paused" ? <button className="kh-button-secondary" onClick={resume} type="button"><Play className="h-4 w-4" />បន្ត</button> : null}
-          {state === "recording" || state === "paused" ? <button className="kh-button-secondary" onClick={stop} type="button"><Square className="h-4 w-4" />បញ្ឈប់</button> : null}
+          {state === "recording" ? <button className="kh-button-secondary" onClick={pause} type="button"><Pause className="h-4 w-4" />{text.pause}</button> : null}
+          {state === "paused" ? <button className="kh-button-secondary" onClick={resume} type="button"><Play className="h-4 w-4" />{text.resume}</button> : null}
+          {state === "recording" || state === "paused" ? <button className="kh-button-secondary" onClick={stop} type="button"><Square className="h-4 w-4" />{text.stop}</button> : null}
         </div>
       </div>
       {state === "stopped" ? (
         <div className="mt-6 space-y-4">
           {previewUrl ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-2 text-sm font-semibold text-ink">ស្តាប់សំឡេងដែលបានថត</p>
+              <p className="mb-2 text-sm font-semibold text-ink">{text.listenPreview}</p>
               <audio className="w-full" controls src={previewUrl} />
             </div>
           ) : null}
           {uploading ? (
-            <p className="text-sm text-slate-500">កំពុង upload សំឡេង...</p>
+            <p className="text-sm text-slate-500">{text.uploadingAudio}</p>
           ) : savingMeeting ? (
-            <p className="text-sm text-slate-500">កំពុងរក្សាទុកប្រជុំដោយស្វ័យប្រវត្តិ...</p>
+            <p className="text-sm text-slate-500">{text.savingMeetingAuto}</p>
           ) : savedMeetingId ? (
             <p className="flex items-center gap-2 text-sm text-leaf">
               <CheckCircle2 className="h-4 w-4" />
-              បានរក្សាទុករួច។ <a className="font-semibold underline" href={`/meetings/${savedMeetingId}`}>មើលប្រជុំ</a>
+              {text.savedDone} <a className="font-semibold underline" href={`/meetings/${savedMeetingId}`}>{text.viewMeeting}</a>
             </p>
           ) : null}
           {transcriptionProgress ? <p className="text-sm text-slate-500">{transcriptionProgress}</p> : null}
           <button className="kh-button-secondary" onClick={start} type="button">
             <RotateCcw className="h-4 w-4" />
-            ថតម្តងទៀត
+            {text.recordAgain}
           </button>
         </div>
       ) : null}
