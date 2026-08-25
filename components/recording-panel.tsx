@@ -694,43 +694,53 @@ export function RecordingPanel() {
           </select>
         </label>
       </div>
-      <div className="mb-4 rounded-xl border border-leaf/30 bg-leaf/10 p-4 shadow-sm">
+      <div className="mb-4 rounded-xl border border-leaf/25 bg-leaf/10 p-4">
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-leaf text-white">
             <UserRoundCheck className="h-4 w-4" />
           </span>
-          <div>
-            <p className="text-base font-bold text-ink">Voice check-in / ប្រាប់ឈ្មោះតាមសំឡេង</p>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              At the start of the recording, each participant should say: “ខ្ញុំឈ្មោះ [name]”. KhmerMeet will try to remember that voice inside this meeting and label later turns with the same name.
-            </p>
-            <div className="mt-3 grid gap-3 text-sm text-slate-700 sm:grid-cols-[1fr_auto]">
-              <label className="block space-y-1 rounded-lg bg-white p-3">
-                <span className="font-semibold text-leaf">Voice name</span>
-                <input
-                  className="kh-input mt-1"
-                  value={checkInName}
-                  onChange={(event) => setCheckInName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addCheckInName();
-                    }
-                  }}
-                  placeholder="ឧទាហរណ៍: ចយ"
-                  disabled={state === "recording" || state === "paused"}
-                />
-                <p className="text-xs text-slate-500">បញ្ចូលឈ្មោះ មុនចាប់ផ្តើមថត ហើយឲ្យគាត់និយាយ “ខ្ញុំឈ្មោះ ...”</p>
-              </label>
-              <div className="flex items-end">
-                <button
-                  className="kh-button-primary h-11 px-5"
-                  type="button"
-                  onClick={addCheckInName}
-                  disabled={state === "recording" || state === "paused" || !checkInName.trim()}
-                >
-                  Add
-                </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-base font-bold text-ink">Voice check-in / ប្រាប់ឈ្មោះតាមសំឡេង</p>
+              <p className="text-xs font-medium text-leaf">និយាយឈ្មោះតែម្តងនៅដើមថត</p>
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_260px]">
+              <div className="rounded-lg bg-white p-3">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-700">Add speaker name</span>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      className="kh-input min-w-0 flex-1"
+                      value={checkInName}
+                      onChange={(event) => setCheckInName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addCheckInName();
+                        }
+                      }}
+                      placeholder="ឧទាហរណ៍: ចយ"
+                      disabled={state === "recording" || state === "paused"}
+                    />
+                    <button
+                      className="kh-button-primary h-11 px-4"
+                      type="button"
+                      onClick={addCheckInName}
+                      disabled={state === "recording" || state === "paused" || !checkInName.trim()}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </label>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  បន្ទាប់ពីចុច Start recording ឲ្យម្នាក់ៗនិយាយ “ខ្ញុំឈ្មោះ ...” រួចប្រជុំធម្មតា។
+                </p>
+              </div>
+              <div className="rounded-lg bg-white p-3 text-sm text-slate-700">
+                <p className="font-semibold text-leaf">Example</p>
+                <p className="mt-1">ចយ: ខ្ញុំឈ្មោះ ចយ</p>
+                <p className="mt-2 font-semibold text-leaf">Later transcript</p>
+                <p className="mt-1">ចយ: ខ្ញុំយល់ព្រម...</p>
               </div>
             </div>
           </div>
