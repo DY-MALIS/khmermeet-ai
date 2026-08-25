@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square, UserRoundCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -677,6 +677,29 @@ export function RecordingPanel() {
             <option value="km-en">{text.mixedOutput}</option>
           </select>
         </label>
+      </div>
+      <div className="mb-4 rounded-xl border border-leaf/30 bg-leaf/10 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-leaf text-white">
+            <UserRoundCheck className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-base font-bold text-ink">Voice check-in / ប្រាប់ឈ្មោះតាមសំឡេង</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              At the start of the recording, each participant should say: “ខ្ញុំឈ្មោះ [name]”. KhmerMeet will try to remember that voice inside this meeting and label later turns with the same name.
+            </p>
+            <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+              <div className="rounded-lg bg-white p-3">
+                <span className="font-semibold text-leaf">Example</span>
+                <p className="mt-1">ចយ: ខ្ញុំឈ្មោះ ចយ</p>
+              </div>
+              <div className="rounded-lg bg-white p-3">
+                <span className="font-semibold text-leaf">Transcript label</span>
+                <p className="mt-1">ចយ: ខ្ញុំយល់ព្រម...</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div className="mb-4">
         <label className="block space-y-1">
