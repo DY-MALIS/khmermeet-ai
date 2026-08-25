@@ -702,7 +702,7 @@ export function RecordingPanel() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="text-base font-bold text-ink">Voice check-in / ប្រាប់ឈ្មោះតាមសំឡេង</p>
-              <p className="text-xs font-medium text-leaf">និយាយឈ្មោះតែម្តងនៅដើមថត</p>
+              <p className="text-xs font-medium text-leaf">បន្ថែមឈ្មោះមុន ឬអំឡុងពេលថត</p>
             </div>
             <div className="mt-3">
               <div className="rounded-lg bg-white p-3">
@@ -720,20 +720,20 @@ export function RecordingPanel() {
                         }
                       }}
                       placeholder="ឧទាហរណ៍: ចយ"
-                      disabled={state === "recording" || state === "paused"}
+                      disabled={state === "paused"}
                     />
                     <button
                       className="kh-button-primary h-11 px-4"
                       type="button"
                       onClick={addCheckInName}
-                      disabled={state === "recording" || state === "paused" || !checkInName.trim()}
+                      disabled={state === "paused" || !checkInName.trim()}
                     >
                       Add
                     </button>
                   </div>
                 </label>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  បន្ទាប់ពីចុច Start recording ឲ្យម្នាក់ៗនិយាយ “ខ្ញុំឈ្មោះ ...” រួចប្រជុំធម្មតា។
+                  បើបន្ថែមអំឡុងពេលថត សូមឲ្យម្ចាស់សំឡេងនោះនិយាយ “ខ្ញុំឈ្មោះ ...” ម្តង រួចបន្តប្រជុំធម្មតា។
                 </p>
               </div>
             </div>
