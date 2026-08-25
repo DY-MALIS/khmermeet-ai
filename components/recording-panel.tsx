@@ -71,6 +71,7 @@ export function RecordingPanel() {
   const [title, setTitle] = useState("");
   const [speakerNamesInput, setSpeakerNamesInput] = useState("");
   const [checkInName, setCheckInName] = useState("");
+  const speakerNamesInputRef = useRef("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [activeMicLabel, setActiveMicLabel] = useState("");
@@ -87,6 +88,10 @@ export function RecordingPanel() {
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
+
+  useEffect(() => {
+    speakerNamesInputRef.current = speakerNamesInput;
+  }, [speakerNamesInput]);
 
   useEffect(() => {
     setSupported(
@@ -143,7 +148,7 @@ export function RecordingPanel() {
   function addCheckInName() {
     const nextName = checkInName.trim();
     if (!nextName) return;
-    const currentNames = speakerNamesInput
+    const currentNames = speakerNamesInputRef.current
       .split(/[,，\n]/)
       .map((name) => name.trim())
       .filter(Boolean);
@@ -151,7 +156,9 @@ export function RecordingPanel() {
       setCheckInName("");
       return;
     }
-    setSpeakerNamesInput([...currentNames, nextName].join(", "));
+    const nextInput = [...currentNames, nextName].join(", ");
+    speakerNamesInputRef.current = nextInput;
+    setSpeakerNamesInput(nextInput);
     setCheckInName("");
   }
 
@@ -526,7 +533,7 @@ export function RecordingPanel() {
       // chance to correctly recognize a name from the audio itself - a
       // misheard name can't be recovered by the later text-only refine pass,
       // which has no access to the audio to re-check against.
-      const speakerNames = speakerNamesInput
+      const speakerNames = speakerNamesInputRef.current
         .split(/[,，\n]/)
         .map((name) => name.trim())
         .filter(Boolean)
