@@ -23,6 +23,8 @@ export function MeetingTranscriptPanel({
   speakerNames
 }: MeetingTranscriptPanelProps) {
   const [transcript, setTranscript] = useState(initialTranscript);
+  const [speakerLabelToRename, setSpeakerLabelToRename] = useState("");
+  const [speakerRenameValue, setSpeakerRenameValue] = useState("");
   const pendingTranscribedTranscriptRef = useRef<string | null>(null);
   const lastMeetingIdRef = useRef(meetingId);
 
@@ -56,6 +58,16 @@ export function MeetingTranscriptPanel({
   const meetingSpeakerNames = Array.from(
     new Set((speakerNames ?? []).map((name) => name.trim()).filter(Boolean))
   ).slice(0, 100);
+  const transcriptSpeakerLabels = extractTranscriptSpeakerLabels(transcript);
+
+  function applySpeakerRename() {
+    const fromLabel = speakerLabelToRename.trim();
+    const toLabel = speakerRenameValue.trim();
+    if (!fromLabel || !toLabel) return;
+    setTranscript((current) => renameTranscriptSpeakerLabel(current, fromLabel, toLabel));
+    setSpeakerLabelToRename("");
+    setSpeakerRenameValue("");
+  }
 
   return (
     <section className="kh-card p-5" id="transcript">
@@ -102,6 +114,42 @@ export function MeetingTranscriptPanel({
 
       <form action={updateTranscript} className="space-y-3">
         <input type="hidden" name="id" value={meetingId} />
+        {transcriptSpeakerLabels.length ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-semibold text-ink">Fix speaker name</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <select
+                className="kh-input"
+                value={speakerLabelToRename}
+                onChange={(event) => setSpeakerLabelToRename(event.target.value)}
+              >
+                <option value="">Select speaker label</option>
+                {transcriptSpeakerLabels.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="kh-input"
+                value={speakerRenameValue}
+                onChange={(event) => setSpeakerRenameValue(event.target.value)}
+                placeholder="ឈ្មោះពិត ឧ. ចយ"
+              />
+              <button
+                className="kh-button-secondary"
+                type="button"
+                onClick={applySpeakerRename}
+                disabled={!speakerLabelToRename.trim() || !speakerRenameValue.trim()}
+              >
+                Apply
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              ប្រើពេល transcript ចេញជា Speaker 1 ឬ Unknown Speaker។ ប្តូរឈ្មោះរួចចុច Save transcript។
+            </p>
+          </div>
+        ) : null}
         <textarea
           className="kh-input min-h-72"
           name="transcript"
@@ -113,4 +161,23 @@ export function MeetingTranscriptPanel({
       </form>
     </section>
   );
+}
+
+function extractTranscriptSpeakerLabels(transcript: string) {
+  const labels = new Set<string>();
+  for (const line of transcript.split(/\r?\n/)) {
+    const match = line.match(/^\s*([^:\n]{1,50}):\s+\S/);
+    const label = match?.[1]?.trim();
+    if (label) labels.add(label);
+  }
+  return Array.from(labels).slice(0, 100);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function renameTranscriptSpeakerLabel(transcript: string, fromLabel: string, toLabel: string) {
+  const pattern = new RegExp(`(^|\\n)(\\s*)${escapeRegExp(fromLabel)}\\s*:`, "g");
+  return transcript.replace(pattern, `$1$2${toLabel}:`);
 }
