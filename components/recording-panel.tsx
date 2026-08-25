@@ -70,6 +70,7 @@ export function RecordingPanel() {
   const [seconds, setSeconds] = useState(0);
   const [title, setTitle] = useState("");
   const [speakerNamesInput, setSpeakerNamesInput] = useState("");
+  const [checkInName, setCheckInName] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [activeMicLabel, setActiveMicLabel] = useState("");
@@ -137,6 +138,21 @@ export function RecordingPanel() {
     return selectedDeviceId
       ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
       : clearVoiceAudioConstraints;
+  }
+
+  function addCheckInName() {
+    const nextName = checkInName.trim();
+    if (!nextName) return;
+    const currentNames = speakerNamesInput
+      .split(/[,，\n]/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (currentNames.some((name) => name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) {
+      setCheckInName("");
+      return;
+    }
+    setSpeakerNamesInput([...currentNames, nextName].join(", "));
+    setCheckInName("");
   }
 
   function cleanupRecording() {
@@ -688,14 +704,33 @@ export function RecordingPanel() {
             <p className="mt-1 text-sm leading-6 text-slate-600">
               At the start of the recording, each participant should say: “ខ្ញុំឈ្មោះ [name]”. KhmerMeet will try to remember that voice inside this meeting and label later turns with the same name.
             </p>
-            <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
-              <div className="rounded-lg bg-white p-3">
-                <span className="font-semibold text-leaf">Example</span>
-                <p className="mt-1">ចយ: ខ្ញុំឈ្មោះ ចយ</p>
-              </div>
-              <div className="rounded-lg bg-white p-3">
-                <span className="font-semibold text-leaf">Transcript label</span>
-                <p className="mt-1">ចយ: ខ្ញុំយល់ព្រម...</p>
+            <div className="mt-3 grid gap-3 text-sm text-slate-700 sm:grid-cols-[1fr_auto]">
+              <label className="block space-y-1 rounded-lg bg-white p-3">
+                <span className="font-semibold text-leaf">Voice name</span>
+                <input
+                  className="kh-input mt-1"
+                  value={checkInName}
+                  onChange={(event) => setCheckInName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addCheckInName();
+                    }
+                  }}
+                  placeholder="ឧទាហរណ៍: ចយ"
+                  disabled={state === "recording" || state === "paused"}
+                />
+                <p className="text-xs text-slate-500">បញ្ចូលឈ្មោះ មុនចាប់ផ្តើមថត ហើយឲ្យគាត់និយាយ “ខ្ញុំឈ្មោះ ...”</p>
+              </label>
+              <div className="flex items-end">
+                <button
+                  className="kh-button-primary h-11 px-5"
+                  type="button"
+                  onClick={addCheckInName}
+                  disabled={state === "recording" || state === "paused" || !checkInName.trim()}
+                >
+                  Add
+                </button>
               </div>
             </div>
           </div>
