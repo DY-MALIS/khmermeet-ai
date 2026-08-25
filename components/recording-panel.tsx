@@ -704,7 +704,7 @@ export function RecordingPanel() {
               <p className="text-base font-bold text-ink">Voice check-in / ប្រាប់ឈ្មោះតាមសំឡេង</p>
               <p className="text-xs font-medium text-leaf">និយាយឈ្មោះតែម្តងនៅដើមថត</p>
             </div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_260px]">
+            <div className="mt-3">
               <div className="rounded-lg bg-white p-3">
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-700">Add speaker name</span>
@@ -735,12 +735,6 @@ export function RecordingPanel() {
                 <p className="mt-2 text-xs leading-5 text-slate-500">
                   បន្ទាប់ពីចុច Start recording ឲ្យម្នាក់ៗនិយាយ “ខ្ញុំឈ្មោះ ...” រួចប្រជុំធម្មតា។
                 </p>
-              </div>
-              <div className="rounded-lg bg-white p-3 text-sm text-slate-700">
-                <p className="font-semibold text-leaf">Example</p>
-                <p className="mt-1">ចយ: ខ្ញុំឈ្មោះ ចយ</p>
-                <p className="mt-2 font-semibold text-leaf">Later transcript</p>
-                <p className="mt-1">ចយ: ខ្ញុំយល់ព្រម...</p>
               </div>
             </div>
           </div>
