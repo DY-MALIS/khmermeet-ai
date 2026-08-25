@@ -70,6 +70,25 @@ function rejoinKhmerWordSpacing(text: string) {
   return text.replace(/([ក-៓])[ \t]+(?=[ក-៓])/g, "$1");
 }
 
+function normalizeTranscriptSpacing(text: string) {
+  return rejoinKhmerWordSpacing(text)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u00a0\u200b]+/g, " ")
+    .split(/\n+/)
+    .map((line) =>
+      line
+        .replace(/[ \t]+/g, " ")
+        .replace(/\s+([,.;:!?។៕])/g, "$1")
+        .replace(/([:：])(?=\S)/g, "$1 ")
+        .replace(/([\u1780-\u17ff])([A-Za-z0-9])/g, "$1 $2")
+        .replace(/([A-Za-z0-9])([\u1780-\u17ff])/g, "$1 $2")
+        .trim()
+    )
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 function cleanTranscriptionText(text: string) {
   const noSpeechPatterns = [
     /no clear speech detected/i,
@@ -96,7 +115,7 @@ function cleanTranscriptionText(text: string) {
 
   if (noSpeechPatterns.some((pattern) => pattern.test(cleaned))) return "";
   if (isTimestampOnlyTranscript(cleaned)) return "";
-  return rejoinKhmerWordSpacing(cleaned);
+  return normalizeTranscriptSpacing(cleaned);
 }
 
 export function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
@@ -118,6 +137,34 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
     })
     .join("\n")
     .trim();
+}
+
+export function extractSelfIntroducedSpeakerNames(transcript: string) {
+  const names = new Set<string>();
+  const patterns = [
+    /\b(?:my name is|i am|i'm|this is)\s+([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})/gi,
+    /(?:ខ្ញុំ\s*ឈ្មោះ|ខ្ញុំ\s*ជា|នាងខ្ញុំ\s*ឈ្មោះ|បាទ\s*ខ្ញុំ\s*ឈ្មោះ|ចាស\s*ខ្ញុំ\s*ឈ្មោះ)\s*([\u1780-\u17ffA-Za-z][\u1780-\u17ffA-Za-z .'-]{0,40})/g
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of transcript.matchAll(pattern)) {
+      const name = cleanIntroducedSpeakerName(match[1] ?? "");
+      if (name) names.add(name);
+    }
+  }
+
+  return [...names].slice(0, 100);
+}
+
+function cleanIntroducedSpeakerName(value: string) {
+  const name = value
+    .replace(/[។៕,.;:!?].*$/, "")
+    .replace(/\b(?:and|from|speaking|here|today)\b.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name) return "";
+  if ([...name].length > 40) return "";
+  return name;
 }
 
 function speakerNumberToIndex(value: string) {
@@ -443,32 +490,40 @@ export async function transcribeAudio(
   const filename = audioFile.name || "meeting-audio.webm";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
-  // All languages use the configured multimodal transcription model
-  // (default: google/gemini-3.7-flash). Keeping one audio-grounded path
-  // across Khmer, English, and mixed meetings avoids switching English-only
-  // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
+  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
+  const languageAttempts = [
+    normalizedLanguageMode,
+    ...(normalizedLanguageMode === "km-en" ? [] : (["km-en"] as const))
+  ];
+  const transcriptionDeadline = Date.now() + timeoutMs;
 
-  if (!hasUsableTranscript(cleanedTranscript)) {
+  for (const attemptLanguage of languageAttempts) {
+    const remainingTimeoutMs = transcriptionDeadline - Date.now();
+    if (remainingTimeoutMs < 8000) break;
+
     // No .catch() here: an OpenRouterApiError (invalid key, no credits, rate
     // limit) must propagate so the caller reports the real cause instead of
     // the generic "no clear speech detected" message, which was silently
     // masking account/billing errors as an audio-quality problem.
-    const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
+    const rawAttempt = await transcribeOpenRouterAudioViaChat(
       audioBuffer,
       mimeType,
       filename,
-      normalizedLanguageMode,
-      timeoutMs,
-      normalizeSpeakerNames(speakerNames),
+      attemptLanguage,
+      remainingTimeoutMs,
+      normalizedSpeakerNames,
       options.singleSpeaker ?? false,
       options.preferAccuracy ?? options.mode !== "live"
     );
-    const cleanedFallback = applyKnownSpeakerLabels(
-      addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
+    const cleanedAttempt = applyKnownSpeakerLabels(
+      addSingleSpeakerLabel(cleanTranscriptionText(rawAttempt), speakerNames),
       speakerNames
     );
-    if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
+    if (hasUsableTranscript(cleanedAttempt)) {
+      cleanedTranscript = cleanedAttempt;
+      break;
+    }
   }
 
   if (!cleanedTranscript || options.mode === "live" || process.env.OPEN_ROUTER_REFINE_TRANSCRIPT !== "true") {
@@ -479,7 +534,7 @@ export async function transcribeAudio(
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
     normalizedLanguageMode,
-    normalizeSpeakerNames(speakerNames),
+    normalizedSpeakerNames,
     Math.min(timeoutMs, 55000)
   ).catch(() => cleanedTranscript);
 

@@ -8,7 +8,7 @@ import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 function shouldRegenerateSummary(command: string) {
   const lower = command.toLowerCase();
@@ -117,7 +117,7 @@ export async function POST(request: Request) {
         ? "Important: The user is asking for a new or improved summary. Use ONLY the transcript below as the source of truth."
         : `Current summary:\n${meeting.summary ?? "No summary yet."}`,
       "",
-      `Transcript:\n${transcript.slice(0, 12000)}`,
+      `Transcript:\n${transcript.slice(0, 6000)}`,
       "",
       `Action tasks:\n${taskText}`,
       "",
@@ -126,7 +126,11 @@ export async function POST(request: Request) {
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 
-    const answer = await generateOpenRouterContent([{ text: prompt }], { temperature: 0.1 });
+    const answer = await generateOpenRouterContent([{ text: prompt }], {
+      temperature: 0.1,
+      timeoutMs: 8000,
+      maxTokens: regeneratingSummary ? 1200 : 800
+    });
     let updatedSummary = false;
 
     if (regeneratingSummary && answer.trim()) {

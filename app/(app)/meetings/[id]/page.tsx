@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionButton } from "@/components/action-button";
-import { EmptyState, ErrorState } from "@/components/ui";
+import { ErrorState } from "@/components/ui";
 import { ExportButton } from "@/components/export-button";
 import { MeetingTranscriptPanel } from "@/components/meeting-transcript-panel";
 import { MeetingSummaryAgent } from "@/components/meeting-summary-agent";
-import { SummaryDisplay } from "@/components/summary-display";
 import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
@@ -149,16 +148,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           speakerNames={speakerNames}
         />
 
-        <section className="kh-card p-5">
-          <h2 className="mb-4 text-lg font-bold">{text.aiSummaryTitle}</h2>
-          {summaryText ? (
-            <SummaryDisplay summary={summaryText} />
-          ) : (
-            <EmptyState
-              title={text.noSummaryYet}
-              description={text.noSummaryYet}
-            />
-          )}
+        <section>
           <MeetingSummaryAgent meetingId={meeting.id} hasTranscript={transcriptIsUsable} />
         </section>
       </div>

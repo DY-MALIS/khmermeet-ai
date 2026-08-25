@@ -34,6 +34,12 @@ export async function POST(request: Request) {
     const duration = clampMeetingDurationSeconds(body.duration);
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
+    const rawSpeakerNames: unknown[] = Array.isArray(body.speakerNames) ? body.speakerNames : [];
+    const speakerNames = rawSpeakerNames
+          .filter((speaker: unknown): speaker is string => typeof speaker === "string")
+          .map((speaker) => speaker.trim())
+          .filter(Boolean)
+          .slice(0, 100);
 
     if (!audioUrl) {
       return NextResponse.json({ error: "Missing uploaded audio or video URL." }, { status: 400 });
@@ -59,6 +65,7 @@ export async function POST(request: Request) {
       language: languageMode,
       status: transcript ? "transcribed" : "recorded",
       duration,
+      speakerNames,
       createdById: user.id
     }
   });

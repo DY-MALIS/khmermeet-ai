@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { forceSingleSpeakerLabel, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import { extractSelfIntroducedSpeakerNames, forceSingleSpeakerLabel, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -109,11 +109,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(
         {
           error:
-            `No clear speech text was detected.${durationHint} Please check the audio volume, microphone, selected language, and OpenRouter credits/key, then try again.`
+            `The AI could not transcribe clear speech from this attempt.${durationHint} This can happen even with valid audio when the transcription provider returns an empty result. Please try again, or check the selected language and OpenRouter status if it keeps happening.`
         },
         { status: 422 }
       );
     }
+
+    const introducedSpeakerNames = extractSelfIntroducedSpeakerNames(transcript);
+    const nextSpeakerNames = [
+      ...new Set([...transcriptSpeakerNames, ...introducedSpeakerNames].map((name) => name.trim()).filter(Boolean))
+    ].slice(0, 100);
 
     await prisma.meeting.update({
       where: { id },
@@ -122,7 +127,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         summary: null,
         language: languageMode,
         status: "transcribed",
-        speakerNames: transcriptSpeakerNames
+        speakerNames: nextSpeakerNames
       }
     });
 

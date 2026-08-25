@@ -1,7 +1,7 @@
 "use client";
 
 import "@livekit/components-styles";
-import type { TrackReference } from "@livekit/components-core";
+import type { TrackReference, TrackReferenceOrPlaceholder } from "@livekit/components-core";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -11,7 +11,7 @@ import {
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
-import { createLocalAudioTrack, RemoteParticipant, RoomEvent, Track } from "livekit-client";
+import { createLocalAudioTrack, RemoteParticipant, RoomEvent, ScreenSharePresets, Track } from "livekit-client";
 import type { LocalAudioTrack } from "livekit-client";
 import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, ScreenShare, Share2, Square } from "lucide-react";
 import Link from "next/link";
@@ -469,10 +469,13 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
     ],
     { onlySubscribed: false }
   );
+  const screenTracks = tracks.filter((trackRef) => trackRef.source === Track.Source.ScreenShare && trackRef.publication?.track);
+  const cameraTracks = tracks.filter((trackRef) => trackRef.source !== Track.Source.ScreenShare);
+  const activeScreenTrack = screenTracks[0];
   // Joining is not capped by this UI, but rendering unlimited live video
   // tiles at once would overwhelm browsers in large meetings. The room can
   // have many audio participants; the grid only shows the first 20 videos.
-  const visibleTracks = tracks.slice(0, 20);
+  const visibleTracks = activeScreenTrack ? cameraTracks.slice(0, 8) : tracks.slice(0, 20);
   const grid = getCallGridMetrics(visibleTracks.length);
 
   return (
@@ -481,49 +484,69 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
         <span>
           Participants {participants.length} · Showing video {visibleTracks.length} of {tracks.length} tracks
         </span>
-        <span>Single-screen grid view</span>
+        <span>{activeScreenTrack ? "Presentation view" : "Single-screen grid view"}</span>
       </div>
       <div className="kh-livekit-stage h-[52svh] min-h-[300px] max-h-[680px] p-2 md:h-[calc(100svh-22rem)] md:min-h-[380px]">
-        <div
-          className="grid h-full gap-2"
-          style={{
-            gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
-          }}
-        >
-          {visibleTracks.map((trackRef) => {
-            const participantName = trackRef.participant.name || trackRef.participant.identity || "Participant";
-            const trackKey = `${trackRef.participant.sid}-${trackRef.source}`;
-            const hasVideo = Boolean(trackRef.publication?.track);
-
-            return (
-              <div
-                key={trackKey}
-                className="relative flex min-h-0 overflow-hidden rounded-lg border border-white/10 bg-slate-900"
-              >
-                {hasVideo ? (
-                  <VideoTrack
-                    trackRef={trackRef as TrackReference}
-                    className="h-full w-full object-cover"
-                    playsInline
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
-                    <Camera className="h-8 w-8" />
-                    <span className="text-sm font-semibold">Camera off</span>
-                  </div>
-                )}
-                <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
-                  {participantName}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        {activeScreenTrack ? (
+          <div className="grid h-full gap-2 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <TrackTile trackRef={activeScreenTrack} fit="contain" />
+            <div className="grid min-h-0 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-1">
+              {visibleTracks.map((trackRef) => (
+                <TrackTile key={`${trackRef.participant.sid}-${trackRef.source}`} trackRef={trackRef} compact />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="grid h-full gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
+            }}
+          >
+            {visibleTracks.map((trackRef) => (
+              <TrackTile key={`${trackRef.participant.sid}-${trackRef.source}`} trackRef={trackRef} />
+            ))}
+          </div>
+        )}
       </div>
       <RoomAudioRenderer />
       <LiveKitCallControls onLeaveRequest={onLeaveRequest} />
     </section>
+  );
+}
+
+function TrackTile({
+  trackRef,
+  fit = "cover",
+  compact = false
+}: {
+  trackRef: TrackReferenceOrPlaceholder;
+  fit?: "cover" | "contain";
+  compact?: boolean;
+}) {
+  const participantName = trackRef.participant.name || trackRef.participant.identity || "Participant";
+  const hasVideo = Boolean(trackRef.publication?.track);
+  const isScreenShare = trackRef.source === Track.Source.ScreenShare;
+
+  return (
+    <div className="relative flex min-h-0 overflow-hidden rounded-lg border border-white/10 bg-slate-900">
+      {hasVideo ? (
+        <VideoTrack
+          trackRef={trackRef as TrackReference}
+          className={cn("h-full w-full", fit === "contain" ? "object-contain" : "object-cover")}
+          playsInline
+        />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
+          <Camera className={cn(compact ? "h-5 w-5" : "h-8 w-8")} />
+          <span className={cn("font-semibold", compact ? "text-xs" : "text-sm")}>Camera off</span>
+        </div>
+      )}
+      <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
+        {isScreenShare ? `${participantName} is presenting` : participantName}
+      </span>
+    </div>
   );
 }
 
@@ -758,6 +781,33 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     await repairMicrophone();
   }
 
+  async function toggleScreenShare() {
+    if (isScreenShareEnabled) {
+      await localParticipant.setScreenShareEnabled(false);
+      setMicNotice("Screen sharing stopped.");
+      return;
+    }
+
+    await localParticipant.setScreenShareEnabled(
+      true,
+      {
+        audio: false,
+        video: true,
+        resolution: ScreenSharePresets.h1080fps30.resolution,
+        contentHint: "motion",
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+        systemAudio: "include"
+      },
+      {
+        screenShareEncoding: ScreenSharePresets.h1080fps30.encoding,
+        simulcast: false,
+        degradationPreference: "maintain-framerate"
+      }
+    );
+    setMicNotice("Screen sharing is live. Share a window or full screen to show clicks, scrolling, and movement.");
+  }
+
   return (
     <div className="border-t border-white/10 bg-slate-950 px-2 py-3 text-sm font-semibold">
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -783,7 +833,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-sky/80 hover:bg-sky")}
           type="button"
           disabled={Boolean(busyControl)}
-          onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
+          onClick={() => runControl("screen", toggleScreenShare)}
           title="Share your screen with everyone in the video call."
         >
           <ScreenShare className="mr-2 inline h-4 w-4" />
