@@ -104,8 +104,9 @@ export function ExportButton({
   async function exportExcel() {
     setExportingExcel(true);
     try {
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "KhmerMeet AI";
       const nonEmptyLines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
       const summaryRows: (string | undefined)[][] = [
@@ -117,27 +118,29 @@ export function ExportButton({
         ["Transcript"],
         ...nonEmptyLines(transcript ?? "(no transcript yet)").map((line) => [line])
       ];
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      // A single wide column reads far better than SheetJS's default ~8-char
-      // width, which truncates every line of transcript/summary text.
-      summarySheet["!cols"] = [{ wch: 110 }];
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+      const summarySheet = workbook.addWorksheet("Summary");
+      summarySheet.addRows(summaryRows);
+      summarySheet.getColumn(1).width = 110;
+      summarySheet.getColumn(2).width = 40;
+      summarySheet.getRow(1).font = { bold: true };
 
-      const tasksSheet = XLSX.utils.json_to_sheet(
-        tasks.map((task) => ({
-          Task: task.title,
-          Assignee: task.assigneeName ?? "",
-          Deadline: task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
-          Priority: task.priority,
-          Status: task.status
-        }))
-      );
-      tasksSheet["!cols"] = [{ wch: 40 }, { wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(workbook, tasksSheet, "Tasks");
+      const tasksSheet = workbook.addWorksheet("Tasks");
+      tasksSheet.addRow(["Task", "Assignee", "Deadline", "Priority", "Status"]);
+      for (const task of tasks) {
+        tasksSheet.addRow([
+          task.title,
+          task.assigneeName ?? "",
+          task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
+          task.priority,
+          task.status
+        ]);
+      }
+      tasksSheet.columns = [{ width: 40 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 14 }];
+      tasksSheet.getRow(1).font = { bold: true };
 
-      const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const buffer = await workbook.xlsx.writeBuffer();
       downloadBlob(
-        new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        new Blob([new Uint8Array(buffer)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
         `${safeTitle}.xlsx`
       );
     } finally {
@@ -179,12 +182,12 @@ export function ExportButton({
       // primary language.
       const isEnglish = language === "en";
       const labels = {
-        summary: isEnglish ? "Summary" : "Summary",
-        summaryPage: isEnglish ? "Summary" : "Summary",
-        tasks: isEnglish ? "Tasks" : "Tasks",
-        tasksPage: isEnglish ? "Tasks" : "Tasks",
-        noSummary: isEnglish ? "No summary available." : "No summary available.",
-        outline: isEnglish ? "Outline" : "Outline"
+        summary: isEnglish ? "Summary" : "សង្ខេប (Summary)",
+        summaryPage: isEnglish ? "Summary" : "សង្ខេប",
+        tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
+        tasksPage: isEnglish ? "Tasks" : "កិច្ចការ",
+        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។",
+        outline: isEnglish ? "Outline" : "មាតិកា (Outline)"
       };
 
       // The AI summary text already comes back structured as
@@ -339,7 +342,7 @@ export function ExportButton({
       const chapterName = (sectionLabel: string) => `${title} — ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
       const contentTop = 1.55;
-      const contentHeight = 3.35;
+      const contentHeight = 3.6;
 
       // Outline slide - numbered pill badges per row instead of a flat
       // "01  text" string, so it reads like a modern deck's table of contents.
@@ -387,68 +390,29 @@ export function ExportButton({
         });
       }
 
-      function bulletLineUnits(text: string) {
-        // Khmer text is often written without spaces, so PowerPoint can wrap
-        // it less predictably than Latin text. Estimate conservatively and
-        // paginate before the textbox reaches the footer.
-        return Math.max(1, Math.ceil(text.length / 54));
-      }
-
-      function paginateBullets(bullets: string[]) {
-        const pages: string[][] = [];
-        let page: string[] = [];
-        let units = 0;
-        const maxUnits = 8;
-        const maxItems = 4;
-
-        for (const bullet of bullets.length ? bullets : [labels.noSummary]) {
-          const nextUnits = bulletLineUnits(bullet) + 0.45;
-          if (page.length && (page.length >= maxItems || units + nextUnits > maxUnits)) {
-            pages.push(page);
-            page = [];
-            units = 0;
-          }
-          page.push(bullet);
-          units += nextUnits;
-        }
-
-        if (page.length) pages.push(page);
-        return pages.length ? pages : [[labels.noSummary]];
-      }
-
       let chapter = 0;
+      const bulletsPerSlide = 7;
       for (const section of sections) {
         chapter += 1;
-        const bulletPages = paginateBullets(section.bullets);
-        const pageCount = bulletPages.length;
+        const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
         for (let p = 0; p < pageCount; p += 1) {
           const slide = pptx.addSlide();
           const sectionLabel = pageCount > 1 ? `(${p + 1}/${pageCount})` : "";
           addHeader(slide, chapterName(section.title), chapter, sectionLabel || labels.summaryPage);
-          const pageBullets = bulletPages[p];
+          const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
           slide.addText(
             (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
               text: line,
               options: {
-                bullet: { indent: 16, hanging: 4, characterCode: "25AA", color: BRAND.saffron },
+                bullet: { indent: 20, characterCode: "25AA", color: BRAND.saffron },
                 color: BRAND.ink,
                 fontFace: KHMER_FONT,
                 breakLine: true,
-                paraSpaceAfter: 8,
-                lineSpacingMultiple: 0.9
+                paraSpaceAfter: 14,
+                lineSpacing: 25
               }
             })),
-            {
-              x: 0.55,
-              y: contentTop,
-              w: 8.9,
-              h: contentHeight,
-              fontSize: 14.5,
-              fit: "shrink",
-              margin: 0.04,
-              breakLine: false,
-              valign: "top"
-            }
+            { x: 0.55, y: contentTop, w: 8.9, h: contentHeight, fontSize: 17, valign: "top" }
           );
         }
       }
@@ -526,3 +490,4 @@ export function ExportButton({
     </div>
   );
 }
+
