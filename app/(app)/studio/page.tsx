@@ -1,6 +1,6 @@
 import { Sparkles, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requirePageUser } from "@/lib/session";
 import { createStudioProject, deleteStudioProject } from "@/lib/studio-actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function StudioPage() {
-  const user = await requireUser();
+  const user = await requirePageUser();
   const data = await prisma.workbenchProject
     .findMany({
       where: { ownerId: user.id, archived: false },
@@ -27,21 +27,21 @@ export default async function StudioPage() {
           <Sparkles className="h-4 w-4" />
           Scribe Studio
         </p>
-        <h1 className="text-3xl font-bold text-ink">Edit transcript</h1>
+        <h1 className="text-3xl font-bold text-ink">កែសម្រួល Transcript</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Paste any transcript to clean, translate, and summarize it with AI while keeping version history.
+          បិទភ្ជាប់ transcript ណាមួយ (មិនចាំបាច់ជាប្រជុំ) ដើម្បី clean, translate, និង summarize ដោយ AI, ព្រមទាំងរក្សា version history។
         </p>
       </div>
 
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          Could not connect to the production database. Check DATABASE_URL and Supabase, then try again.
+          មិនអាចភ្ជាប់ production database បានទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase រួចសាកម្តងទៀត។
         </div>
       ) : null}
 
       <form action={createStudioProject} className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_auto]">
-        <input className="kh-input" name="title" placeholder="Project title, e.g. Customer interview" required />
-        <ActionButton>Create new project</ActionButton>
+        <input className="kh-input" name="title" placeholder="ចំណងជើងគម្រោង ឧ. ការសម្ភាសន៍អតិថិជន" required />
+        <ActionButton>បង្កើតគម្រោងថ្មី</ActionButton>
       </form>
 
       {!dbUnavailable && projects.length ? (
@@ -70,8 +70,9 @@ export default async function StudioPage() {
           ))}
         </div>
       ) : !dbUnavailable ? (
-        <EmptyState title="No projects yet" description="Create a new project above to start editing transcripts with AI." />
+        <EmptyState title="មិនទាន់មានគម្រោង" description="បង្កើតគម្រោងថ្មីខាងលើ ដើម្បីចាប់ផ្តើមកែសម្រួល transcript ដោយ AI។" />
       ) : null}
     </div>
   );
 }
+
