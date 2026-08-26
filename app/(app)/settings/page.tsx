@@ -1,8 +1,7 @@
 import { PlugZap } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ChangePasswordForm } from "@/components/change-password-form";
-import { getServerUiText } from "@/lib/server-ui-text";
-import { requireUser } from "@/lib/session";
+import { requirePageUser } from "@/lib/session";
 
 const integrations = [
   "Google Calendar",
@@ -12,44 +11,44 @@ const integrations = [
 ];
 
 export default async function SettingsPage() {
-  const user = await requireUser();
-  const { text } = await getServerUiText();
+  const user = await requirePageUser();
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <p className="text-sm font-semibold text-leaf">{text.accountAndLanguage}</p>
-        <h1 className="text-3xl font-bold text-ink">{text.settingsTitle}</h1>
+        <p className="text-sm font-semibold text-leaf">គណនី និងភាសា</p>
+        <h1 className="text-3xl font-bold text-ink">ការកំណត់</h1>
       </div>
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">{text.displayLanguage}</h2>
+        <h2 className="mb-4 text-lg font-bold">Display language / ភាសាបង្ហាញ</h2>
         <LanguageSwitcher />
         <p className="mt-3 text-sm text-slate-500">
-          {text.languageHelp}
+          ជ្រើស Khmer ឬ English ដើម្បីប្តូរ menu label សំខាន់ៗក្នុង app។
         </p>
       </section>
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">{text.accountInfo}</h2>
+        <h2 className="mb-4 text-lg font-bold">Account info</h2>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><p className="text-sm text-slate-500">{text.name}</p><p className="font-semibold">{user.name}</p></div>
-          <div><p className="text-sm text-slate-500">{text.email}</p><p className="font-semibold">{user.email}</p></div>
+          <div><p className="text-sm text-slate-500">Name</p><p className="font-semibold">{user.name}</p></div>
+          <div><p className="text-sm text-slate-500">Email</p><p className="font-semibold">{user.email}</p></div>
         </div>
       </section>
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">{text.changePassword}</h2>
+        <h2 className="mb-4 text-lg font-bold">ប្តូរពាក្យសម្ងាត់</h2>
         <ChangePasswordForm />
       </section>
       <section className="kh-card p-5">
-        <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
+        <h2 className="mb-4 text-lg font-bold">Integrations</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {integrations.map((item) => (
             <div key={item} className="flex items-center justify-between rounded-lg border border-slate-100 p-4">
               <span className="flex items-center gap-3 font-semibold"><PlugZap className="h-4 w-4 text-saffron" />{item}</span>
-              <span className="kh-badge bg-slate-100 text-slate-500">{text.soon}</span>
+              <span className="kh-badge bg-slate-100 text-slate-500">Soon</span>
             </div>
           ))}
         </div>
-        <p className="mt-4 text-xs text-slate-500">{text.integrationsTodo}</p>
+        <p className="mt-4 text-xs text-slate-500">TODO: Google Calendar integration, Telegram reminder, team workspace, payment plan.</p>
       </section>
     </div>
   );
 }
+
