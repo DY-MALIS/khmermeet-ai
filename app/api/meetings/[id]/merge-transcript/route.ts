@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { ownerWhere, requireUser } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -61,13 +61,21 @@ export const dynamic = "force-dynamic";
 // real production timeout earlier.
 export const maxDuration = 280;
 
+// Keep a safety margin for the final database write and HTTP response. Vercel
+// terminates the invocation at maxDuration, so every expensive stage below
+// must share this deadline instead of each consuming its own full timeout.
+const WORK_DEADLINE_MS = 260000;
+const FINALIZE_RESERVE_MS = 10000;
+const REFINE_RESERVE_MS = 60000;
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const workDeadline = Date.now() + WORK_DEADLINE_MS;
   try {
     const user = await requireUser();
     const limited = await rateLimitResponse(user.id, "ai-generate");
     if (limited) return limited;
     const { id } = await params;
-    const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
+    const meeting = await prisma.meeting.findFirst({ where: { id, createdById: user.id } });
     if (!meeting) {
       return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     }
@@ -92,7 +100,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Reserve most of the 280s budget for this catch-up pass, leaving the
     // refine call below (its own 55s internal ceiling) real room to run.
-    await catchUpPendingSegments(segments, Date.now() + 200000);
+    await catchUpPendingSegments(
+      segments,
+      Math.min(Date.now() + 200000, workDeadline - REFINE_RESERVE_MS)
+    );
 
     const speakerNames = [
       ...new Set(
@@ -101,10 +112,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           .filter(Boolean)
       )
     ];
-    const rawTranscript = segments
-      .filter((segment) => segment.text.trim())
-      .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
-      .join("\n");
+    const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
+    const shouldUseMixedAudio =
+      Boolean(meeting.audioUrl) &&
+      (usableSegmentCount < 2 || (speakerNames.length > 1 && usableSegmentCount < speakerNames.length));
+
+    const mixedAudioBudget = workDeadline - Date.now() - REFINE_RESERVE_MS;
+    const canTranscribeMixedAudio = shouldUseMixedAudio && meeting.audioUrl && mixedAudioBudget >= 15000;
+    const rawTranscript =
+      canTranscribeMixedAudio && meeting.audioUrl
+        ? await transcribeStoredTrackRecording(
+            meeting.audioUrl,
+            normalizeTranscriptionLanguageMode(meeting.language),
+            Math.min(180000, mixedAudioBudget),
+            { speakerNames, singleSpeaker: false }
+          ).catch(() =>
+            segments
+              .filter((segment) => segment.text.trim())
+              .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+              .join("\n")
+          )
+        : segments
+            .filter((segment) => segment.text.trim())
+            .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+            .join("\n");
     let transcript = rawTranscript;
     if (hasUsableTranscript(rawTranscript)) {
       // Each segment was transcribed live (mode:"live"), which skips the
@@ -113,10 +144,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // words. One refine pass now that all segments are merged, same as
       // recording-panel.tsx's finalize-transcript step.
       const languageMode = normalizeTranscriptionLanguageMode(meeting.language);
-      transcript =
-        process.env.OPEN_ROUTER_REFINE_TRANSCRIPT === "true"
-          ? await refineSavedTranscript(rawTranscript, languageMode, speakerNames).catch(() => rawTranscript)
-          : rawTranscript;
+      const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
+      transcript = refineBudget >= 5000
+        ? await refineSavedTranscript(rawTranscript, languageMode, speakerNames, refineBudget).catch(() => rawTranscript)
+        : rawTranscript;
       // Don't overwrite `language` here: segments were already transcribed
       // using the language mode the user picked when recording, set on the
       // meeting when it was created. Forcing "km-en" here discarded that
@@ -140,3 +171,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     );
   }
 }
+
