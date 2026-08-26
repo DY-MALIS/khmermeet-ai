@@ -1,20 +1,18 @@
 import { Bot, CheckSquare, Lightbulb, ListChecks } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { ownerWhere, requireUser } from "@/lib/session";
+import { requirePageUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 import { SummaryDisplay } from "@/components/summary-display";
-import { getServerUiText } from "@/lib/server-ui-text";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function SummariesPage() {
-  const user = await requireUser();
-  const { text } = await getServerUiText();
+  const user = await requirePageUser();
   const data = await prisma.meeting
     .findMany({
       where: {
-        ...ownerWhere(user),
+        createdById: user.id,
         OR: [{ summary: { not: null } }, { transcript: { not: null } }]
       },
       include: { tasks: true },
@@ -28,13 +26,13 @@ export default async function SummariesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-leaf">{text.aiSummaryEyebrow}</p>
-        <h1 className="text-3xl font-bold text-ink">{text.aiSummaryTitle}</h1>
-        <p className="mt-2 text-sm text-slate-500">{text.aiSummaryDescription}</p>
+        <p className="text-sm font-semibold text-leaf">AI Summary</p>
+        <h1 className="text-3xl font-bold text-ink">សង្ខេបដោយ AI</h1>
+        <p className="mt-2 text-sm text-slate-500">សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត និងកិច្ចការដែលត្រូវធ្វើ។</p>
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          {text.dbUnavailable}
+          មិនអាចភ្ជាប់ production database បានទេ។ Summary មិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase។
         </div>
       ) : null}
       {!dbUnavailable && meetings.length ? (
@@ -53,24 +51,24 @@ export default async function SummariesPage() {
                     <p className="text-sm text-slate-500">{meeting.updatedAt.toLocaleString()}</p>
                   </div>
                 </div>
-                <span className="kh-badge bg-sky/10 text-sky">{meeting.tasks.length} {text.actionItems}</span>
+                <span className="kh-badge bg-sky/10 text-sky">{meeting.tasks.length} action items</span>
               </div>
               <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
                 <div className="rounded-lg bg-slate-50 p-4">
                   <p className="mb-2 flex items-center gap-2 text-sm font-bold text-ink">
                     <Lightbulb className="h-4 w-4 text-saffron" />
-                    {text.summaryHighlights}
+                    សង្ខេបប្រជុំ និងចំណុចសំខាន់ៗ
                   </p>
                   {meeting.summary ? (
                     <SummaryDisplay summary={meeting.summary} />
                   ) : (
-                    <p className="text-sm text-slate-500">{text.noSummaryYet}</p>
+                    <p className="text-sm text-slate-500">មិនទាន់មាន summary។ ប្រើ Summary Agent ខាងលើ ដើម្បីបញ្ជាឲ្យសង្ខេបពី transcript។</p>
                   )}
                 </div>
                 <div className="rounded-lg border border-slate-100 p-4">
                   <p className="mb-3 flex items-center gap-2 text-sm font-bold text-ink">
                     <ListChecks className="h-4 w-4 text-leaf" />
-                    {text.actionItems}
+                    កិច្ចការដែលត្រូវធ្វើ
                   </p>
                   {meeting.tasks.length ? (
                     <div className="space-y-3">
@@ -81,13 +79,13 @@ export default async function SummariesPage() {
                             {task.title}
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {task.assigneeName ?? text.unassigned} · {task.deadline?.toLocaleDateString() ?? text.noDeadline}
+                            {task.assigneeName ?? "មិនទាន់កំណត់អ្នកទទួល"} · {task.deadline?.toLocaleDateString() ?? "គ្មាន deadline"}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-500">{text.noActionItems}</p>
+                    <p className="text-sm text-slate-500">មិនទាន់មាន action items។</p>
                   )}
                 </div>
               </div>
@@ -95,8 +93,9 @@ export default async function SummariesPage() {
           ))}
         </div>
       ) : !dbUnavailable ? (
-        <EmptyState title={text.noAiSummary} description={text.noAiSummaryDescription} />
+        <EmptyState title="មិនទាន់មានសង្ខេបដោយ AI" description="បញ្ចូល transcript រួចចុច Generate AI Summary ឬប្រើ Meeting Agent។" />
       ) : null}
     </div>
   );
 }
+
