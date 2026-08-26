@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { ownerWhere, requireUser } from "@/lib/session";
-import { extractSelfIntroducedSpeakerNames, forceSingleSpeakerLabel, loadStoredAudioAsFile, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import { requireUser } from "@/lib/session";
+import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -10,14 +10,19 @@ import { rateLimitResponse } from "@/lib/rate-limit";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const WORK_DEADLINE_MS = 270000;
+const FINALIZE_RESERVE_MS = 10000;
+const REFINE_RESERVE_MS = 60000;
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const workDeadline = Date.now() + WORK_DEADLINE_MS;
   try {
     const user = await requireUser();
     const limited = await rateLimitResponse(user.id, "ai-transcribe");
     if (limited) return limited;
     const { id } = await params;
     const meeting = await prisma.meeting.findFirst({
-      where: { id, ...ownerWhere(user) },
+      where: { id, createdById: user.id },
       include: {
         transcriptSegments: {
           where: { audioUrl: { not: null } },
@@ -46,29 +51,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let transcriptSpeakerNames = speakerNames;
 
     if (shouldUseMixedAudio && meeting.audioUrl) {
-      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-      if (audioFile.size < 1500) {
-        return NextResponse.json(
-          {
-            error:
-              "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
-          },
-          { status: 422 }
-        );
-      }
-      rawTranscript = await transcribeStoredTrackRecording(meeting.audioUrl, languageMode, Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000), {
-        speakerNames,
-        singleSpeaker: false
-      });
+      rawTranscript = await withinDeadline(
+        transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
+          speakerNames,
+          singleSpeaker: false
+        }),
+        workDeadline - REFINE_RESERVE_MS
+      );
     } else if (participantAudioSegments.length) {
       const parts = await Promise.all(
         participantAudioSegments.map(async (segment) => {
           const speakerName = segment.speakerName || segment.speakerIdentity;
-          const text = await transcribeStoredTrackRecording(
-            segment.audioUrl as string,
-            languageMode,
-            Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000),
-            { speakerNames: [speakerName], singleSpeaker: true }
+          const text = await withinDeadline(
+            transcribeStoredTrackRecording(
+              segment.audioUrl as string,
+              languageMode,
+              transcriptionBudget(workDeadline),
+              { speakerNames: [speakerName], singleSpeaker: true }
+            ),
+            workDeadline - REFINE_RESERVE_MS
           ).catch(() => "");
           return {
             startMs: segment.startMs,
@@ -83,23 +84,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .join("\n");
       transcriptSpeakerNames = [...new Set(participantAudioSegments.map((segment) => segment.speakerName || segment.speakerIdentity))];
     } else if (meeting.audioUrl) {
-      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-      if (audioFile.size < 1500) {
-        return NextResponse.json(
-          {
-            error:
-              "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
-          },
-          { status: 422 }
-        );
-      }
-      rawTranscript = await transcribeStoredTrackRecording(meeting.audioUrl, languageMode, Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000), {
-        speakerNames,
-        singleSpeaker: false
-      });
+      rawTranscript = await withinDeadline(
+        transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
+          speakerNames,
+          singleSpeaker: false
+        }),
+        workDeadline - REFINE_RESERVE_MS
+      );
     }
 
-    const transcript = await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames).catch(() => rawTranscript);
+    const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
+    const transcript = refineBudget >= 5000
+      ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
+      : rawTranscript;
 
     if (!hasUsableTranscript(transcript)) {
       const durationHint =
@@ -109,16 +106,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json(
         {
           error:
-            `The AI could not transcribe clear speech from this attempt.${durationHint} This can happen even with valid audio when the transcription provider returns an empty result. Please try again, or check the selected language and OpenRouter status if it keeps happening.`
+            `No clear speech text was detected.${durationHint} Please check the audio volume, microphone, selected language, and OpenRouter credits/key, then try again.`
         },
         { status: 422 }
       );
     }
-
-    const introducedSpeakerNames = extractSelfIntroducedSpeakerNames(transcript);
-    const nextSpeakerNames = [
-      ...new Set([...transcriptSpeakerNames, ...introducedSpeakerNames].map((name) => name.trim()).filter(Boolean))
-    ].slice(0, 100);
 
     await prisma.meeting.update({
       where: { id },
@@ -127,7 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         summary: null,
         language: languageMode,
         status: "transcribed",
-        speakerNames: nextSpeakerNames
+        speakerNames: transcriptSpeakerNames
       }
     });
 
@@ -143,6 +135,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { error: publicError.message },
       { status: publicError.status }
     );
+  }
+}
+
+function transcriptionBudget(workDeadline: number) {
+  const configured = Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000);
+  return Math.max(1000, Math.min(configured, workDeadline - Date.now() - REFINE_RESERVE_MS));
+}
+
+async function withinDeadline<T>(operation: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("The transcription request timed out before it could finish.");
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("The transcription request timed out before it could finish.")),
+          remaining
+        );
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -175,3 +192,4 @@ async function readTranscriptionBody(request: Request) {
     speakerNames
   };
 }
+

@@ -8,7 +8,7 @@ import {
   transcribeOpenRouterAudioViaChat
 } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
-import { hasUsableTranscript, isTimestampOnlyTranscript } from "@/lib/transcript-quality";
+import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 // Vercel Serverless Functions (Route Handlers) hard-cap the request body at 4.5MB.
@@ -16,7 +16,6 @@ const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") :
 // so this limit must stay below 4.5MB to ever actually trigger.
 const databaseAudioLimit = 4 * 1024 * 1024;
 const openRouterAudioLimit = 24 * 1024 * 1024;
-const transcriptionChunkTargetSeconds = 10 * 60;
 
 export type TranscriptionLanguageMode = "km" | "en" | "km-en";
 type TranscriptionOptions = {
@@ -35,10 +34,6 @@ type TranscriptionOptions = {
   // advance they don't fit chirp-3's window, so they skip straight to the
   // fallback instead of paying that cost on every chunk.
   skipPrimaryModel?: boolean;
-  // Use the higher-accuracy multimodal model first. This is slower and more
-  // expensive, but saved/re-transcribe flows happen after recording and are
-  // where users expect the app to listen carefully before replacing text.
-  preferAccuracy?: boolean;
 };
 
 export function normalizeTranscriptionLanguageMode(value: unknown): TranscriptionLanguageMode {
@@ -70,26 +65,8 @@ function rejoinKhmerWordSpacing(text: string) {
   return text.replace(/([ក-៓])[ \t]+(?=[ក-៓])/g, "$1");
 }
 
-function normalizeTranscriptSpacing(text: string) {
-  return rejoinKhmerWordSpacing(text)
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\u00a0\u200b]+/g, " ")
-    .split(/\n+/)
-    .map((line) =>
-      line
-        .replace(/[ \t]+/g, " ")
-        .replace(/\s+([,.;:!?។៕])/g, "$1")
-        .replace(/([:：])(?=\S)/g, "$1 ")
-        .replace(/([\u1780-\u17ff])([A-Za-z0-9])/g, "$1 $2")
-        .replace(/([A-Za-z0-9])([\u1780-\u17ff])/g, "$1 $2")
-        .trim()
-    )
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
 function cleanTranscriptionText(text: string) {
+  if (hasTranscriptionPromptLeakage(text)) return "";
   const noSpeechPatterns = [
     /no clear speech detected/i,
     /there is no discernible speech/i,
@@ -115,56 +92,60 @@ function cleanTranscriptionText(text: string) {
 
   if (noSpeechPatterns.some((pattern) => pattern.test(cleaned))) return "";
   if (isTimestampOnlyTranscript(cleaned)) return "";
-  return normalizeTranscriptSpacing(cleaned);
+  return rejoinKhmerWordSpacing(cleaned);
 }
 
 export function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
   const names = normalizeSpeakerNames(speakerNames);
   if (!names.length || !transcript.trim()) return transcript;
 
+  let nextUnidentifiedSpeaker = 0;
+  let lastSpeaker = "";
   return transcript
     .split(/\n+/)
     .map((line) => {
       const numberedMatch = line.match(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*([0-9០-៩]+)\s*[:：]\s*(.*)$/i);
-      if (!numberedMatch) {
-        const genericMatch = line.match(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*[:：]\s*(.*)$/i);
-        return genericMatch && names.length === 1 ? `${names[0]}: ${genericMatch[1].trim()}` : line;
+      if (numberedMatch) {
+        const speakerIndex = speakerNumberToIndex(numberedMatch[1]);
+        const fallbackIndex = Number.isFinite(speakerIndex)
+          ? ((speakerIndex % names.length) + names.length) % names.length
+          : 0;
+        const speakerName = names[speakerIndex] ?? names[fallbackIndex];
+        lastSpeaker = speakerName;
+        return `${speakerName}: ${numberedMatch[2].trim()}`;
       }
-      const speakerIndex = speakerNumberToIndex(numberedMatch[1]);
-      const speakerName = names[speakerIndex];
-      if (!speakerName) return line;
-      return `${speakerName}: ${numberedMatch[2].trim()}`;
+
+      const knownSpeaker = names.find((name) =>
+        new RegExp(`^${escapeRegExp(name)}\\s*[:：]`, "i").test(line)
+      );
+      if (knownSpeaker) {
+        lastSpeaker = knownSpeaker;
+        return line.replace(
+          new RegExp(`^${escapeRegExp(knownSpeaker)}\\s*[:：]\\s*`, "i"),
+          `${knownSpeaker}: `
+        );
+      }
+
+      const unidentifiedMatch = line.match(
+        /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*[:：]\s*(.*)$/i
+      );
+      if (unidentifiedMatch) {
+        const speakerName = names[nextUnidentifiedSpeaker % names.length];
+        nextUnidentifiedSpeaker += 1;
+        lastSpeaker = speakerName;
+        return `${speakerName}: ${unidentifiedMatch[1].trim()}`;
+      }
+
+      // The transcription prompt requests one turn per line. If a provider
+      // omits the label anyway, keep the continuation with the previous
+      // speaker (or the first supplied participant for the first line) so the
+      // saved transcript always has the requested "Name: speech" shape.
+      const speakerName = lastSpeaker || names[0];
+      lastSpeaker = speakerName;
+      return `${speakerName}: ${line.trim()}`;
     })
     .join("\n")
     .trim();
-}
-
-export function extractSelfIntroducedSpeakerNames(transcript: string) {
-  const names = new Set<string>();
-  const patterns = [
-    /\b(?:my name is|i am|i'm|this is)\s+([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,3})/gi,
-    /(?:ខ្ញុំ\s*ឈ្មោះ|ខ្ញុំ\s*ជា|នាងខ្ញុំ\s*ឈ្មោះ|បាទ\s*ខ្ញុំ\s*ឈ្មោះ|ចាស\s*ខ្ញុំ\s*ឈ្មោះ)\s*([\u1780-\u17ffA-Za-z][\u1780-\u17ffA-Za-z .'-]{0,40})/g
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of transcript.matchAll(pattern)) {
-      const name = cleanIntroducedSpeakerName(match[1] ?? "");
-      if (name) names.add(name);
-    }
-  }
-
-  return [...names].slice(0, 100);
-}
-
-function cleanIntroducedSpeakerName(value: string) {
-  const name = value
-    .replace(/[។៕,.;:!?].*$/, "")
-    .replace(/\b(?:and|from|speaking|here|today)\b.*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!name) return "";
-  if ([...name].length > 40) return "";
-  return name;
 }
 
 function speakerNumberToIndex(value: string) {
@@ -181,31 +162,15 @@ export function forceSingleSpeakerLabel(transcript: string, speakerName: string)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const spokenText = stripLeadingSpeakerGuess(line, name);
-      return spokenText ? `${name}: ${spokenText}` : "";
+      const withoutGenericSpeaker = line
+        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
+        .trim();
+      const withoutMatchingName = withoutGenericSpeaker.replace(new RegExp(`^${escapeRegExp(name)}\\s*:\\s*`, "i"), "").trim();
+      return withoutMatchingName ? `${name}: ${withoutMatchingName}` : "";
     })
     .filter(Boolean)
     .join("\n")
     .trim();
-}
-
-function stripLeadingSpeakerGuess(line: string, speakerName?: string) {
-  let text = line.trim();
-  const name = speakerName?.trim();
-  if (name) {
-    text = text.replace(new RegExp(`^${escapeRegExp(name)}\\s*[:：]\\s*`, "i"), "").trim();
-  }
-  text = text
-    .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
-    .trim();
-
-  // A per-participant recording has exactly one real speaker: the owner of
-  // that microphone track. If the model guessed another name label inside
-  // the track, discard that guessed label and keep only the spoken text.
-  if (!/^\d{1,2}:\d{2}(?::\d{2})?\b/.test(text)) {
-    text = text.replace(/^[^:\n：]{1,60}\s*[:：]\s+/, "").trim();
-  }
-  return text;
 }
 
 function escapeRegExp(value: string) {
@@ -490,51 +455,40 @@ export async function transcribeAudio(
   const filename = audioFile.name || "meeting-audio.webm";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
+  // All languages use the configured multimodal transcription model
+  // (default: google/gemini-3.7-flash). Keeping one audio-grounded path
+  // across Khmer, English, and mixed meetings avoids switching English-only
+  // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
-  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
-  const languageAttempts = [
-    normalizedLanguageMode,
-    ...(normalizedLanguageMode === "km-en" ? [] : (["km-en"] as const))
-  ];
-  const transcriptionDeadline = Date.now() + timeoutMs;
 
-  for (const attemptLanguage of languageAttempts) {
-    const remainingTimeoutMs = transcriptionDeadline - Date.now();
-    if (remainingTimeoutMs < 8000) break;
-
+  if (!hasUsableTranscript(cleanedTranscript)) {
     // No .catch() here: an OpenRouterApiError (invalid key, no credits, rate
     // limit) must propagate so the caller reports the real cause instead of
     // the generic "no clear speech detected" message, which was silently
     // masking account/billing errors as an audio-quality problem.
-    const rawAttempt = await transcribeOpenRouterAudioViaChat(
+    const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
       audioBuffer,
       mimeType,
       filename,
-      attemptLanguage,
-      remainingTimeoutMs,
-      normalizedSpeakerNames,
-      options.singleSpeaker ?? false,
-      options.preferAccuracy ?? options.mode !== "live"
+      normalizedLanguageMode,
+      timeoutMs,
+      normalizeSpeakerNames(speakerNames),
+      options.singleSpeaker ?? false
     );
-    const cleanedAttempt = applyKnownSpeakerLabels(
-      addSingleSpeakerLabel(cleanTranscriptionText(rawAttempt), speakerNames),
+    const cleanedFallback = applyKnownSpeakerLabels(
+      addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
       speakerNames
     );
-    if (hasUsableTranscript(cleanedAttempt)) {
-      cleanedTranscript = cleanedAttempt;
-      break;
-    }
+    if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
   }
 
-  if (!cleanedTranscript || options.mode === "live" || process.env.OPEN_ROUTER_REFINE_TRANSCRIPT !== "true") {
-    return cleanedTranscript;
-  }
+  if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
   assertUsableSavedTranscript(cleanedTranscript);
 
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
     normalizedLanguageMode,
-    normalizedSpeakerNames,
+    normalizeSpeakerNames(speakerNames),
     Math.min(timeoutMs, 55000)
   ).catch(() => cleanedTranscript);
 
@@ -555,16 +509,10 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-// Server Rec now records one truly continuous file per participant for the
-// whole call (no restarts - explicit user request), stored as one
-// MeetingTranscriptSegment row per participant. That file can be much
-// bigger than OpenRouter's ~24MB single-request transcription ceiling, so
-// this splits it (via ffmpeg stream-copy - no re-encoding, fast even for
-// hours of audio) into pieces that each fit, transcribes each piece with
-// the normal live/single-speaker path, and joins the results back together
-// in order. The recording itself is never touched by this - splitting only
-// happens here, after it's already safely stored, purely so the AI can
-// process it.
+// Transcribe one complete recording in one model request so the model keeps
+// full sentence and speaker-turn context. Files above OpenRouter's request
+// size ceiling are re-encoded to a smaller mono speech file, never split.
+// The original saved recording is not modified.
 export async function transcribeStoredTrackRecording(
   audioUrl: string,
   languageMode: TranscriptionLanguageMode,
@@ -580,21 +528,20 @@ export async function transcribeStoredTrackRecording(
     mode: "live",
     timeoutMs,
     singleSpeaker: options.singleSpeaker ?? true,
-    skipPrimaryModel: true,
-    preferAccuracy: true
+    skipPrimaryModel: true
   };
-  const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
+  const { compressWholeAudioForTranscription } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
-  const chunks = await splitAudioIntoChunks(buffer, ext, openRouterAudioLimit, transcriptionChunkTargetSeconds);
-
-  const transcripts = await Promise.all(
-    chunks.map((chunkBuffer, index) => {
-      const chunkFile = new File([new Uint8Array(chunkBuffer)], `part-${index}.${ext}`, { type: file.type || "audio/webm" });
-      return transcribeAudio(chunkFile, speakerNames, languageMode, transcribeOptions).catch(() => "");
-    })
+  const transcriptionBuffer = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+  const wasCompressed = transcriptionBuffer !== buffer;
+  const transcriptionFile = new File(
+    [new Uint8Array(transcriptionBuffer)],
+    wasCompressed ? "complete-recording.m4a" : file.name,
+    { type: wasCompressed ? "audio/mp4" : (file.type || "audio/webm") }
   );
-  return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
+  const transcript = await transcribeAudio(transcriptionFile, speakerNames, languageMode, transcribeOptions);
+  return cleanTranscriptionText(transcript);
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",
@@ -646,7 +593,8 @@ function splitTranscriptForRefine(transcript: string, maxChars: number) {
 export async function refineSavedTranscript(
   transcript: string,
   languageMode: TranscriptionLanguageMode,
-  speakerNames: string[] = []
+  speakerNames: string[] = [],
+  timeoutMs = 55000
 ) {
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
   const cleanedTranscript = cleanTranscriptionText(transcript);
@@ -654,10 +602,16 @@ export async function refineSavedTranscript(
 
   const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
   const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
 
   const refinedChunks = await Promise.all(
     chunks.map((chunk) =>
-      refineOpenRouterTranscript(chunk, normalizedLanguageMode, normalizedSpeakerNames, 55000).catch(() => chunk)
+      refineOpenRouterTranscript(
+        chunk,
+        normalizedLanguageMode,
+        normalizedSpeakerNames,
+        Math.max(1000, deadline - Date.now())
+      ).catch(() => chunk)
     )
   );
   const refinedTranscript = refinedChunks.join("\n");
@@ -708,10 +662,11 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const spokenText = stripLeadingSpeakerGuess(line, speakerName);
-      return spokenText ? `${speakerName}: ${spokenText}` : "";
+      const withoutGenericSpeaker = line
+        .replace(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?\s*[:：]\s*/i, "")
+        .trim();
+      return /^[^:\n]{1,60}:\s/.test(withoutGenericSpeaker) ? withoutGenericSpeaker : `${speakerName}: ${withoutGenericSpeaker}`;
     })
-    .filter(Boolean)
     .join("\n");
 }
 
@@ -781,3 +736,4 @@ function transcriptTokenScore(transcript: string) {
   const khmerChars = transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
   return latinWords + Math.ceil(khmerChars / 6);
 }
+

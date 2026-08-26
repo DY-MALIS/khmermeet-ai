@@ -24,6 +24,7 @@ const nextConfig: NextConfig = {
   // function entirely. Including the whole package directory covers every
   // platform binary it ships, not just the one this happens to run on.
   outputFileTracingIncludes: {
+    "/api/meetings/[id]/transcribe": ["./node_modules/ffmpeg-static/**"],
     "/api/meetings/[id]/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**"],
     "/api/meetings/[id]/merge-transcript": ["./node_modules/ffmpeg-static/**"]
   },
@@ -65,3 +66,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

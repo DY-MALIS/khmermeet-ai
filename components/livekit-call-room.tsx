@@ -1,7 +1,7 @@
 "use client";
 
 import "@livekit/components-styles";
-import type { TrackReference, TrackReferenceOrPlaceholder } from "@livekit/components-core";
+import type { TrackReference } from "@livekit/components-core";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -11,9 +11,9 @@ import {
   useRoomContext,
   useTracks
 } from "@livekit/components-react";
-import { createLocalAudioTrack, RemoteParticipant, RoomEvent, ScreenSharePresets, Track } from "livekit-client";
-import type { LocalAudioTrack } from "livekit-client";
-import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, ScreenShare, Share2, Square } from "lucide-react";
+import { createLocalAudioTrack, RoomEvent, Track } from "livekit-client";
+import type { LocalAudioTrack, RemoteParticipant } from "livekit-client";
+import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
@@ -70,9 +70,7 @@ function readInviteToken() {
 
 function readSavedParticipantName() {
   if (typeof window === "undefined") return "Local User";
-  const savedName = localStorage.getItem("khmermeet-participant-name")?.trim() || "";
-  if (new URLSearchParams(window.location.search).has("invite")) return savedName;
-  return savedName || "Local User";
+  return localStorage.getItem("khmermeet-participant-name")?.trim() || "Local User";
 }
 
 function syncMeetingParams({ setRoom, setTitle, setIsInviteGuest }: MeetingParamSetters) {
@@ -99,8 +97,6 @@ function getRecorderMimeType() {
 function getLongRecordingOptions(mimeType: string) {
   return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
 }
-
-const maxParticipants = 100;
 
 const callAudioConstraints: MediaTrackConstraints = {
   echoCancellation: true,
@@ -154,7 +150,7 @@ function cleanParticipantIdentity(identity: string) {
     .replace(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "")
     .replace(/-[0-9a-f]{12,}$/i, "")
     .replace(/-/g, " ")
-    .trim() || "Participant";
+    .trim() || "អ្នកចូលរួម";
 }
 
 export function LiveKitCallRoom() {
@@ -202,7 +198,7 @@ export function LiveKitCallRoom() {
       const nextUrl = new URL(target.href, window.location.href);
       if (nextUrl.href === window.location.href) return;
 
-      window.alert("You are currently in a video call. To keep the call connected, use Mini video or open another browser tab for other pages. Click Leave inside the call before closing it.");
+      window.alert("កំពុងស្ថិតក្នុង video call។ ដើម្បីកុំឲ្យ call ចេញ សូមប្រើ Mini video ឬបើក browser tab ថ្មីសម្រាប់ទំព័រផ្សេង។ ចុច ចាកចេញ ក្នុង call មុន ប្រសិនបើចង់បិទ call។");
       event.preventDefault();
       event.stopPropagation();
     }
@@ -220,29 +216,12 @@ export function LiveKitCallRoom() {
     return title.trim() || `Video call ${room}`;
   }
 
-  function inviteLink(nextRoom = room, inviteToken = tokenPayload?.inviteToken) {
+  function inviteLink(nextRoom = room) {
     const url = new URL(`${window.location.origin}/meetings/call`);
     url.searchParams.set("room", nextRoom);
     if (title.trim()) url.searchParams.set("title", title.trim());
-    if (inviteToken) url.searchParams.set("invite", inviteToken);
+    if (tokenPayload?.inviteToken) url.searchParams.set("invite", tokenPayload.inviteToken);
     return url.toString();
-  }
-
-  async function getInviteUrl(nextRoom = room) {
-    const roomToInvite = nextRoom.trim().toUpperCase() || createRoomCode();
-    setRoom(roomToInvite);
-    localStorage.setItem("khmermeet-meeting-room", roomToInvite);
-    if (title.trim()) localStorage.setItem("khmermeet-meeting-title", title.trim());
-    if (tokenPayload?.inviteToken) return inviteLink(roomToInvite, tokenPayload.inviteToken);
-
-    const response = await fetch("/api/livekit-invite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room: roomToInvite })
-    });
-    const data = await readJsonResponse<{ inviteToken?: string; error?: string }>(response);
-    if (!response.ok || !data.inviteToken) throw new Error(data.error ?? "Could not create invite link.");
-    return inviteLink(roomToInvite, data.inviteToken);
   }
 
   async function joinRoom() {
@@ -257,9 +236,6 @@ export function LiveKitCallRoom() {
       localStorage.setItem("khmermeet-meeting-room", roomToJoin);
       if (titleToSave) localStorage.setItem("khmermeet-meeting-title", titleToSave);
       const participantName = name.trim() || readSavedParticipantName();
-      if (isInviteGuest && !participantName.trim()) {
-        throw new Error("Enter your name before joining the call so the transcript can label speakers correctly.");
-      }
       localStorage.setItem("khmermeet-participant-name", participantName);
       const media = await checkMediaDeviceSupport(cameraOn, microphoneOn);
       const nextCameraOn = cameraOn && media.hasCamera;
@@ -285,26 +261,22 @@ export function LiveKitCallRoom() {
       setCallMedia({ audio: nextMicrophoneOn, video: nextCameraOn });
       setTokenPayload(data);
       if (notices.length) setNotice(notices.join(" "));
-      window.history.replaceState(null, "", inviteLink(data.room, data.inviteToken));
+      window.history.replaceState(null, "", inviteLink(data.room));
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not join the HD video call.");
+      setError(error instanceof Error ? error.message : "មិនអាចចូល HD video call បានទេ។");
     } finally {
       setJoining(false);
     }
   }
 
   async function copyInvite() {
-    try {
-      const url = await getInviteUrl();
-      await navigator.clipboard?.writeText(url).catch(() => undefined);
-      setNotice("Invite link copied. Participants can open the link, enter their name, and join immediately without email or password.");
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not copy the invite link.");
-    }
+    const url = inviteLink();
+    await navigator.clipboard?.writeText(url).catch(() => undefined);
+    setNotice("បានចម្លង Invite link ។ អ្នកចូលរួមគ្រាន់តែវាយឈ្មោះ រួចចូលរួមបាន។");
   }
 
   async function shareInvite() {
-    const url = await getInviteUrl();
+    const url = inviteLink();
     if (navigator.share) {
       await navigator.share({
         title: meetingTitle(),
@@ -320,24 +292,24 @@ export function LiveKitCallRoom() {
     return (
       <div className="space-y-5">
         <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm text-ink">
-          HD mode uses LiveKit SFU for large group calls. Meeting: <b>{meetingTitle()}</b> · Room: <b>{tokenPayload.room}</b>
+          HD mode ប្រើ LiveKit SFU សម្រាប់ call ក្រុមធំ។ Meeting: <b>{meetingTitle()}</b> · Room: <b>{tokenPayload.room}</b>
         </div>
         {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
         <div className="kh-card flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-600">Invite participants</p>
+            <p className="text-sm font-semibold text-slate-600">អញ្ជើញអ្នកចូលរួម</p>
             <p className="text-sm text-slate-500">
-              Share this link so others can join <span className="font-semibold text-ink">{meetingTitle()}</span>. They only need to enter their name.
+              ចែករំលែក link នេះ ដើម្បីឲ្យអ្នកដទៃចូលរួម <span className="font-semibold text-ink">{meetingTitle()}</span> បាន។ ពួកគេគ្រាន់តែវាយឈ្មោះ។
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button className="kh-button-secondary" type="button" onClick={copyInvite}>
               <Copy className="h-4 w-4" />
-              Copy link
+              ចម្លង Link
             </button>
             <button className="kh-button-primary" type="button" onClick={shareInvite}>
               <Share2 className="h-4 w-4" />
-              Share invite
+              ចែករំលែក Invite
             </button>
           </div>
         </div>
@@ -360,22 +332,22 @@ export function LiveKitCallRoom() {
             setError(`Call disconnected unexpectedly${reason ? ` (${reason})` : ""}. The call screen was kept open; check your connection, then rejoin if audio/video stopped.`);
           }}
           onMediaDeviceFailure={(failure, kind) => {
-            setError(`Could not open ${kind ?? "media device"}${failure ? ` (${failure})` : ""}. Check browser permission, camera, and microphone, then join again.`);
+            setError(`មិនអាចបើក ${kind ?? "media device"} បានទេ${failure ? ` (${failure})` : ""}។ សូមពិនិត្យ browser permission/camera/microphone រួចចូលម្តងទៀត។`);
           }}
           onError={(error) => {
-            const message = error.message || "Could not connect camera or microphone.";
+            const message = error.message || "មិនអាចភ្ជាប់ camera/microphone បានទេ។";
             if (/camera|video|device|permission/i.test(message) && callMedia.video) {
               setCameraOn(false);
               setCallMedia((current) => ({ ...current, video: false }));
               setTokenPayload(null);
-              setError(`${message} Join again with camera off for audio-only mode.`);
+              setError(`${message} សូមចូលរួមម្តងទៀតដោយបិទ camera សម្រាប់ audio-only mode។`);
               return;
             }
             if (/microphone|audio|device|permission/i.test(message) && callMedia.audio) {
               setMicrophoneOn(false);
               setCallMedia((current) => ({ ...current, audio: false }));
               setTokenPayload(null);
-              setError(`${message} Join again with microphone off for listen-only mode, or allow microphone access if you want to speak.`);
+              setError(`${message} សូមចូលរួមម្តងទៀតដោយបិទ microphone សម្រាប់ listen-only mode ឬអនុញ្ញាត microphone ដើម្បីនិយាយបាន។`);
               return;
             }
             setError(message);
@@ -402,57 +374,57 @@ export function LiveKitCallRoom() {
         <div className="grid gap-3 md:grid-cols-2">
           {isInviteGuest ? (
             <div className="space-y-2 rounded-xl border border-leaf/20 bg-leaf/5 p-4 md:col-span-2">
-              <p className="text-sm font-semibold text-leaf">You have been invited to a meeting</p>
+              <p className="text-sm font-semibold text-leaf">អ្នកត្រូវបានអញ្ជើញចូលប្រជុំ</p>
               <h2 className="text-xl font-bold text-ink">{meetingTitle()}</h2>
-              <p className="text-sm text-slate-500">The room code is already included in the invite link. Enter only your name, then click Join HD Video Call.</p>
+              <p className="text-sm text-slate-500">Room code ត្រូវបានភ្ជាប់ក្នុង invite link រួចហើយ។ សូមវាយតែឈ្មោះរបស់អ្នក បន្ទាប់មកចុច Join HD Video Call។</p>
             </div>
           ) : (
             <label className="space-y-1 md:col-span-2">
-              <span className="text-sm font-semibold text-slate-600">Meeting title</span>
-              <input className="kh-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Q2 planning meeting" />
+              <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ</span>
+              <input className="kh-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="ឧ. ប្រជុំផែនការ Q2" />
             </label>
           )}
           <label className="space-y-1">
-            <span className="text-sm font-semibold text-slate-600">Participant name</span>
+            <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម</span>
             <input className="kh-input" value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           {isInviteGuest ? (
             <div className="space-y-1">
-              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <span className="text-sm font-semibold text-slate-600">លេខកូដ Room</span>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-600">{room}</div>
             </div>
           ) : (
             <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-600">Room code</span>
+              <span className="text-sm font-semibold text-slate-600">លេខកូដ Room</span>
               <div className="flex gap-2">
                 <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
-                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="Copy invite">
+                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="ចម្លង Invite">
                   <Copy className="h-4 w-4" />
                 </button>
               </div>
-              <p className="text-xs text-slate-500">The host should fill in the title and room code first. The invite link will include both automatically.</p>
+              <p className="text-xs text-slate-500">Host បំពេញចំណងជើង និង room code មុន។ Invite link នឹងផ្ញើចំណងជើង/room code ជាស្រេច។</p>
             </label>
           )}
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={cameraOn} onChange={(event) => setCameraOn(event.target.checked)} type="checkbox" />
             <Camera className="h-4 w-4 text-slate-500" />
-            Turn camera on when joining. For 100 people, keep this off by default.
+            បើកកាមេរ៉ាពេលចូល (សម្រាប់ 100 នាក់ សូមទុកបិទជាមុន)
           </label>
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
             <input checked={microphoneOn} onChange={(event) => setMicrophoneOn(event.target.checked)} type="checkbox" />
             <Mic className="h-4 w-4 text-slate-500" />
-            Turn microphone on when joining
+            បើក microphone ពេលចូល
           </label>
         </div>
-        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady || (isInviteGuest && !name.trim())}>
+        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady}>
           {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
           {paramsReady ? "Join HD Video Call" : "Preparing call..."}
         </button>
       </div>
       <div className="rounded-lg border border-sky/20 bg-sky/10 p-4 text-sm leading-7 text-ink">
-        LiveKit mode supports group audio/video, grid view, screen share, chat, speaker output, and large meetings. For 100 people, use audio-first and turn camera on only when someone needs to speak or present.
-        If the computer has no camera, turn camera off and join with microphone only.
-        If a participant cannot enable camera, click the camera icon in the call toolbar and choose Allow in the browser permission prompt.
+        LiveKit mode គាំទ្រ audio/video ជាក្រុម, grid view, screen share, chat, speaker output និងអាចប្រើសម្រាប់ក្រុមធំ។ សម្រាប់ 100 នាក់ សូមប្រើ audio-first ហើយបើក camera តែអ្នកត្រូវនិយាយ/បង្ហាញ។
+        ប្រសិនបើកុំព្យូទ័រមិនមាន camera អ្នកអាចបិទ “បើកកាមេរ៉ា” ហើយចូលនិយាយដោយ microphone បាន។
+        បើអ្នកចូលរួមបើកកាមេរ៉ាមិនបាន សូមចុច icon camera ក្នុង toolbar ខាងក្រោម call ហើយជ្រើស Allow នៅ browser permission។
       </div>
       {notice ? <div className="rounded-lg bg-leaf/10 p-3 text-sm text-leaf">{notice}</div> : null}
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
@@ -469,84 +441,61 @@ function LiveKitOneScreenConference({ onLeaveRequest }: { onLeaveRequest: () => 
     ],
     { onlySubscribed: false }
   );
-  const screenTracks = tracks.filter((trackRef) => trackRef.source === Track.Source.ScreenShare && trackRef.publication?.track);
-  const cameraTracks = tracks.filter((trackRef) => trackRef.source !== Track.Source.ScreenShare);
-  const activeScreenTrack = screenTracks[0];
   // Joining is not capped by this UI, but rendering unlimited live video
   // tiles at once would overwhelm browsers in large meetings. The room can
   // have many audio participants; the grid only shows the first 20 videos.
-  const visibleTracks = activeScreenTrack ? cameraTracks.slice(0, 8) : tracks.slice(0, 20);
+  const visibleTracks = tracks.slice(0, 20);
   const grid = getCallGridMetrics(visibleTracks.length);
 
   return (
     <section className="bg-slate-950">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-3 py-2 text-xs font-semibold text-white/70">
         <span>
-          Participants {participants.length} · Showing video {visibleTracks.length} of {tracks.length} tracks
+          អ្នកចូលរួម {participants.length} នាក់ · កំពុងបង្ហាញ video {visibleTracks.length} នៃ {tracks.length} tracks
         </span>
-        <span>{activeScreenTrack ? "Presentation view" : "Single-screen grid view"}</span>
+        <span>ទិដ្ឋភាព Grid តែមួយអេក្រង់</span>
       </div>
       <div className="kh-livekit-stage h-[52svh] min-h-[300px] max-h-[680px] p-2 md:h-[calc(100svh-22rem)] md:min-h-[380px]">
-        {activeScreenTrack ? (
-          <div className="grid h-full gap-2 lg:grid-cols-[minmax(0,1fr)_220px]">
-            <TrackTile trackRef={activeScreenTrack} fit="contain" />
-            <div className="grid min-h-0 grid-cols-2 gap-2 overflow-y-auto lg:grid-cols-1">
-              {visibleTracks.map((trackRef) => (
-                <TrackTile key={`${trackRef.participant.sid}-${trackRef.source}`} trackRef={trackRef} compact />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div
-            className="grid h-full gap-2"
-            style={{
-              gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
-            }}
-          >
-            {visibleTracks.map((trackRef) => (
-              <TrackTile key={`${trackRef.participant.sid}-${trackRef.source}`} trackRef={trackRef} />
-            ))}
-          </div>
-        )}
+        <div
+          className="grid h-full gap-2"
+          style={{
+            gridTemplateColumns: `repeat(${grid.columns}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`
+          }}
+        >
+          {visibleTracks.map((trackRef) => {
+            const participantName = trackRef.participant.name || trackRef.participant.identity || "អ្នកចូលរួម";
+            const trackKey = `${trackRef.participant.sid}-${trackRef.source}`;
+            const hasVideo = Boolean(trackRef.publication?.track);
+
+            return (
+              <div
+                key={trackKey}
+                className="relative flex min-h-0 overflow-hidden rounded-lg border border-white/10 bg-slate-900"
+              >
+                {hasVideo ? (
+                  <VideoTrack
+                    trackRef={trackRef as TrackReference}
+                    className="h-full w-full object-cover"
+                    playsInline
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
+                    <Camera className="h-8 w-8" />
+                    <span className="text-sm font-semibold">បិទកាមេរ៉ា</span>
+                  </div>
+                )}
+                <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
+                  {participantName}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <RoomAudioRenderer />
       <LiveKitCallControls onLeaveRequest={onLeaveRequest} />
     </section>
-  );
-}
-
-function TrackTile({
-  trackRef,
-  fit = "cover",
-  compact = false
-}: {
-  trackRef: TrackReferenceOrPlaceholder;
-  fit?: "cover" | "contain";
-  compact?: boolean;
-}) {
-  const participantName = trackRef.participant.name || trackRef.participant.identity || "Participant";
-  const hasVideo = Boolean(trackRef.publication?.track);
-  const isScreenShare = trackRef.source === Track.Source.ScreenShare;
-
-  return (
-    <div className="relative flex min-h-0 overflow-hidden rounded-lg border border-white/10 bg-slate-900">
-      {hasVideo ? (
-        <VideoTrack
-          trackRef={trackRef as TrackReference}
-          className={cn("h-full w-full", fit === "contain" ? "object-contain" : "object-cover")}
-          playsInline
-        />
-      ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-white/70">
-          <Camera className={cn(compact ? "h-5 w-5" : "h-8 w-8")} />
-          <span className={cn("font-semibold", compact ? "text-xs" : "text-sm")}>Camera off</span>
-        </div>
-      )}
-      <span className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-1 text-xs font-semibold text-white">
-        {isScreenShare ? `${participantName} is presenting` : participantName}
-      </span>
-    </div>
   );
 }
 
@@ -687,7 +636,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     const level = await measureTrackLevel(track.mediaStreamTrack);
     if (level <= 1) {
       track.stop();
-      throw new Error("Chrome opened the microphone, but the signal is still 0%. This is likely a device, driver, or Chrome audio input issue.");
+      throw new Error("Chrome បានបើក microphone ប៉ុន្តែ signal នៅ 0%។ បញ្ហានេះនៅលើ device/driver ឬ Chrome audio input មិនបញ្ជូនសំឡេងទៅ browser ទេ។");
     }
 
     await localParticipant.publishTrack(track, {
@@ -706,7 +655,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
       await action();
       setMicNotice("");
     } catch (error) {
-      setMicNotice(error instanceof Error ? error.message : "Microphone could not be enabled.");
+      setMicNotice(error instanceof Error ? error.message : "Microphone មិនអាចបើកបានទេ។");
     } finally {
       setBusyControl("");
     }
@@ -719,25 +668,25 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   }
 
   async function repairMicrophone() {
-    setMicNotice("Restarting microphone...");
+    setMicNotice("កំពុង restart microphone...");
     await localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
     await new Promise((resolve) => window.setTimeout(resolve, 300));
     const publication = await localParticipant.setMicrophoneEnabled(true, microphoneOptions());
     const mediaTrack = publication?.track?.mediaStreamTrack;
     if (!mediaTrack || mediaTrack.readyState !== "live") {
-      setMicNotice("LiveKit mic track is not live. Trying fallback microphone...");
+      setMicNotice("LiveKit mic track មិន live។ កំពុងសាក fallback microphone...");
       await publishManualMicrophoneFallback();
       await loadAudioDevices();
-      setMicNotice("Fallback microphone connected. Try speaking again.");
+      setMicNotice("Fallback microphone បានភ្ជាប់ហើយ។ សាកនិយាយម្តងទៀត។");
       return;
     }
 
     const level = await measureTrackLevel(mediaTrack);
     if (level <= 1) {
-      setMicNotice("LiveKit mic track is silent. Trying fallback microphone...");
+      setMicNotice("LiveKit mic track នៅស្ងាត់។ កំពុងសាក fallback microphone...");
       await publishManualMicrophoneFallback();
       await loadAudioDevices();
-      setMicNotice("Fallback microphone connected. Try speaking again.");
+      setMicNotice("Fallback microphone បានភ្ជាប់ហើយ។ សាកនិយាយម្តងទៀត។");
       return;
     }
 
@@ -745,18 +694,18 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     manualMicTrackRef.current = null;
     setMicLevel(level);
     await loadAudioDevices();
-    setMicNotice("Microphone reconnected. Try speaking again.");
+    setMicNotice("Microphone បានភ្ជាប់ឡើងវិញហើយ។ សាកនិយាយម្តងទៀត។");
   }
 
   async function openMiniVideo() {
     if (!document.pictureInPictureEnabled) {
-      throw new Error("This browser does not support Mini video/Picture-in-Picture. Use a recent version of Chrome or Edge.");
+      throw new Error("Browser នេះមិនគាំទ្រ Mini video/Picture-in-Picture ទេ។ សូមប្រើ Chrome ឬ Edge ថ្មីៗ។");
     }
 
     const videos = Array.from(document.querySelectorAll<HTMLVideoElement>(".kh-livekit-stage video"));
     const activeVideo = videos.find((video) => video.readyState >= 2 && !video.paused) ?? videos.find((video) => video.readyState >= 2);
     if (!activeVideo) {
-      throw new Error("No video track is available for Mini video yet. Turn on camera or wait for a participant to enable camera.");
+      throw new Error("មិនទាន់មាន video track សម្រាប់បង្ហាញជា Mini video ទេ។ សូមបើក camera ឬរង់ចាំអ្នកចូលរួមបើក camera។");
     }
 
     if (document.pictureInPictureElement === activeVideo) {
@@ -765,7 +714,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
     }
 
     await activeVideo.requestPictureInPicture();
-    setMicNotice("Mini video is open. You can switch browser tabs while the call continues.");
+    setMicNotice("Mini video បានបើកហើយ។ អ្នកអាចទៅ browser tab ផ្សេង ដោយ call នៅបន្តដំណើរការ។");
   }
 
   async function toggleMicrophone() {
@@ -774,38 +723,11 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
       manualMicTrackRef.current?.stop();
       manualMicTrackRef.current = null;
       setMicLevel(0);
-      setMicNotice("Microphone is off.");
+      setMicNotice("Microphone បានបិទហើយ។");
       return;
     }
 
     await repairMicrophone();
-  }
-
-  async function toggleScreenShare() {
-    if (isScreenShareEnabled) {
-      await localParticipant.setScreenShareEnabled(false);
-      setMicNotice("Screen sharing stopped.");
-      return;
-    }
-
-    await localParticipant.setScreenShareEnabled(
-      true,
-      {
-        audio: false,
-        video: true,
-        resolution: ScreenSharePresets.h1080fps30.resolution,
-        contentHint: "motion",
-        selfBrowserSurface: "include",
-        surfaceSwitching: "include",
-        systemAudio: "include"
-      },
-      {
-        screenShareEncoding: ScreenSharePresets.h1080fps30.encoding,
-        simulcast: false,
-        degradationPreference: "maintain-framerate"
-      }
-    );
-    setMicNotice("Screen sharing is live. Share a window or full screen to show clicks, scrolling, and movement.");
   }
 
   return (
@@ -818,7 +740,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           onClick={() => runControl("mic", toggleMicrophone)}
         >
           <Mic className="mr-2 inline h-4 w-4" />
-          {isMicrophoneEnabled ? "Microphone" : "Turn on Microphone"}
+          {isMicrophoneEnabled ? "Microphone" : "បើក Microphone"}
         </button>
         <button
           className={cn("rounded-lg px-4 py-2 text-white", isCameraEnabled ? "bg-white/10" : "bg-red-500/80")}
@@ -827,17 +749,16 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           onClick={() => runControl("camera", () => localParticipant.setCameraEnabled(!isCameraEnabled))}
         >
           <Camera className="mr-2 inline h-4 w-4" />
-          {isCameraEnabled ? "Camera" : "Camera off"}
+          {isCameraEnabled ? "កាមេរ៉ា" : "បិទកាមេរ៉ា"}
         </button>
         <button
-          className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-sky/80 hover:bg-sky")}
+          className={cn("rounded-lg px-4 py-2 text-white", isScreenShareEnabled ? "bg-leaf" : "bg-white/10")}
           type="button"
           disabled={Boolean(busyControl)}
-          onClick={() => runControl("screen", toggleScreenShare)}
-          title="Share your screen with everyone in the video call."
+          onClick={() => runControl("screen", () => localParticipant.setScreenShareEnabled(!isScreenShareEnabled))}
         >
-          <ScreenShare className="mr-2 inline h-4 w-4" />
-          {isScreenShareEnabled ? "Stop sharing" : "Share screen"}
+          <Share2 className="mr-2 inline h-4 w-4" />
+          {isScreenShareEnabled ? "បញ្ឈប់ការចែករំលែក" : "ចែករំលែកអេក្រង់"}
         </button>
         <button
           className="rounded-lg bg-white/10 px-4 py-2 text-white"
@@ -846,7 +767,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           onClick={() => runControl("mini", openMiniVideo)}
           title="Show the call video in a small floating window when you switch browser tabs."
         >
-          {busyControl === "mini" ? "Opening..." : "Mini video"}
+          {busyControl === "mini" ? "កំពុងបើក..." : "Mini video"}
         </button>
         <button
           className="rounded-lg border border-red-400/60 px-4 py-2 text-red-200"
@@ -858,7 +779,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
           })}
         >
           <Phone className="mr-2 inline h-4 w-4" />
-          Leave
+          ចាកចេញ
         </button>
       </div>
 
@@ -872,7 +793,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
             value={selectedAudioDeviceId}
             onChange={(event) => {
               setSelectedAudioDeviceId(event.target.value);
-              setMicNotice("Microphone selected. Click Repair Mic to use the new device.");
+              setMicNotice("បានជ្រើស microphone។ ចុច ជួសជុល Mic ដើម្បីប្រើ device ថ្មី។");
             }}
             onFocus={() => void loadAudioDevices()}
             title="Choose the microphone used by this call."
@@ -891,7 +812,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
             onClick={() => runControl("repair-mic", repairMicrophone)}
             title="Use this when you can hear others, but they cannot hear you."
           >
-            {busyControl === "repair-mic" ? "Repairing..." : "Repair Mic"}
+            {busyControl === "repair-mic" ? "កំពុងជួសជុល..." : "ជួសជុល Mic"}
           </button>
           <button
             className={cn("h-10 rounded-lg px-4 py-2 text-white", audioUnlocked ? "bg-leaf" : "bg-white/10")}
@@ -900,7 +821,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
             onClick={() => runControl("audio", unlockSpeakerAudio)}
             title="Click once if you can see participants but cannot hear their voices."
           >
-            {audioUnlocked ? "Audio enabled" : "Enable audio"}
+            {audioUnlocked ? "សំឡេងបើកហើយ" : "បើកសំឡេង"}
           </button>
         </div>
         <div className="mx-auto mt-3 flex max-w-xl items-center gap-3">
@@ -971,8 +892,10 @@ function LiveKitMeetingAgent({
   const [localBackupUrl, setLocalBackupUrl] = useState("");
   const [, setAnnouncedSpeakerNames] = useState<Record<string, string>>({});
   const announcedSpeakerNamesRef = useRef<Record<string, string>>({});
-  // Legacy browser-mixed recording state. The visible call recorder now uses
-  // LiveKit Egress so each participant's microphone is captured separately.
+  // One-click mixed recording: the host browser records one mixed audio file
+  // containing the local microphone plus every subscribed remote microphone.
+  // This keeps the saved meeting to one audio player while still letting the
+  // transcript use the participant names saved at recording start.
   const [serverRecording, setServerRecording] = useState<{ meetingId: string; recordingStartedAt: number } | null>(null);
   const [egressRecording, setEgressRecording] = useState<EgressRecording | null>(null);
   // True on participants who received the start signal but weren't the one
@@ -996,7 +919,6 @@ function LiveKitMeetingAgent({
     serverRecordingRef.current = serverRecording;
   }, [serverRecording]);
   const egressRecordingRef = useRef(egressRecording);
-  const pendingEgressTrackIdentitiesRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     egressRecordingRef.current = egressRecording;
   }, [egressRecording]);
@@ -1038,9 +960,12 @@ function LiveKitMeetingAgent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, serverRecording, egressRecording]);
 
-  // Legacy browser-mixed recording only wires up whatever microphone tracks
-  // are already live when recording starts. Keep it in sync for the hidden
-  // compatibility recorder while new call recordings use LiveKit Egress.
+  // buildMixedAudioStream() only wires up whatever microphone tracks are
+  // already live when recording starts. Without this, anyone who joins (or
+  // whose mic finishes subscribing) after that moment is silently missing
+  // from the mixed recording even though they're audible live via
+  // RoomAudioRenderer - this keeps the mix in sync with the room for both
+  // Start Agent and Server Rec's primary mixed-audio recording.
   useEffect(() => {
     if (!recording && !serverRecording) return;
     connectAvailableAudioTracks();
@@ -1109,8 +1034,8 @@ function LiveKitMeetingAgent({
     };
   }, [participantName, room]);
 
-  // Participants announce display names over the data channel so egress track
-  // jobs and transcript labels can use human-readable names.
+  // Older deployments used data-channel start/stop signals for per-participant
+  // recording. New recordings intentionally save one mixed audio file only.
   useEffect(() => {
     function handleData(payload: Uint8Array) {
       let message: LiveRecordingSignal;
@@ -1143,8 +1068,28 @@ function LiveKitMeetingAgent({
 
   useEffect(() => {
     function handleConnected(participant: RemoteParticipant) {
-      if (egressRecordingRef.current) {
-        void startEgressForParticipant(participant);
+      const currentEgress = egressRecordingRef.current;
+      if (currentEgress) {
+        fetch("/api/livekit-egress/track/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            room: room.name,
+            identity: participant.identity,
+            name: participant.name || participant.identity,
+            recordingBase: currentEgress.recordingBase,
+            recordingStartedAt: currentEgress.recordingStartedAt
+          })
+        })
+          .then((response) => (response.ok ? readJsonResponse<EgressTrackJob & { skipped?: boolean }>(response) : null))
+          .then((job) => {
+            if (!job || job.skipped || !job.egressId) return;
+            setEgressRecording((current) => {
+              if (!current || current.trackJobs.some((existing) => existing.egressId === job.egressId)) return current;
+              return { ...current, trackJobs: [...current.trackJobs, job] };
+            });
+          })
+          .catch(() => undefined);
         return;
       }
 
@@ -1162,57 +1107,6 @@ function LiveKitMeetingAgent({
     room.on(RoomEvent.ParticipantConnected, handleConnected);
     return () => {
       room.off(RoomEvent.ParticipantConnected, handleConnected);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room]);
-
-  function startEgressForParticipant(participant: RemoteParticipant) {
-    const currentEgress = egressRecordingRef.current;
-    const identity = participant.identity;
-    if (!currentEgress) return Promise.resolve();
-    if (currentEgress.trackJobs.some((job) => job.identity === identity)) return Promise.resolve();
-    if (pendingEgressTrackIdentitiesRef.current.has(identity)) return Promise.resolve();
-    pendingEgressTrackIdentitiesRef.current.add(identity);
-
-    return fetch("/api/livekit-egress/track/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        room: room.name,
-        identity,
-        name: participant.name || announcedSpeakerNamesRef.current[identity] || cleanParticipantIdentity(identity),
-        recordingBase: currentEgress.recordingBase,
-        recordingStartedAt: currentEgress.recordingStartedAt
-      })
-    })
-      .then((response) => (response.ok ? readJsonResponse<EgressTrackJob & { skipped?: boolean }>(response) : null))
-      .then((job) => {
-        if (!job || job.skipped || !job.egressId) return;
-        setEgressRecording((current) => {
-          if (!current || current.trackJobs.some((existing) => existing.identity === job.identity || existing.egressId === job.egressId)) {
-            return current;
-          }
-          return { ...current, trackJobs: [...current.trackJobs, job] };
-        });
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        pendingEgressTrackIdentitiesRef.current.delete(identity);
-      });
-  }
-
-  useEffect(() => {
-    function handleTrackMayBeReady(...args: unknown[]) {
-      const participant = args.find((value): value is RemoteParticipant => value instanceof RemoteParticipant);
-      if (!participant || !egressRecordingRef.current) return;
-      window.setTimeout(() => void startEgressForParticipant(participant), 500);
-    }
-
-    room.on(RoomEvent.TrackPublished, handleTrackMayBeReady);
-    room.on(RoomEvent.TrackUnmuted, handleTrackMayBeReady);
-    return () => {
-      room.off(RoomEvent.TrackPublished, handleTrackMayBeReady);
-      room.off(RoomEvent.TrackUnmuted, handleTrackMayBeReady);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room]);
@@ -1297,7 +1191,7 @@ function LiveKitMeetingAgent({
     }
     if (room.remoteParticipants.size > 0 && connectedTrackCount <= 1) {
       stopMixedAudioContext();
-      throw new Error("Other participants are in the call, but the recorder captured only 1 microphone track. Wait until others are audible or have unmuted, then start recording again.");
+      throw new Error("មានអ្នកចូលរួមផ្សេងទៀតក្នុង call ប៉ុន្តែ recorder ចាប់បាន microphone តែ 1 track ប៉ុណ្ណោះ។ សូមរង់ចាំឲ្យសំឡេងអ្នកផ្សេងលឺ/ឲ្យគេបើក mic រួចចុចថតម្ដងទៀត។");
     }
 
     cleanupRef.current = stopMixedAudioContext;
@@ -1403,9 +1297,9 @@ function LiveKitMeetingAgent({
       startedAtRef.current = Date.now();
       setSeconds(0);
       setRecording(true);
-      setNotice("Meeting Agent is recording audio from the LiveKit room.");
+      setNotice("Meeting Agent កំពុងថតសំឡេងពី LiveKit room។");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not start meeting recording.");
+      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើមថតកិច្ចប្រជុំបានទេ។");
     }
   }
 
@@ -1415,6 +1309,20 @@ function LiveKitMeetingAgent({
       recorderRef.current.stop();
     }
     setRecording(false);
+  }
+
+  // The single saved recording: one mixed audio file for the whole call.
+  function startServerMixedBackup() {
+    const mixedStream = buildMixedAudioStream();
+    const mimeType = getRecorderMimeType();
+    const recorder = new MediaRecorder(mixedStream, getLongRecordingOptions(mimeType));
+    serverMixedChunksRef.current = [];
+    serverMixedMimeTypeRef.current = mimeType || recorder.mimeType || "audio/webm";
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) serverMixedChunksRef.current.push(event.data);
+    };
+    recorder.start(5000);
+    serverMixedRecorderRef.current = recorder;
   }
 
   function participantCount() {
@@ -1616,7 +1524,7 @@ function LiveKitMeetingAgent({
     pendingLocalRecordingRef.current = { meetingId, languageMode, recordingStartedAt, requestId };
     const micTrack = await waitForLocalMicrophoneTrack(requestId);
     if (!micTrack || trackSegmentingRef.current || trackStartRequestRef.current !== requestId) {
-      setNotice("Server Rec is waiting for your microphone. When you turn on the microphone, recording will start automatically.");
+      setNotice("Server Rec កំពុងរង់ចាំ microphone របស់អ្នក។ ពេលបើក microphone វានឹងចាប់ផ្តើមថតដោយស្វ័យប្រវត្តិ។");
       return;
     }
     void tryStartPendingLocalTrackRecording();
@@ -1666,11 +1574,11 @@ function LiveKitMeetingAgent({
       const expectedParticipants = participantCount();
       if (speakers.length < expectedParticipants) {
         throw new Error(
-          `Not all participant names have been captured yet (${speakers.length}/${expectedParticipants}). Ask everyone to stay in the call, wait 2-3 seconds, then start recording again.`
+          `មិនទាន់រក្សា​ឈ្មោះអ្នកចូលរួមបានគ្រប់គ្នាទេ (${speakers.length}/${expectedParticipants})។ សូមឲ្យអ្នកចូលរួមទាំងអស់នៅក្នុង call រួចរង់ចាំ 2-3 វិនាទី បន្ទាប់មកចុចថតម្ដងទៀត។`
         );
       }
-      if (expectedParticipants > maxParticipants) {
-        throw new Error(`This call has ${expectedParticipants} participants. KhmerMeet limits name capture and recording to ${maxParticipants} participants so transcript labels stay accurate.`);
+      if (expectedParticipants > 100) {
+        throw new Error(`Call នេះមានអ្នកចូលរួម ${expectedParticipants} នាក់។ KhmerMeet កំណត់ការរក្សាឈ្មោះ/ថតសម្រាប់អតិបរមា 100 នាក់ ដើម្បីឲ្យ transcript label ត្រឹមត្រូវ។`);
       }
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
@@ -1679,37 +1587,19 @@ function LiveKitMeetingAgent({
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
       if (!response.ok || !data.meetingId) {
-        throw new Error(data.error ?? "Server recording failed.");
+        throw new Error(data.error ?? "ការថត Server មិនជោគជ័យទេ។");
       }
 
+      const recordingStartedAt = Date.now();
+      startServerMixedBackup();
       setSavedMeetingId(data.meetingId);
+      setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setSeconds(0);
-
-      const egressResponse = await fetch("/api/livekit-egress/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: recordingRoom, title: meetingTitle })
-      });
-      const egressData = await readJsonResponse<(EgressRecording & { error?: string; hint?: string; missingVariables?: string[] })>(egressResponse);
-
-      if (egressResponse.ok && egressData.fileEgressId) {
-        setEgressRecording({ ...egressData, meetingId: data.meetingId });
-        setNotice(
-          `Server Rec started on LiveKit. It supports up to ${maxParticipants} participants; main audio and participant tracks are recording on the server.`
-        );
-        return;
-      }
-
-      await fetch(`/api/meetings/${data.meetingId}/merge-transcript`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ duration: 0 })
-      }).catch(() => undefined);
-      throw new Error(
-        `${egressData.error ?? "Server Rec is not running yet."} Configure LiveKit Egress and Supabase Storage first. KhmerMeet no longer uses browser fallback for call recording because it cannot capture many participants reliably.`
+      setNotice(
+        `បានចាប់ផ្តើមថត audio តែមួយ។ Audio នេះកំពុងចាប់សំឡេងពីអ្នកចូលរួម ${getCurrentSpeakerNames().length} នាក់ក្នុង call។`
       );
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not start recording.");
+      setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម recording បានទេ។");
     } finally {
       setSaving(false);
     }
@@ -1749,7 +1639,7 @@ function LiveKitMeetingAgent({
         setSavedMeetingId(currentEgressRecording.meetingId);
         setSavedAudioUrl(currentEgressRecording.storageUrl);
         setEgressRecording(null);
-        setNotice("Server audio stopped and saved. Transcribing each participant and attaching transcript lines by name.");
+        setNotice("បានឈប់ថត និងរក្សាទុក server audio រួច។ កំពុងបំលែងសំឡេងអ្នកចូលរួមនីមួយៗ ហើយបញ្ចូល transcript តាមឈ្មោះ។");
         void finalizeEgressRecording(currentEgressRecording, duration);
         return;
       }
@@ -1757,12 +1647,12 @@ function LiveKitMeetingAgent({
       if (!currentRecording) return;
       const durationMs = clampMeetingDurationMs(Date.now() - currentRecording.recordingStartedAt);
       const savedMixedAudioUrl = await stopServerMixedBackup(currentRecording.meetingId, transcriptionLanguage, durationMs);
-      if (!savedMixedAudioUrl) throw new Error("Audio was not saved. Check microphone and browser permissions, then record again.");
+      if (!savedMixedAudioUrl) throw new Error("Audio មិនត្រូវបានរក្សាទុកទេ។ សូមពិនិត្យ microphone/browser permission ហើយថតម្ដងទៀត។");
       const duration = clampMeetingDurationSeconds(durationMs / 1000);
       setSavedMeetingId(currentRecording.meetingId);
       setSavedAudioUrl(savedMixedAudioUrl);
       setServerRecording(null);
-      setNotice("Single audio recording stopped and saved. Transcribing everyone into the transcript.");
+      setNotice("បានឈប់ថត និងរក្សាទុក audio តែមួយរួច។ កំពុងបំលែងសំឡេងគ្រប់អ្នកទៅជា transcript។");
       void finalizeServerRecording(currentRecording.meetingId, duration);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save server recording.");
@@ -1783,9 +1673,9 @@ function LiveKitMeetingAgent({
 
       if (mergeJson.merged) {
         await fetch(`/api/meetings/${meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-        setNotice("Recording saved, and transcript/summary are ready. You can continue the call or record another round.");
+        setNotice("ការថតត្រូវបានរក្សាទុក ហើយ transcript/summary រួចរាល់។ អ្នកអាចបន្ត call ឬថតជុំថ្មីបាន។");
       } else {
-        setNotice("Audio saved. No clear transcript speech was detected yet, but the call and new recordings still work.");
+        setNotice("បានរក្សាទុក audio រួច។ Transcript មិនទាន់រកឃើញសំឡេងច្បាស់ទេ ប៉ុន្តែ call និងការថតជុំថ្មីនៅដំណើរការ។");
       }
     } catch (error) {
       setTranscriptionProgress(error instanceof Error ? `Audio saved, but background transcription failed: ${error.message}` : "Audio saved, but background transcription failed.");
@@ -1798,8 +1688,8 @@ function LiveKitMeetingAgent({
       const jobs = recording.trackJobs;
       setTranscriptionProgress(
         jobs.length > 1
-          ? `Preparing transcript from ${jobs.length} participants...`
-          : "Preparing transcript from one track. If many people are present, make sure their microphones are on before and during recording."
+          ? `កំពុងរៀបចំ transcript ពី ${jobs.length} អ្នកចូលរួម...`
+          : "កំពុងរៀបចំ transcript ពី track តែមួយ។ បើមានមនុស្សច្រើន ត្រូវប្រាកដថា mic របស់ពួកគេត្រូវបានបើកមុន/ពេលថត។"
       );
 
       for (const job of jobs) {
@@ -1839,13 +1729,13 @@ function LiveKitMeetingAgent({
 
       if (mergeJson.merged) {
         await fetch(`/api/meetings/${recording.meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-        setNotice("Server recording is complete, and transcript lines were attached by speaker name.");
+        setNotice("ការថត server រួចរាល់ ហើយ transcript ត្រូវបានបញ្ចូលតាមឈ្មោះអ្នកនិយាយ។");
       } else {
-        setNotice("Server audio saved, but no clear speech was detected from participant tracks yet.");
+        setNotice("បានរក្សាទុក server audio រួច ប៉ុន្តែ transcript មិនទាន់មានសំឡេងច្បាស់ពី participant tracks ទេ។");
       }
       setTranscriptionProgress(
         transcribedSegments
-          ? `Transcribed ${transcribedSegments} segments. Open the record to check speaker names.`
+          ? `បានបំលែងសំឡេង ${transcribedSegments} ចម្រៀក។ បើក record ដើម្បីពិនិត្យឈ្មោះអ្នកនិយាយ។`
           : "Server audio saved. No participant track segment produced clear speech yet."
       );
     } catch (error) {
@@ -1907,7 +1797,7 @@ function LiveKitMeetingAgent({
       if (!saveJson.meetingId) throw new Error("Meeting was saved but no meeting id was returned.");
       setSavedMeetingId(saveJson.meetingId);
       setSavedAudioUrl(audioUrl);
-      setNotice("Audio saved to the system. Meeting Agent is transcribing audio in chunks.");
+      setNotice("បានរក្សាទុក audio ទៅក្នុងប្រព័ន្ធ។ Meeting Agent កំពុងបម្លែងសំឡេងជា transcript ជា chunks។");
       await transcribeSavedSegments(saveJson.meetingId, mimeType, speakers);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save meeting recording.");
@@ -1957,7 +1847,7 @@ function LiveKitMeetingAgent({
           ? `Audio saved, but transcription failed: ${lastErrorMessage}`
           : "Audio saved, but no clear speech text was detected. Please check microphone quality or OpenRouter credits."
     );
-    setNotice("Audio saved, and captured transcript text was added to the meeting detail.");
+    setNotice("បានរក្សាទុក audio ហើយបានបន្ថែម transcript ដែលចាប់បានទៅ meeting detail។");
   }
 
   return (
@@ -1968,7 +1858,7 @@ function LiveKitMeetingAgent({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
           </span>
-          This meeting is being recorded. Make sure all participants know in advance. Each participant microphone is being captured automatically.
+          កិច្ចប្រជុំនេះកំពុងត្រូវបានថតសំឡេង — សូមអញ្ជើញអ្នកចូលរួមទាំងអស់ដឹងជាមុន (microphone របស់អ្នកចូលរួមម្នាក់ៗកំពុងត្រូវបានថតដោយស្វ័យប្រវត្តិ)។
         </div>
       ) : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1977,9 +1867,9 @@ function LiveKitMeetingAgent({
             <Bot className="h-4 w-4" />
             Meeting Agent
           </p>
-          <h2 className="mt-1 text-xl font-bold text-ink">Server recording for large meetings</h2>
+          <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Click record once to let LiveKit record on the server for large groups. KhmerMeet uses Server Rec for call recording so many participants can be captured reliably.
+            ចុចថតម្តង ដើម្បីរក្សាទុក audio តែមួយដែលមានសំឡេងអ្នកចូលរួមគ្រប់គ្នា ហើយបំលែងជា transcript មានឈ្មោះអ្នកនិយាយ។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>
@@ -1991,9 +1881,9 @@ function LiveKitMeetingAgent({
             disabled={recording || Boolean(serverRecording) || Boolean(egressRecording) || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km">Khmer output</option>
-            <option value="en">English output</option>
-            <option value="km-en">Keep Khmer + English</option>
+            <option value="km-en">ខ្មែរ + English — keep each spoken language (no translation)</option>
+            <option value="km">ខ្មែរសុទ្ធ — translate everything to Khmer</option>
+            <option value="en">English only — translate everything to English</option>
           </select>
           <span className={cn("kh-badge", recording || serverRecording || egressRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording || serverRecording || egressRecording ? `Recording ${formatTime(seconds)}` : "Ready"}
@@ -2009,15 +1899,15 @@ function LiveKitMeetingAgent({
               type="button"
               onClick={startServerRecording}
               disabled={saving || recording}
-              title="Start server recording for this call."
+              title="Start one mixed recording for everyone speaking in the call."
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Start recording
+              ចាប់ផ្តើមថត
             </button>
           ) : (
             <button className="kh-button-secondary text-red-600" type="button" onClick={stopServerRecording} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-              Stop and save
+              ឈប់ថត និងរក្សាទុក
             </button>
           )}
           {savedMeetingId ? <Link className="kh-button-secondary" href={`/meetings/${savedMeetingId}`}>Open record</Link> : null}
@@ -2066,3 +1956,4 @@ function LiveKitMeetingAgent({
     </section>
   );
 }
+

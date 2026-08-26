@@ -114,3 +114,61 @@ export async function splitAudioIntoChunks(
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+// Re-encodes one complete recording to a speech-optimized mono M4A without
+// cutting or removing any time range. This keeps sentence and speaker-turn
+// context intact while fitting providers that cap a single audio request by
+// file size.
+export async function compressWholeAudioForTranscription(
+  buffer: Buffer,
+  ext: string,
+  maxBytes: number
+): Promise<Buffer> {
+  if (!ffmpegPath) {
+    if (buffer.length <= maxBytes) return buffer;
+    throw new Error("ffmpeg binary not found. The recording is too large to prepare for transcription.");
+  }
+
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-compress-"));
+  const inputPath = path.join(tmpDir, `input.${ext}`);
+  const outputPath = path.join(tmpDir, "complete-recording.m4a");
+
+  try {
+    await writeFile(inputPath, buffer);
+    await ensureFfmpegExecutable();
+    const durationSeconds = await probeDurationSeconds(inputPath);
+    // Stay below the provider ceiling after container overhead. 48 kbps is
+    // clear for speech; very long meetings can go as low as 16 kbps while
+    // retaining the complete timeline in one file.
+    const sizeBasedBitrate = Math.floor((maxBytes * 8 * 0.85) / Math.max(1, durationSeconds));
+    const bitrate = Math.max(16000, Math.min(48000, sizeBasedBitrate));
+
+    await execFileAsync(
+      ffmpegPath,
+      [
+        "-y",
+        "-i", inputPath,
+        "-vn",
+        "-map", "0:a:0",
+        "-ac", "1",
+        "-ar", "16000",
+        "-af", "highpass=f=80,lowpass=f=7800,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-c:a", "aac",
+        "-b:a", String(bitrate),
+        "-movflags", "+faststart",
+        outputPath
+      ],
+      { timeout: 120000, maxBuffer: 2 * 1024 * 1024 }
+    );
+
+    const compressed = await readFile(outputPath);
+    if (compressed.length < 1000) throw new Error("ffmpeg produced an empty compressed recording.");
+    if (compressed.length > maxBytes) {
+      throw new Error("This recording is too long to transcribe as one complete file within the provider's audio limit.");
+    }
+    return compressed;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+

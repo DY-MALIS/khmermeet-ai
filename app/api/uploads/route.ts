@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
-import { extractSelfIntroducedSpeakerNames, normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
@@ -45,11 +45,7 @@ export async function POST(request: Request) {
     const speakerTranscript = await transcribeSpeakerAudio(speakerAudioFiles, speakerAudioNames, languageMode);
     const chunkTranscript = speakerTranscript ? "" : await transcribeAudioChunks(audioChunks, speakerNames, languageMode);
     const transcript = speakerTranscript || chunkTranscript || (await transcribeAudio(file, speakerNames, languageMode));
-    const introducedSpeakerNames = extractSelfIntroducedSpeakerNames(transcript);
-    const nextSpeakerNames = [
-      ...new Set([...speakerNames, ...speakerAudioNames, ...introducedSpeakerNames].map((name) => name.trim()).filter(Boolean))
-    ].slice(0, 100);
-    return NextResponse.json({ audioUrl, transcript, speakerNames: nextSpeakerNames });
+    return NextResponse.json({ audioUrl, transcript, speakerNames });
   } catch (error) {
     const publicError = publicAiTranscriptionError(error);
     return NextResponse.json({
@@ -96,3 +92,4 @@ function parseSpeakerNames(value: string) {
     return [];
   }
 }
+
