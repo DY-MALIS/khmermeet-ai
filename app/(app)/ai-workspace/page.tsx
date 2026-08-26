@@ -1,7 +1,8 @@
 import { AIWorkspace } from "@/components/ai-workspace";
-import { requireUser } from "@/lib/session";
+import { requirePageUser } from "@/lib/session";
 
 export default async function AIWorkspacePage() {
-  await requireUser();
+  await requirePageUser();
   return <AIWorkspace />;
 }
+
