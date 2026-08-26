@@ -23,6 +23,28 @@ export function hasCorruptedEncoding(text: string) {
   return /(?:áž|áŸ|Â·|â€¢|Ã|�)/.test(text);
 }
 
+// Multimodal models occasionally answer with a restatement of the system/user
+// instructions instead of listening to the audio. That output is fluent and
+// long, so the normal low-speech checks consider it valid unless we identify
+// the characteristic meta-language explicitly.
+export function hasTranscriptionPromptLeakage(text: string) {
+  const directLeak = /\bi need to follow (?:these|the) rules\b/i.test(text) ||
+    /\bthe user has provided (?:a list of )?(?:known )?participants\b/i.test(text);
+  if (directLeak) return true;
+
+  const signals = [
+    /\bverbatim transcription\b/i,
+    /\blanguage preservation\b/i,
+    /\bspeaker identification\b/i,
+    /\baccuracy over fluency\b/i,
+    /\bno paraphrasing or summarizing\b/i,
+    /\bstart each turn with (?:the|a) speaker label\b/i,
+    /\buse [`'"]?(?:unknown speaker|speaker 1)[`'"]?\b/i,
+    /\btranscribe everything exactly as spoken\b/i
+  ];
+  return signals.filter((pattern) => pattern.test(text)).length >= 2;
+}
+
 export function hasLowSpeechSignal(text: string) {
   const timestampMatches = text.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) ?? [];
   const compact = stripSpeakerLabels(text)
@@ -60,7 +82,9 @@ export function hasUsableTranscript(text: string) {
   const clean = text.trim();
   if (!clean) return false;
   if (hasCorruptedEncoding(clean)) return false;
+  if (hasTranscriptionPromptLeakage(clean)) return false;
   if (isTimestampOnlyTranscript(clean)) return false;
   if (hasLowSpeechSignal(clean)) return false;
   return true;
 }
+
