@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square, UserRoundCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -61,6 +61,8 @@ export function RecordingPanel() {
   const [seconds, setSeconds] = useState(0);
   const [title, setTitle] = useState("");
   const [speakerNamesInput, setSpeakerNamesInput] = useState("");
+  const [checkInName, setCheckInName] = useState("");
+  const speakerNamesInputRef = useRef("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [activeMicLabel, setActiveMicLabel] = useState("");
@@ -77,6 +79,10 @@ export function RecordingPanel() {
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
+
+  useEffect(() => {
+    speakerNamesInputRef.current = speakerNamesInput;
+  }, [speakerNamesInput]);
 
   useEffect(() => {
     setSupported(
@@ -135,6 +141,23 @@ export function RecordingPanel() {
     return selectedDeviceId
       ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
       : clearVoiceAudioConstraints;
+  }
+
+  function addCheckInName() {
+    const nextName = checkInName.trim();
+    if (!nextName) return;
+    const currentNames = speakerNamesInputRef.current
+      .split(/[,，\n]/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (currentNames.some((name) => name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) {
+      setCheckInName("");
+      return;
+    }
+    const nextInput = [...currentNames, nextName].join(", ");
+    speakerNamesInputRef.current = nextInput;
+    setSpeakerNamesInput(nextInput);
+    setCheckInName("");
   }
 
   function cleanupRecording() {
@@ -370,7 +393,7 @@ export function RecordingPanel() {
       // chance to correctly recognize a name from the audio itself - a
       // misheard name can't be recovered by the later text-only refine pass,
       // which has no access to the audio to re-check against.
-      const speakerNames = speakerNamesInput
+      const speakerNames = speakerNamesInputRef.current
         .split(/[,，\n]/)
         .map((name) => name.trim())
         .filter(Boolean)
@@ -400,7 +423,7 @@ export function RecordingPanel() {
 
   async function transcribeCompleteRecording(meetingId: string) {
     setTranscriptionProgress("កំពុងកែលម្អគុណភាពសំឡេង និងបំលែងឯកសារពេញជាអក្សរ...");
-    const speakerNames = speakerNamesInput
+    const speakerNames = speakerNamesInputRef.current
       .split(/[,，\n]/)
       .map((name) => name.trim())
       .filter(Boolean)
@@ -501,6 +524,45 @@ export function RecordingPanel() {
             <option value="en">English only — translate everything to English</option>
           </select>
         </label>
+      </div>
+      <div className="mb-4 rounded-xl border border-leaf/25 bg-leaf/10 p-4">
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-leaf text-white">
+            <UserRoundCheck className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-base font-bold text-ink">បញ្ចូលឈ្មោះអ្នកចូលរួម</p>
+              <p className="text-xs font-medium text-leaf">អាចបន្ថែមមុន ឬកំពុងថត</p>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                className="kh-input min-w-0 flex-1"
+                value={checkInName}
+                onChange={(event) => setCheckInName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCheckInName();
+                  }
+                }}
+                placeholder="ឧទាហរណ៍៖ ដារ៉ា"
+                disabled={state === "paused"}
+              />
+              <button
+                className="kh-button-primary h-11 px-4"
+                type="button"
+                onClick={addCheckInName}
+                disabled={state === "paused" || !checkInName.trim()}
+              >
+                បន្ថែម
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              ឈ្មោះដែលបន្ថែមនឹងត្រូវប្រើសម្រាប់សម្គាល់អ្នកនិយាយក្នុងអត្ថបទ។
+            </p>
+          </div>
+        </div>
       </div>
       <div className="mb-4">
         <label className="block space-y-1">
