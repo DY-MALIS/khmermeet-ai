@@ -4,6 +4,7 @@ import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
 import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
+import { hasTranscriptionPromptLeakage } from "@/lib/transcript-quality";
 
 type TextPart = { text: string };
 
@@ -268,9 +269,9 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name. For example, if the audio says \"ABA PayWay\", the transcript must say \"ABA PayWay\" in full, never a shortened \"ABA Pay\". These names can blend together at normal speaking speed - listen closely for every syllable of a name rather than assuming it ends where a natural word would.";
   const languageInstruction =
     language === "km"
-      ? "Transcribe Khmer speech in Khmer script. Preserve English words, product names, URLs, acronyms, numbers, and any other clearly spoken non-Khmer terms exactly as spoken instead of translating or paraphrasing them. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it."
+      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
       : language === "en"
-        ? "Transcribe English speech in English. Preserve Khmer words, names, product names, URLs, acronyms, numbers, and any other clearly spoken non-English terms as spoken instead of translating or paraphrasing them."
+        ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
   // Speaker names used to only reach the later text-only refine pass, which
   // can't re-listen to the audio - by then a misheard name (confirmed live:
@@ -279,22 +280,18 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   // as a hint before it actually listens gives it a real chance to
   // recognize a name correctly from the audio itself.
   const knownSpeakerInstruction = speakerNames.length
-    ? ` Known meeting participants: ${speakerNames.join(", ")}. Use a known participant name as the speaker label only when that speaker is clearly identified by the audio, by a direct self-introduction, or by another speaker addressing them. Do not assign names only by chronological order, especially in large meetings. If you cannot identify a voice confidently, use Unknown Speaker or a stable generic label instead of guessing a real name.`
+    ? ` Known meeting participants, in speaker-label order: ${speakerNames.join(", ")}. Use only these participant names as speaker labels. Do not output Speaker 1:, Speaker 2:, Participant 1:, or other generic speaker labels. If the audio has generic speaker turns or you cannot identify the voice confidently, assign turns to the known names by chronological speaker order: first distinct speaker is ${speakerNames[0]}${speakerNames[1] ? `, second distinct speaker is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, third distinct speaker is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}.`
     : "";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
     languageInstruction + knownSpeakerInstruction,
     properNounRule,
-    "Before writing the final transcript, carefully listen through the audio and mentally verify each line against the sound. Prioritize what is actually audible over what seems likely from context.",
-    "If two possible words sound similar, choose the one that is clearly supported by the audio. If neither is clearly supported, write [unclear] for that span instead of guessing.",
-    "Pay extra attention to Khmer names, repeated speaker turns, and mixed Khmer-English phrases. Do not replace one known participant's name with another person's name unless the audio clearly identifies that speaker.",
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
     "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
-    "Speaker identity rule: if a speaker clearly introduces themself with phrases like \"my name is ...\", \"I am ...\", \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or another direct self-introduction, remember that name for that same voice within this audio. Use that name as the speaker label for every later turn by the same voice, and also relabel earlier turns from that same voice when you can confidently match them. For example, after the same voice says \"ខ្ញុំឈ្មោះ ចយ\", later turns by that voice must be labeled \"ចយ:\". Only do this when the introduction and voice match are clearly audible; otherwise keep Unknown Speaker or the stable generic speaker label.",
     // Per-track chunks (client-mesh Server Rec, one file per participant's
     // own microphone) know in advance there is exactly one speaker - without
     // this, the model sometimes still hallucinates a "Speaker 2:" turn
@@ -305,8 +302,8 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     singleSpeaker
       ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
       : speakerNames.length
-        ? "If multiple speakers are audible, split the transcript into separate speaker turns. Start each turn with the identified participant name followed by a colon when you are confident. If the name is not clear, use Unknown Speaker or stable generic labels like Speaker 1:, Speaker 2:; never force every turn into the provided name list."
-        : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a stable speaker label such as Speaker 1:, Speaker 2:, etc. If a speaker introduces themself, rename that same speaker's later turns to the introduced name when you are confident.",
+        ? "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with one of the known participant names followed by a colon. Never use Speaker 1:, Speaker 2:, Speaker 3:, Participant 1:, or Unknown Speaker: when known participant names were provided. If only one speaker is audible, label that speech with the first matching known participant name."
+        : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a speaker label. Use consistent labels such as Speaker 1:, Speaker 2:, etc. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
     "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
@@ -343,7 +340,6 @@ async function callMultimodalTranscription(
       body: JSON.stringify({
         model,
         temperature: 0,
-        top_p: 0.1,
         messages: [
           {
             role: "user",
@@ -381,7 +377,7 @@ async function callMultimodalTranscription(
   const content = payload.choices?.[0]?.message?.content;
   const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => part.text ?? "").join("\n") : "";
   const trimmed = text.trim();
-  return trimmed === "[no speech detected]" ? "" : trimmed;
+  return trimmed === "[no speech detected]" || hasTranscriptionPromptLeakage(trimmed) ? "" : trimmed;
 }
 
 export async function transcribeOpenRouterAudioViaChat(
@@ -391,8 +387,7 @@ export async function transcribeOpenRouterAudioViaChat(
   language: "km" | "en" | "km-en",
   timeoutMs = 55000,
   speakerNames: string[] = [],
-  singleSpeaker = false,
-  preferAccuracy = false
+  singleSpeaker = false
 ) {
   // Callers size timeoutMs against their own serverless maxDuration budget
   // (e.g. 45s timeout inside a 60s function) - a naive second full-length
@@ -402,7 +397,7 @@ export async function transcribeOpenRouterAudioViaChat(
   // left, if the primary attempt returned quickly (an empty result from a
   // real timeout would already have thrown, not returned empty).
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  const primaryModel = preferAccuracy ? TRANSCRIPTION_SAFETY_NET_MODEL : multimodalTranscriptionModel();
+  const primaryModel = multimodalTranscriptionModel();
   const result = await callMultimodalTranscription(
     primaryModel,
     audio,
@@ -414,25 +409,10 @@ export async function transcribeOpenRouterAudioViaChat(
     singleSpeaker
   );
 
+  if (result || primaryModel === TRANSCRIPTION_SAFETY_NET_MODEL) return result;
+
   const remaining = deadline - Date.now();
   if (remaining < 8000) return result;
-
-  if (primaryModel === TRANSCRIPTION_SAFETY_NET_MODEL) {
-    // Saved/re-transcribe flows start with the safety-net model for better
-    // Khmer and mixed-language accuracy. That provider can occasionally
-    // return an empty/no-speech answer for valid audio, then succeed on an
-    // immediate retry, so give it one bounded second listen before giving up.
-    return callMultimodalTranscription(
-      TRANSCRIPTION_SAFETY_NET_MODEL,
-      audio,
-      mimeType,
-      filename,
-      language,
-      remaining,
-      speakerNames,
-      singleSpeaker
-    );
-  }
 
   // Primary model came back empty on audio the caller believes has speech -
   // give the safety-net model one shot with whatever time budget is left.
@@ -464,7 +444,7 @@ export async function refineOpenRouterTranscript(
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
   const speakerInstruction = speakerNames.length
-    ? `Known speaker names: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Do not convert generic labels to real names by order. Only replace a generic label with a known name when the transcript itself clearly identifies that speaker by self-introduction or direct address. Every spoken turn must start with either a confidently identified name, Unknown Speaker, or a stable generic label like Speaker 1:.`
+    ? `Known speaker names, in the same order entered by the user: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert all generic labels by order: Speaker 1 is ${speakerNames[0]}${speakerNames[1] ? `, Speaker 2 is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, Speaker 3 is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}. Every spoken turn must start with one of these names followed by a colon. Never return Speaker 1:, Speaker 2:, Participant 1:, User 1:, or Unknown Speaker: when known speaker names are provided. If there is only one known speaker, prefix each spoken line with that speaker name.`
     : "Preserve Speaker 1, Speaker 2 labels if present. Do not invent real person names.";
 
   const prompt = [
@@ -570,3 +550,4 @@ export async function answerMeetingQuestion(transcript: string, question: string
   });
   return meetingQaSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
 }
+
