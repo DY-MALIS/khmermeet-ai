@@ -1,24 +1,21 @@
 import { Search, Trash2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requirePageUser } from "@/lib/session";
 import { deleteMeeting } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
-import { getServerUiText } from "@/lib/server-ui-text";
-import { ownerWhere } from "@/lib/session";
 import type { Prisma } from "@prisma/client";
 
 type MeetingWithTasks = Prisma.MeetingGetPayload<{ include: { tasks: true } }>;
 
 export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string }> }) {
-  const user = await requireUser();
-  const { text } = await getServerUiText();
+  const user = await requirePageUser();
   const params = await searchParams;
   const data = await prisma.meeting
     .findMany({
       where: {
-        ...ownerWhere(user),
+        createdById: user.id,
         title: params.q ? { contains: params.q } : undefined,
         createdAt: params.date ? { gte: new Date(params.date), lt: new Date(new Date(params.date).getTime() + 86400000) } : undefined
       },
@@ -32,21 +29,21 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-leaf">{text.meetingHistoryEyebrow}</p>
-        <h1 className="text-3xl font-bold text-ink">{text.meetingHistoryTitle}</h1>
+        <p className="text-sm font-semibold text-leaf">រកមើលកិច្ចប្រជុំ</p>
+        <h1 className="text-3xl font-bold text-ink">ប្រវត្តិប្រជុំ</h1>
       </div>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
-          {text.dbUnavailable}
+          មិនអាចភ្ជាប់ production database បានទេ។ ទិន្នន័យមិនត្រូវបានចាត់ទុកថាបានលុបទេ។ សូមពិនិត្យ DATABASE_URL និង Supabase រួចសាកម្តងទៀត។
         </div>
       ) : null}
       <form className="kh-card grid gap-3 p-4 sm:grid-cols-[1fr_220px_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input className="kh-input pl-9" name="q" defaultValue={params.q} placeholder={text.meetingSearchPlaceholder} />
+          <input className="kh-input pl-9" name="q" defaultValue={params.q} placeholder="ស្វែងរកតាមចំណងជើង" />
         </div>
         <input className="kh-input" name="date" type="date" defaultValue={params.date} />
-        <button className="kh-button-primary">{text.search}</button>
+        <button className="kh-button-primary">ស្វែងរក</button>
       </form>
       {!dbUnavailable && meetings.length ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -62,12 +59,13 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
               <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {formatMeetingDuration(meeting.duration)}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="kh-badge bg-leaf/10 text-leaf">{meeting.status}</span>
-                <span className="kh-badge bg-slate-100 text-slate-600">{meeting.tasks.length} {text.tasksCount}</span>
+                <span className="kh-badge bg-slate-100 text-slate-600">{meeting.tasks.length} tasks</span>
               </div>
             </article>
           ))}
         </div>
-      ) : !dbUnavailable ? <EmptyState title={text.noMeetingsFound} description={text.noMeetingsFoundDescription} /> : null}
+      ) : !dbUnavailable ? <EmptyState title="រកមិនឃើញប្រជុំ" description="សាកល្បងស្វែងរកពាក្យផ្សេង ឬបង្កើតប្រជុំថ្មី។" /> : null}
     </div>
   );
 }
+
