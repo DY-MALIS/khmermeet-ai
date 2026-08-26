@@ -340,6 +340,15 @@ async function callMultimodalTranscription(
       body: JSON.stringify({
         model,
         temperature: 0,
+        // Transcription is an audio-grounded extraction task. Keep Gemini's
+        // mandatory thinking at its lowest supported level so it spends the
+        // function budget listening and returning the transcript instead of
+        // doing unnecessary deliberation.
+        reasoning: { effort: "minimal", exclude: true },
+        // OpenRouter otherwise favours the cheapest healthy provider. Long
+        // recordings are latency-sensitive, so use the provider with the
+        // best current throughput to avoid exhausting Vercel's request limit.
+        provider: { sort: "throughput" },
         messages: [
           {
             role: "user",
