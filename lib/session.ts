@@ -1,22 +1,6 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
-
-const adminEmails = new Set([
-  "dymalis88@gmail.com",
-  "hengsereyratanak88@gmail.com"
-]);
-
-export function isAdminEmail(email: string | null | undefined) {
-  return adminEmails.has((email ?? "").trim().toLowerCase());
-}
-
-export function ownerWhere(user: { id: string; email?: string | null }) {
-  return isAdminEmail(user.email) ? {} : { createdById: user.id };
-}
-
-export function meetingOwnerWhere(user: { id: string; email?: string | null }) {
-  return isAdminEmail(user.email) ? {} : { meeting: { createdById: user.id } };
-}
 
 // middleware.ts already blocks any request under this app from reaching a
 // page/action/API route without a valid session, so a missing session here
@@ -30,7 +14,21 @@ export async function requireUser() {
   return {
     id: session.user.id,
     name: session.user.name ?? "",
-    email: session.user.email ?? "",
-    isAdmin: isAdminEmail(session.user.email)
+    email: session.user.email ?? ""
   };
 }
+
+// Server-rendered pages must redirect when a session expires. API routes keep
+// using requireUser() so their existing JSON/401 error handling is preserved.
+export async function requirePageUser() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    redirect("/login?callbackUrl=/dashboard");
+  }
+  return {
+    id: session.user.id,
+    name: session.user.name ?? "",
+    email: session.user.email ?? ""
+  };
+}
+
