@@ -19,7 +19,7 @@ async function ensureFfmpegExecutable() {
   ensuredExecutable = true;
 }
 
-async function probeDurationSeconds(inputPath: string): Promise<number> {
+async function probeDurationSeconds(inputPath: string): Promise<number | null> {
   if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
   await ensureFfmpegExecutable();
   try {
@@ -34,12 +34,17 @@ async function probeDurationSeconds(inputPath: string): Promise<number> {
       const [, h, m, s] = match;
       return Number(h) * 3600 + Number(m) * 60 + Number(s);
     }
+    // Chrome MediaRecorder WebM files commonly contain a valid Opus stream
+    // but no duration in the container header. FFmpeg reports `Duration: N/A`
+    // even though it can decode/re-encode the recording normally.
+    if (/Duration:\s*N\/A/i.test(stderr) && /Stream #\d+:\d+.*Audio:/i.test(stderr)) {
+      return null;
+    }
     // Surface the real cause (binary missing/not executable, bad input,
     // etc.) instead of masking every failure behind the same generic
     // message - confirmed live this distinction matters (a fast ENOENT
     // looks identical to a slow parse miss otherwise).
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Could not determine audio duration (ffmpeg probe failed: ${detail}).`);
+    throw new Error("FFmpeg could not read the recorded audio stream.");
   }
   throw new Error("Could not determine audio duration (no Duration line in ffmpeg output).");
 }
@@ -74,18 +79,18 @@ export async function splitAudioIntoChunks(
     await writeFile(inputPath, buffer);
     await ensureFfmpegExecutable();
 
-    let durationSeconds: number;
+    let durationSeconds: number | null;
     try {
       durationSeconds = await probeDurationSeconds(inputPath);
     } catch (error) {
       if (buffer.length <= maxBytesPerChunk) return [buffer];
       throw error;
     }
-    if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || durationSeconds <= preferredSegmentSeconds)) {
+    if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || durationSeconds === null || durationSeconds <= preferredSegmentSeconds)) {
       return [buffer];
     }
 
-    const bytesPerSecond = buffer.length / Math.max(1, durationSeconds);
+    const bytesPerSecond = durationSeconds ? buffer.length / Math.max(1, durationSeconds) : 4000;
     // 0.8x safety margin below the ideal ceiling - real bitrate isn't
     // perfectly constant, and landing a segment right at the limit risks
     // tipping over it.
@@ -140,7 +145,11 @@ export async function compressWholeAudioForTranscription(
     // Stay below the provider ceiling after container overhead. 48 kbps is
     // clear for speech; very long meetings can go as low as 16 kbps while
     // retaining the complete timeline in one file.
-    const sizeBasedBitrate = Math.floor((maxBytes * 8 * 0.85) / Math.max(1, durationSeconds));
+    // Duration may be absent from Chrome's WebM header. In that case use a
+    // conservative speech bitrate; FFmpeg can still decode the full stream.
+    const sizeBasedBitrate = durationSeconds
+      ? Math.floor((maxBytes * 8 * 0.85) / Math.max(1, durationSeconds))
+      : 24000;
     const bitrate = Math.max(16000, Math.min(48000, sizeBasedBitrate));
 
     await execFileAsync(
