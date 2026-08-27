@@ -148,89 +148,6 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
     .trim();
 }
 
-const SELF_INTRODUCTION_STOP_WORDS = new Set([
-  "a",
-  "an",
-  "the",
-  "from",
-  "going",
-  "here",
-  "speaking",
-  "calling",
-  "student",
-  "teacher",
-  "developer",
-  "manager",
-  "ខ្ញុំ",
-  "ជា",
-  "ពី",
-  "នៅ",
-  "អ្នក",
-  "លោក",
-  "លោកស្រី"
-]);
-
-function sanitizeIntroducedSpeakerName(value: string) {
-  const name = value
-    .replace(/\s+/g, " ")
-    .replace(/[។៕.,!?;:，、]+$/g, "")
-    .trim();
-  if (!name || name.length > 60) return "";
-
-  const firstWord = name.split(/\s+/)[0]?.toLowerCase() ?? "";
-  if (SELF_INTRODUCTION_STOP_WORDS.has(firstWord)) return "";
-  if (/^\d+$/.test(name)) return "";
-  return name;
-}
-
-function extractSelfIntroducedName(text: string) {
-  const khmerMatch = text.match(
-    /(?:ខ្ញុំ(?:បាទ|ចាស)?\s*(?:ឈ្មោះ|មានឈ្មោះ)|នាមខ្ញុំ|ឈ្មោះខ្ញុំ)\s+([^\s។៕.,!?;:，、]+(?:\s+[^\s។៕.,!?;:，、]+){0,3})/u
-  );
-  if (khmerMatch?.[1]) return sanitizeIntroducedSpeakerName(khmerMatch[1]);
-
-  const englishMatch = text.match(
-    /\b(?:my name is|i am|i'm|this is)\s+([A-Z][\p{L}'-]*(?:\s+[A-Z][\p{L}'-]*){0,3})\b/iu
-  );
-  if (englishMatch?.[1]) return sanitizeIntroducedSpeakerName(englishMatch[1]);
-
-  return "";
-}
-
-function applySelfIntroducedSpeakerLabels(transcript: string) {
-  if (!transcript.trim()) return transcript;
-
-  const introducedNamesByLabel = new Map<string, string>();
-  const lines = transcript
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  for (const line of lines) {
-    const match = line.match(/^([^:\n]{1,60})\s*[:：]\s*(.*)$/);
-    if (!match) continue;
-
-    const [, label, spokenText] = match;
-    const introducedName = extractSelfIntroducedName(spokenText);
-    if (!introducedName || introducedNamesByLabel.has(label)) continue;
-    introducedNamesByLabel.set(label, introducedName);
-  }
-
-  if (!introducedNamesByLabel.size) return transcript;
-
-  return lines
-    .map((line) => {
-      const match = line.match(/^([^:\n]{1,60})\s*[:：]\s*(.*)$/);
-      if (!match) return line;
-
-      const [, label, spokenText] = match;
-      const introducedName = introducedNamesByLabel.get(label);
-      return introducedName ? `${introducedName}: ${spokenText.trim()}` : line;
-    })
-    .join("\n")
-    .trim();
-}
-
 function speakerNumberToIndex(value: string) {
   const normalized = value.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
   return Number(normalized) - 1;
@@ -559,7 +476,7 @@ export async function transcribeAudio(
       options.singleSpeaker ?? false
     );
     const cleanedFallback = applyKnownSpeakerLabels(
-      applySelfIntroducedSpeakerLabels(addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames)),
+      addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
       speakerNames
     );
     if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
@@ -576,7 +493,7 @@ export async function transcribeAudio(
   ).catch(() => cleanedTranscript);
 
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(
-    applySelfIntroducedSpeakerLabels(addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames)),
+    addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames),
     speakerNames
   );
   const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
@@ -649,7 +566,7 @@ export async function transcribeStoredTrackRecording(
         ...transcribeOptions,
         timeoutMs: chunkTimeoutMs
       }).catch(() => "");
-      transcripts[next.index] = applySelfIntroducedSpeakerLabels(cleanTranscriptionText(transcript));
+      transcripts[next.index] = cleanTranscriptionText(transcript);
       completed[next.index] = true;
     }
   }
@@ -658,7 +575,7 @@ export async function transcribeStoredTrackRecording(
   if (completed.some((done) => !done)) {
     throw new Error("The transcription request timed out before it could finish every audio segment.");
   }
-  return applySelfIntroducedSpeakerLabels(cleanTranscriptionText(transcripts.filter(Boolean).join("\n")));
+  return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",
@@ -714,7 +631,7 @@ export async function refineSavedTranscript(
   timeoutMs = 55000
 ) {
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  const cleanedTranscript = applySelfIntroducedSpeakerLabels(cleanTranscriptionText(transcript));
+  const cleanedTranscript = cleanTranscriptionText(transcript);
   if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
 
   const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
@@ -734,10 +651,7 @@ export async function refineSavedTranscript(
   const refinedTranscript = refinedChunks.join("\n");
 
   const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, speakerNames);
-  const cleanedRefinedTranscript = applyKnownSpeakerLabels(
-    applySelfIntroducedSpeakerLabels(cleanTranscriptionText(refinedTranscript)),
-    speakerNames
-  );
+  const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), speakerNames);
   return chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
 }
 
@@ -755,10 +669,10 @@ export async function transcribeAudioChunks(
       mode: "live",
       timeoutMs: Math.min(Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000), 35000)
     });
-    if (text && !isTimestampOnlyTranscript(text)) transcripts.push(applySelfIntroducedSpeakerLabels(text));
+    if (text && !isTimestampOnlyTranscript(text)) transcripts.push(text);
   }
 
-  return applySelfIntroducedSpeakerLabels(cleanTranscriptionText(transcripts.join("\n")));
+  return cleanTranscriptionText(transcripts.join("\n"));
 }
 
 function normalizeSpeakerNames(speakerNames: string[]) {

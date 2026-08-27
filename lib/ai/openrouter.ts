@@ -283,7 +283,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     ? ` Known meeting participants, in speaker-label order: ${speakerNames.join(", ")}. Use only these participant names as speaker labels. Do not output Speaker 1:, Speaker 2:, Participant 1:, or other generic speaker labels. If the audio has generic speaker turns or you cannot identify the voice confidently, assign turns to the known names by chronological speaker order: first distinct speaker is ${speakerNames[0]}${speakerNames[1] ? `, second distinct speaker is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, third distinct speaker is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}.`
     : "";
   const selfIntroductionInstruction =
-    "If a speaker clearly introduces themself in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), remember that introduced name and use it as the speaker label for that same voice in later turns. You may also relabel that speaker's earlier turns with the introduced name only when the voice match is clear. Do not invent or guess real names; if no clear self-introduction is heard, keep generic labels.";
+    "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
@@ -305,10 +305,10 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     singleSpeaker
       ? speakerNames.length
         ? "This entire audio file is a single known speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or any speaker labels - transcribe the speech as plain lines of text."
-        : "This entire audio file is one speaker's own individual microphone track - there is exactly one speaker throughout. If the speaker clearly introduces themself, start each spoken line with that introduced name followed by a colon. If no clear name is introduced, transcribe the speech as plain lines of text without Speaker 1 or Speaker 2 labels."
+        : "This entire audio file is one speaker's own individual microphone track - there is exactly one speaker throughout. Do not add Speaker 1:, Speaker 2:, or real-name speaker labels - transcribe the speech as plain lines of text."
       : speakerNames.length
         ? "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with one of the known participant names followed by a colon. Never use Speaker 1:, Speaker 2:, Speaker 3:, Participant 1:, or Unknown Speaker: when known participant names were provided. If only one speaker is audible, label that speech with the first matching known participant name."
-        : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a speaker label. If a speaker introduced themself clearly, use that introduced name as the label for that speaker. Otherwise use consistent labels such as Speaker 1:, Speaker 2:, etc. If only one speaker is audible in this mixed recording, label lines with their introduced name when known, otherwise Speaker 1:.",
+        : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a generic speaker label such as Speaker 1:, Speaker 2:, etc. Do not use self-introduced names as speaker labels. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
     "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
@@ -460,7 +460,7 @@ export async function refineOpenRouterTranscript(
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
   const speakerInstruction = speakerNames.length
     ? `Known speaker names, in the same order entered by the user: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert all generic labels by order: Speaker 1 is ${speakerNames[0]}${speakerNames[1] ? `, Speaker 2 is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, Speaker 3 is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}. Every spoken turn must start with one of these names followed by a colon. Never return Speaker 1:, Speaker 2:, Participant 1:, User 1:, or Unknown Speaker: when known speaker names are provided. If there is only one known speaker, prefix each spoken line with that speaker name.`
-    : "Preserve Speaker 1, Speaker 2 labels if present, but if a turn contains a clear self-introduction such as \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", \"my name is ...\", \"I am ...\", \"I'm ...\", or \"this is ...\", use that introduced name as the label for the same consistent speaker. Do not invent real person names.";
+    : "Preserve Speaker 1, Speaker 2 labels if present. Keep self-introduced names inside the spoken sentence, but do not turn those names into speaker labels. Do not invent real person names.";
 
   const prompt = [
     "You are a careful meeting transcript proofreader.",
