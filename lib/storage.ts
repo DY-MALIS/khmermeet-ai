@@ -77,6 +77,11 @@ function cleanTranscriptionText(text: string) {
     /there is no speech/i,
     /no speech detected/i
   ];
+  const boilerplatePatterns = [
+    /^(?:[^:\n]{1,60}\s*:\s*)?verbatim transcript of (?:the )?(?:khmer|english|audio|meeting)/i,
+    /^(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/i,
+    /^(?:[^:\n]{1,60}\s*:\s*)?(?:transcript|final transcript)\s*[:：]\s*$/i
+  ];
 
   const cleaned = text
     .replace(/^```(?:text)?/i, "")
@@ -85,6 +90,7 @@ function cleanTranscriptionText(text: string) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !noSpeechPatterns.some((pattern) => pattern.test(line)))
+    .filter((line) => !boilerplatePatterns.some((pattern) => pattern.test(line)))
     .filter((line) => !/^speaker\s*\d+\s*:\s*$/i.test(line))
     .filter((line) => !isTimestampOnlyTranscript(line))
     .join("\n")
@@ -456,7 +462,7 @@ export async function transcribeAudio(
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
   // All languages use the configured multimodal transcription model
-  // (default: google/gemini-3.7-flash). Keeping one audio-grounded path
+  // (default: google/gemini-2.5-pro). Keeping one audio-grounded path
   // across Khmer, English, and mixed meetings avoids switching English-only
   // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
@@ -509,7 +515,7 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 8 * 60;
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 4 * 60;
 const STORED_TRANSCRIPTION_CONCURRENCY = 3;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
@@ -714,7 +720,11 @@ function chooseBetterSavedTranscript(
 
   const rawScore = transcriptTokenScore(rawTranscript);
   const refinedScore = transcriptTokenScore(refinedTranscript);
-  if (rawScore >= 6 && refinedScore < rawScore * 0.6) return rawTranscript;
+  if (rawScore >= 6 && refinedScore < rawScore * 0.8) return rawTranscript;
+
+  const rawTurns = countTranscriptTurns(rawTranscript);
+  const refinedTurns = countTranscriptTurns(refinedTranscript);
+  if (rawTurns >= 4 && refinedTurns < rawTurns * 0.75) return rawTranscript;
 
   // The refine pass is a text-only proofreading step with no access to the
   // audio - for km-en mode it's instructed to keep each phrase in whichever
@@ -763,6 +773,13 @@ function isLikelyIncompleteTranscript(transcript: string) {
 
 function countLatinWords(transcript: string) {
   return transcript.match(/[A-Za-z0-9][A-Za-z0-9'_-]*/g)?.length ?? 0;
+}
+
+function countTranscriptTurns(transcript: string) {
+  return transcript
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line && !isTimestampOnlyTranscript(line)).length;
 }
 
 function transcriptTokenScore(transcript: string) {

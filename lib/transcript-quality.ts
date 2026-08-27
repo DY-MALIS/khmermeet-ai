@@ -29,7 +29,9 @@ export function hasCorruptedEncoding(text: string) {
 // the characteristic meta-language explicitly.
 export function hasTranscriptionPromptLeakage(text: string) {
   const directLeak = /\bi need to follow (?:these|the) rules\b/i.test(text) ||
-    /\bthe user has provided (?:a list of )?(?:known )?participants\b/i.test(text);
+    /\bthe user has provided (?:a list of )?(?:known )?participants\b/i.test(text) ||
+    /\bverbatim transcript of (?:the )?(?:khmer|english|audio|meeting)/i.test(text) ||
+    /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im;
   if (directLeak) return true;
 
   const signals = [

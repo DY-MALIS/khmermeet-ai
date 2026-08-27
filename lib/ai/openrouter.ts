@@ -243,15 +243,12 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
-// gemini-3.7-flash is the primary model above for cost reasons, but a live
-// side-by-side comparison against gemini-2.5-pro (identical audio, repeated
-// trials) found it occasionally returns a fully empty transcript on audio
-// that clearly contains speech (~1 in 6 trials), a failure mode 2.5-pro
-// never showed. Rather than accept that reliability hit, an empty result
-// from the primary model is retried once against this safety-net model
-// before giving up - keeps the cost savings on the common case while still
-// catching the rare miss.
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-pro";
+// Accuracy beats speed for meeting transcripts: users need the model to
+// actually listen for Khmer/English mixed speech, names, dates, and quiet
+// replies instead of returning fluent but wrong text. Keep 2.5-pro as both
+// the default multimodal listener and the safety-net retry unless an
+// environment override intentionally changes it.
 const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-2.5-pro";
 
 function multimodalTranscriptionModel() {
@@ -284,12 +281,15 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     : "";
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
+  const accuracyInstruction =
+    "Before returning the final transcript, mentally check the audio a second time for quiet words, fast syllables, numbers, dates, names, and short backchannel phrases. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, prefer modern Cambodian wording and preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
     languageInstruction + knownSpeakerInstruction,
     properNounRule,
     selfIntroductionInstruction,
+    accuracyInstruction,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
@@ -313,7 +313,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
     "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
     "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
-    "Return the transcript text only - no preamble, no explanation, no markdown formatting, no commentary about the audio."
+    "Return the transcript text only - no title, no heading, no preamble, no explanation, no markdown formatting, and no commentary about the audio. Never write phrases like \"Verbatim transcript\", \"Here is the transcript\", or \"Transcript:\" unless those exact words were spoken in the audio."
   ].join(" ");
 }
 
@@ -345,6 +345,7 @@ async function callMultimodalTranscription(
       body: JSON.stringify({
         model,
         temperature: 0,
+        max_tokens: 16000,
         // Transcription is an audio-grounded extraction task. Keep Gemini's
         // mandatory thinking at its lowest supported level so it spends the
         // function budget listening and returning the transcript instead of
@@ -479,10 +480,10 @@ export async function refineOpenRouterTranscript(
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- Preserve all real spoken content, including short replies, hesitations, repeated words, corrections, names, numbers, dates, and question endings.",
     "- Treat [unclear] as evidence from the audio; preserve it exactly and do not replace it with a guessed phrase.",
     "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
-    "- Remove hallucinated words, timestamp-only lines, and repeated filler caused by recognition errors.",
-    "- Remove timestamp-only lines, repeated filler caused by recognition errors, and obvious non-speech boilerplate.",
+    "- Remove hallucinated words, timestamp-only lines, exact duplicate adjacent lines, and obvious non-speech boilerplate.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
     "- Return transcript text only.",
     "",

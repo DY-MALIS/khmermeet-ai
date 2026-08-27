@@ -142,9 +142,9 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="km-en">ខ្មែរ + English — រក្សាតាមភាសាដែលនិយាយ (មិនបកប្រែ)</option>
-          <option value="km">ខ្មែរសុទ្ធ — បកប្រែអ្វីដែលនិយាយទាំងអស់ទៅខ្មែរ</option>
-          <option value="en">English only — translate everything to English</option>
+          <option value="km-en">ខ្មែរ + English</option>
+          <option value="km">ខ្មែរសុទ្ធ</option>
+          <option value="en">English only</option>
         </select>
       </div>
 
