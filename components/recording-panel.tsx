@@ -472,7 +472,19 @@ export function RecordingPanel() {
   }
 
   return (
-    <div className="kh-card p-5">
+    <div className="kh-card overflow-hidden">
+      <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-leaf">Recorder</p>
+            <h2 className="text-xl font-bold text-ink">ថតសំឡេងប្រជុំ</h2>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+            {state === "recording" ? "កំពុងថត" : state === "paused" ? "បានផ្អាក" : state === "stopped" ? "ថតរួច" : "រួចរាល់"}
+          </div>
+        </div>
+      </div>
+      <div className="p-5 sm:p-6">
       <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
         សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
       </div>
@@ -525,7 +537,7 @@ export function RecordingPanel() {
           </select>
         </label>
       </div>
-      <div className="mb-4 rounded-xl border border-leaf/25 bg-leaf/10 p-4">
+      <div className="mb-4 rounded-lg border border-leaf/20 bg-leaf/10 p-4">
         <div className="flex items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-leaf text-white">
             <UserRoundCheck className="h-4 w-4" />
@@ -579,7 +591,7 @@ export function RecordingPanel() {
           </p>
         </label>
       </div>
-      <div className="mb-4 grid gap-4 sm:grid-cols-[1fr_220px]">
+      <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
         <label className="block space-y-1">
           <span className="text-sm font-semibold text-slate-600">Microphone</span>
           <select
@@ -600,7 +612,7 @@ export function RecordingPanel() {
         </label>
         <div className="space-y-2">
           <p className="text-sm font-semibold text-slate-600">Input level</p>
-          <div className="h-10 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+          <div className="h-10 rounded-lg border border-slate-200 bg-white p-1.5 shadow-inner">
             <div
               className={`h-full rounded-md transition-all ${micLevel > 0.08 ? "bg-leaf" : "bg-saffron"}`}
               style={{ width: `${Math.max(4, Math.round(micLevel * 100))}%` }}
@@ -611,6 +623,7 @@ export function RecordingPanel() {
           </p>
         </div>
       </div>
+      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>
@@ -621,12 +634,13 @@ export function RecordingPanel() {
         </div>
         <div className="flex flex-wrap gap-2">
           {state === "idle" || state === "stopped" ? (
-            <button className="kh-button-primary" onClick={start} type="button"><Mic className="h-4 w-4" />ចាប់ផ្តើមថត</button>
+            <button className="kh-button-primary min-h-11" onClick={start} type="button"><Mic className="h-4 w-4" />ចាប់ផ្តើមថត</button>
           ) : null}
-          {state === "recording" ? <button className="kh-button-secondary" onClick={pause} type="button"><Pause className="h-4 w-4" />ផ្អាក</button> : null}
-          {state === "paused" ? <button className="kh-button-secondary" onClick={resume} type="button"><Play className="h-4 w-4" />បន្ត</button> : null}
-          {state === "recording" || state === "paused" ? <button className="kh-button-secondary" onClick={stop} type="button"><Square className="h-4 w-4" />បញ្ឈប់</button> : null}
+          {state === "recording" ? <button className="kh-button-secondary min-h-11" onClick={pause} type="button"><Pause className="h-4 w-4" />ផ្អាក</button> : null}
+          {state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={resume} type="button"><Play className="h-4 w-4" />បន្ត</button> : null}
+          {state === "recording" || state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={stop} type="button"><Square className="h-4 w-4" />បញ្ឈប់</button> : null}
         </div>
+      </div>
       </div>
       {state === "stopped" ? (
         <div className="mt-6 space-y-4">
@@ -653,6 +667,7 @@ export function RecordingPanel() {
           </button>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }

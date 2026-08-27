@@ -56,28 +56,31 @@ export default async function DashboardPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-leaf">{text.welcome}</p>
-          <h1 className="text-3xl font-bold text-ink">{text.dashboardTitle}</h1>
+          <h1 className="mt-1 text-3xl font-bold tracking-normal text-ink sm:text-4xl">{text.dashboardTitle}</h1>
         </div>
       </div>
       <section className="kh-card overflow-hidden">
         <div className="grid gap-0 lg:grid-cols-[1.2fr_.8fr]">
-          <a href="/meetings/new" className="group block bg-leaf p-6 text-white transition hover:bg-leaf/95">
+          <a href="/meetings/new" className="group relative block overflow-hidden bg-ink p-6 text-white transition hover:bg-ink/95 sm:p-7">
             <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-lg bg-white/15">
+              <span className="grid h-12 w-12 place-items-center rounded-lg bg-white/12 ring-1 ring-white/15">
                 <Mic className="h-6 w-6" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-white/80">{text.primaryFeature}</p>
-                <h2 className="text-2xl font-bold">{text.startMeetingRecording}</h2>
+                <p className="text-sm font-semibold text-white/70">{text.primaryFeature}</p>
+                <h2 className="text-2xl font-bold sm:text-3xl">{text.startMeetingRecording}</h2>
               </div>
             </div>
             <p className="mt-4 max-w-xl text-sm leading-6 text-white/80">
               {text.dashboardRecordDescription}
             </p>
+            <div className="mt-6 inline-flex items-center rounded-lg bg-white px-4 py-2 text-sm font-bold text-ink transition group-hover:bg-slate-100">
+              Start now
+            </div>
           </a>
-          <a href="/meetings/call" className="group block border-t border-black/5 bg-white p-6 transition hover:bg-slate-50 lg:border-l lg:border-t-0">
+          <a href="/meetings/call" className="group block border-t border-slate-200 bg-white p-6 transition hover:bg-slate-50 sm:p-7 lg:border-l lg:border-t-0">
             <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-lg bg-sky/10 text-sky">
+              <span className="grid h-12 w-12 place-items-center rounded-lg bg-sky/10 text-sky ring-1 ring-sky/10">
                 <Video className="h-6 w-6" />
               </span>
               <div>
@@ -86,6 +89,9 @@ export default async function DashboardPage() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
+            <div className="mt-6 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-ink transition group-hover:border-slate-300">
+              Open call
+            </div>
           </a>
         </div>
       </section>
@@ -96,7 +102,7 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div className="kh-card p-5" key={stat.label}>
+          <div className="kh-card p-5 transition hover:-translate-y-0.5 hover:shadow-lg" key={stat.label}>
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500">{stat.label}</p>
               <span className={`rounded-lg p-2 ${stat.tone}`}><stat.icon className="h-5 w-5" /></span>
@@ -107,7 +113,12 @@ export default async function DashboardPage() {
       </div> : null}
       {!dbUnavailable ? (
         <section className="kh-card p-5">
-          <h2 className="mb-4 text-lg font-bold">AI Meeting Analytics</h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-leaf">Insights</p>
+              <h2 className="text-lg font-bold text-ink">AI Meeting Analytics</h2>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <AnalyticsTile label="Meeting Quality" value={avgQualityScore !== null ? `${avgQualityScore}%` : "-"} />
             <AnalyticsTile label="Task completion" value={completionRate !== null ? `${completionRate}%` : "-"} />
@@ -121,7 +132,7 @@ export default async function DashboardPage() {
                 {speakingTime.map((speaker) => {
                   const maxSeconds = speakingTime[0].seconds || 1;
                   return (
-                    <div key={speaker.name} className="flex items-center gap-3">
+                    <div key={speaker.name} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
                       <span className="w-28 shrink-0 truncate text-xs text-slate-600">{speaker.name}</span>
                       <div className="h-2 flex-1 rounded-full bg-slate-100">
                         <div className="h-2 rounded-full bg-leaf" style={{ width: `${Math.max(4, (speaker.seconds / maxSeconds) * 100)}%` }} />
@@ -142,7 +153,7 @@ export default async function DashboardPage() {
           {meetings.length ? (
             <div className="space-y-3">
               {meetings.slice(0, 5).map((meeting) => (
-                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 p-3 hover:bg-slate-50">
+                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 bg-slate-50/50 p-3 transition hover:border-slate-200 hover:bg-white hover:shadow-sm">
                   <p className="font-semibold text-ink">{meeting.title}</p>
                   <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} {text.tasksCount}</p>
                 </a>
@@ -155,7 +166,7 @@ export default async function DashboardPage() {
           {tasks.filter((task) => task.status !== "completed").length ? (
             <div className="space-y-3">
               {tasks.filter((task) => task.status !== "completed").slice(0, 6).map((task) => (
-                <div key={task.id} className="rounded-lg border border-slate-100 p-3">
+                <div key={task.id} className="rounded-lg border border-slate-100 bg-slate-50/50 p-3">
                   <p className="font-semibold text-ink">{task.title}</p>
                   <p className="text-sm text-slate-500">{task.assigneeName ?? text.unassigned} · {task.deadline?.toLocaleDateString() ?? text.noDueDate}</p>
                 </div>
@@ -170,7 +181,7 @@ export default async function DashboardPage() {
 
 function AnalyticsTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-100 p-4">
+    <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-4">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
     </div>

@@ -25,17 +25,23 @@ export default async function NewMeetingPage() {
     .catch(() => []);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div>
-        <p className="text-sm font-semibold text-leaf">{text.recordingEyebrow}</p>
-        <h1 className="text-3xl font-bold text-ink">{text.newMeeting}</h1>
-        <p className="mt-2 text-slate-500">{text.newMeetingDescription}</p>
-        <a className="kh-button-secondary mt-4" href="/meetings/call">{text.openVideoMeeting}</a>
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="kh-card overflow-hidden">
+        <div className="grid gap-0 lg:grid-cols-[1fr_auto]">
+          <div className="p-6 sm:p-7">
+            <p className="text-sm font-semibold text-leaf">{text.recordingEyebrow}</p>
+            <h1 className="mt-1 text-3xl font-bold text-ink sm:text-4xl">{text.newMeeting}</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{text.newMeetingDescription}</p>
+          </div>
+          <div className="border-t border-slate-200 bg-slate-50/70 p-6 sm:p-7 lg:border-l lg:border-t-0">
+            <a className="kh-button-secondary w-full whitespace-nowrap" href="/meetings/call">{text.openVideoMeeting}</a>
+          </div>
+        </div>
       </div>
       <NextMeetingPrep user={user} />
       <RecordingPanel />
       <ExternalMediaUploadPanel />
-      <section className="kh-card p-5">
+      <section className="kh-card p-5 sm:p-6">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-leaf">{text.savedRecordings}</p>
@@ -47,7 +53,7 @@ export default async function NewMeetingPage() {
         {recordings.length ? (
           <div className="space-y-3">
             {recordings.map((meeting) => (
-              <article className="rounded-xl border border-slate-100 bg-slate-50 p-4" key={meeting.id}>
+              <article className="rounded-lg border border-slate-100 bg-slate-50/70 p-4 transition hover:border-slate-200 hover:bg-white hover:shadow-sm" key={meeting.id}>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <a className="font-bold text-ink hover:text-leaf" href={`/meetings/${meeting.id}`}>
