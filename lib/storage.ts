@@ -509,10 +509,14 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-// Transcribe one complete recording in one model request so the model keeps
-// full sentence and speaker-turn context. Files above OpenRouter's request
-// size ceiling are re-encoded to a smaller mono speech file, never split.
-// The original saved recording is not modified.
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 8 * 60;
+const STORED_TRANSCRIPTION_CONCURRENCY = 3;
+
+// Transcribe a complete saved recording in bounded audio windows. Sending a
+// long meeting as one giant multimodal request fits the byte limit after
+// compression, but providers can still skip stretches of speech or stop early
+// on long audio. Chunking here happens only after the original recording is
+// safely stored, then transcripts are stitched back in chronological order.
 export async function transcribeStoredTrackRecording(
   audioUrl: string,
   languageMode: TranscriptionLanguageMode,
@@ -530,18 +534,48 @@ export async function transcribeStoredTrackRecording(
     singleSpeaker: options.singleSpeaker ?? true,
     skipPrimaryModel: true
   };
-  const { compressWholeAudioForTranscription } = await import("@/lib/ffmpeg");
+  const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
-  const transcriptionBuffer = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
-  const wasCompressed = transcriptionBuffer !== buffer;
-  const transcriptionFile = new File(
-    [new Uint8Array(transcriptionBuffer)],
-    wasCompressed ? "complete-recording.m4a" : file.name,
-    { type: wasCompressed ? "audio/mp4" : (file.type || "audio/webm") }
+  const chunks = await splitAudioIntoChunks(
+    buffer,
+    ext,
+    openRouterAudioLimit,
+    STORED_TRANSCRIPTION_SEGMENT_SECONDS
   );
-  const transcript = await transcribeAudio(transcriptionFile, speakerNames, languageMode, transcribeOptions);
-  return cleanTranscriptionText(transcript);
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+  const transcripts = new Array<string>(chunks.length).fill("");
+  const completed = new Array<boolean>(chunks.length).fill(false);
+  const queue = chunks.map((chunk, index) => ({ chunk, index }));
+
+  async function worker() {
+    while (queue.length) {
+      const next = queue.shift();
+      if (!next) return;
+
+      const remainingMs = deadline - Date.now();
+      if (remainingMs < 8000) return;
+
+      const chunkFile = new File(
+        [new Uint8Array(next.chunk)],
+        chunks.length === 1 ? file.name : `recording-part-${String(next.index + 1).padStart(3, "0")}.${ext}`,
+        { type: file.type || "audio/webm" }
+      );
+      const chunkTimeoutMs = Math.max(8000, Math.min(90000, remainingMs));
+      const transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
+        ...transcribeOptions,
+        timeoutMs: chunkTimeoutMs
+      }).catch(() => "");
+      transcripts[next.index] = cleanTranscriptionText(transcript);
+      completed[next.index] = true;
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(STORED_TRANSCRIPTION_CONCURRENCY, chunks.length) }, worker));
+  if (completed.some((done) => !done)) {
+    throw new Error("The transcription request timed out before it could finish every audio segment.");
+  }
+  return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",
@@ -626,7 +660,7 @@ export async function transcribeAudioChunks(
   speakerNames: string[] = [],
   languageMode: TranscriptionLanguageMode = "km"
 ) {
-  const usableChunks = audioChunks.filter((chunk) => chunk.size > 0).slice(0, 40);
+  const usableChunks = audioChunks.filter((chunk) => chunk.size > 0);
   if (!usableChunks.length) return "";
 
   const transcripts: string[] = [];
