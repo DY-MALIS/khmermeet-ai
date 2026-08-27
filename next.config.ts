@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
 
-if (process.env.NEXTAUTH_URL?.includes("[SENSITIVE]")) {
-  process.env.NEXTAUTH_URL = "https://khmermeet-ai.vercel.app";
+function deploymentAuthUrl() {
+  const explicitUrl = process.env.NEXTAUTH_URL?.trim();
+  if (explicitUrl && !explicitUrl.includes("[SENSITIVE]")) return explicitUrl;
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl}`;
+
+  return "http://localhost:3000";
+}
+
+const authUrl = deploymentAuthUrl();
+
+if (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("[SENSITIVE]")) {
+  process.env.NEXTAUTH_URL = authUrl;
 }
 
 const nextConfig: NextConfig = {
@@ -44,7 +56,7 @@ const nextConfig: NextConfig = {
       // runtime value.
       config.plugins.push(
         new webpack.DefinePlugin({
-          "process.env.NEXTAUTH_URL": JSON.stringify(process.env.NEXTAUTH_URL ?? "https://khmermeet-ai.vercel.app")
+          "process.env.NEXTAUTH_URL": JSON.stringify(authUrl)
         })
       );
     }

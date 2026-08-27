@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import {
+  forceSingleSpeakerLabel,
+  loadStoredAudioAsFile,
+  normalizeTranscriptionLanguageMode,
+  refineSavedTranscript,
+  transcribeStoredTrackRecording
+} from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -13,6 +19,7 @@ export const maxDuration = 300;
 const WORK_DEADLINE_MS = 270000;
 const FINALIZE_RESERVE_MS = 10000;
 const REFINE_RESERVE_MS = 60000;
+const MINIMUM_ATTEMPT_MS = 12000;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const workDeadline = Date.now() + WORK_DEADLINE_MS;
@@ -51,6 +58,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let transcriptSpeakerNames = speakerNames;
 
     if (shouldUseMixedAudio && meeting.audioUrl) {
+      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
+      if (audioFile.size < 1500) {
+        return NextResponse.json(
+          {
+            error:
+              "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
+          },
+          { status: 422 }
+        );
+      }
       rawTranscript = await withinDeadline(
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
@@ -59,24 +76,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         workDeadline - REFINE_RESERVE_MS
       );
     } else if (participantAudioSegments.length) {
-      const parts = await Promise.all(
-        participantAudioSegments.map(async (segment) => {
-          const speakerName = segment.speakerName || segment.speakerIdentity;
-          const text = await withinDeadline(
+      const parts = [];
+      for (const segment of participantAudioSegments) {
+        const speakerName = segment.speakerName || segment.speakerIdentity;
+        let text = segment.text.trim();
+        const attemptTimeoutMs = transcriptionBudget(workDeadline);
+        if (!text && attemptTimeoutMs >= MINIMUM_ATTEMPT_MS) {
+          text = await withinDeadline(
             transcribeStoredTrackRecording(
               segment.audioUrl as string,
               languageMode,
-              transcriptionBudget(workDeadline),
+              attemptTimeoutMs,
               { speakerNames: [speakerName], singleSpeaker: true }
             ),
             workDeadline - REFINE_RESERVE_MS
           ).catch(() => "");
-          return {
-            startMs: segment.startMs,
-            text: text.trim() ? forceSingleSpeakerLabel(text, speakerName) : ""
-          };
-        })
-      );
+          if (hasUsableTranscript(text)) {
+            text = forceSingleSpeakerLabel(text, speakerName).trim();
+            await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text } }).catch(() => undefined);
+          }
+        }
+        parts.push({
+          startMs: segment.startMs,
+          text: text.trim() ? forceSingleSpeakerLabel(text, speakerName) : ""
+        });
+      }
       rawTranscript = parts
         .filter((part) => part.text)
         .sort((a, b) => a.startMs - b.startMs)
@@ -84,6 +108,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .join("\n");
       transcriptSpeakerNames = [...new Set(participantAudioSegments.map((segment) => segment.speakerName || segment.speakerIdentity))];
     } else if (meeting.audioUrl) {
+      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
+      if (audioFile.size < 1500) {
+        return NextResponse.json(
+          {
+            error:
+              "The saved audio file is too small or empty. Please record again and speak clearly near the microphone."
+          },
+          { status: 422 }
+        );
+      }
       rawTranscript = await withinDeadline(
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
@@ -93,6 +127,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
+    const skippedPendingSegments =
+      participantAudioSegments.some((segment) => !segment.text.trim()) &&
+      Date.now() > workDeadline - REFINE_RESERVE_MS - MINIMUM_ATTEMPT_MS;
     const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
     const transcript = refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
@@ -110,6 +147,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
         { status: 422 }
       );
+    }
+
+    if (skippedPendingSegments) {
+      return transcriptionNeedsAnotherPassResponse();
     }
 
     await prisma.meeting.update({
@@ -161,6 +202,16 @@ async function withinDeadline<T>(operation: Promise<T>, deadline: number): Promi
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+function transcriptionNeedsAnotherPassResponse() {
+  return NextResponse.json(
+    {
+      error:
+        "Transcription is still processing and needs another pass. Please click Re-transcribe audio again; completed speaker audio has been saved so the next pass can continue without starting over."
+    },
+    { status: 503 }
+  );
 }
 
 async function readTranscriptionBody(request: Request) {

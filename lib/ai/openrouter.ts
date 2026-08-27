@@ -4,7 +4,7 @@ import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
 import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
-import { hasTranscriptionPromptLeakage } from "@/lib/transcript-quality";
+import { hasTranscriptionPromptLeakage, hasUsableTranscript } from "@/lib/transcript-quality";
 
 type TextPart = { text: string };
 
@@ -417,6 +417,7 @@ export async function transcribeOpenRouterAudioViaChat(
     speakerNames,
     singleSpeaker
   );
+  if (hasUsableTranscript(result)) return result;
 
   if (result || primaryModel === TRANSCRIPTION_SAFETY_NET_MODEL) return result;
 

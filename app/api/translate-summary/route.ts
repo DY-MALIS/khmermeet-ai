@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
+const translateTimeoutMs = Number(process.env.OPEN_ROUTER_TRANSLATE_TIMEOUT_MS ?? 45000);
 
 const targetLabels: Record<string, string> = {
   km: "Khmer",
@@ -44,14 +45,27 @@ export async function POST(request: Request) {
 
     const translated = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
-      timeoutMs: 60000,
+      timeoutMs: Math.max(10000, Math.min(translateTimeoutMs, 50000)),
       maxTokens: 2500
     });
 
+    if (!translated.trim()) {
+      return NextResponse.json(
+        { error: "The AI returned an empty translation. Please try again." },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({ translated });
   } catch (error) {
+    const message =
+      error instanceof Error && error.message.toLowerCase().includes("timed out")
+        ? "Translation took too long. Please try again, or shorten the summary before translating."
+        : error instanceof Error
+          ? error.message
+          : "Could not translate summary.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Could not translate summary." },
+      { error: message },
       { status: 500 }
     );
   }

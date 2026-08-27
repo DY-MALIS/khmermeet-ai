@@ -39,7 +39,7 @@ cp .env.example .env
 3. Fill in:
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/khmermeet_ai?schema=public"
 OPEN_ROUTER_API_KEY="..."
 OPEN_ROUTER_TEXT_MODEL=openai/gpt-4o-mini
 OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3
