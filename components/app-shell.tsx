@@ -33,13 +33,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </details>
       </div>
 
-      <aside className="sticky top-0 z-20 hidden bg-ink text-white shadow-2xl shadow-ink/15 lg:flex lg:h-screen lg:w-72 lg:flex-col">
+      <aside className="sticky top-0 z-20 hidden border-r border-white/80 bg-white/86 text-ink shadow-xl shadow-slate-900/5 backdrop-blur-2xl lg:flex lg:h-screen lg:w-72 lg:flex-col">
         <div className="flex items-center justify-between px-4 py-5 lg:block lg:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-lg bg-white text-lg font-black text-ink shadow-lg shadow-black/20">K</div>
+            <div className="grid h-11 w-11 place-items-center rounded-lg bg-leaf text-lg font-black text-white shadow-lg shadow-leaf/20">K</div>
             <div>
-              <p className="font-bold text-white">KhmerMeet AI</p>
-              <p className="text-xs text-white/55"><LocalizedText k="appSubtitle" /></p>
+              <p className="font-bold text-ink">KhmerMeet AI</p>
+              <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
             </div>
           </Link>
         </div>
@@ -47,7 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-4 pb-4">
           <LanguageSwitcher compact />
         </div>
-        <div className="mt-auto hidden border-t border-white/10 p-4 lg:block">
+        <div className="mt-auto hidden border-t border-slate-200/80 p-4 lg:block">
           <ShellStatusCard />
         </div>
       </aside>
