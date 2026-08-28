@@ -510,6 +510,76 @@ export async function refineOpenRouterTranscript(
   });
 }
 
+// Detects real names from explicit self-introductions (e.g. "ខ្ញុំឈ្មោះ...",
+// "my name is...") so a recording can be labeled without the user typing
+// participant names first. Deliberately narrow and separate from the main
+// refine pass: an earlier attempt at asking one model call to both detect
+// AND consistently relabel a whole transcript in one shot produced a
+// confirmed-live wrong-attribution (a line was relabeled with a name that
+// belonged to a *different* speaker) - worse than the generic "Speaker 1"
+// label it replaced. Isolating extraction into its own low-stakes call and
+// feeding the result through the existing, already-relied-upon "known
+// speaker names, assign by first-seen order" mechanism (refineOpenRouterTranscript's
+// speakerNames branch, transcriptionChatPrompt's knownSpeakerInstruction)
+// means a bad detection only falls back to the same generic labels that
+// already ship today, never a confident wrong name.
+export async function detectSelfIntroducedSpeakerNames(
+  transcript: string,
+  timeoutMs = 20000
+): Promise<string[]> {
+  if (!hasOpenRouterKey()) return [];
+  const clean = transcript.trim();
+  if (!clean) return [];
+
+  const labelMatches = [...clean.matchAll(/^\s*Speaker\s+(\d+)\s*:/gim)];
+  const labelNumbers = [...new Set(labelMatches.map((match) => Number(match[1])))].sort((a, b) => a - b);
+  // Nothing to relabel - either already has real names, or no generic
+  // labels at all (e.g. a single continuous voice with no speaker prefix).
+  if (!labelNumbers.length) return [];
+
+  const prompt = [
+    "You are given a raw meeting transcript that uses generic speaker labels: Speaker 1, Speaker 2, etc.",
+    "For each generic label, check whether that exact speaker clearly states their own name as a self-introduction somewhere in their lines - for example Khmer phrases like \"ខ្ញុំឈ្មោះ...\", \"ខ្ញុំជា...\", or English phrases like \"my name is...\", \"I am...\", \"I'm...\", \"this is...\".",
+    "Only report a name when it is explicitly and unambiguously self-introduced by that speaker. Never guess a name from role, topic, tone, or how someone is addressed by another speaker.",
+    "If a label's self-introduction is missing, unclear, contradictory (introduces more than one different name), or you are not confident, omit that label entirely rather than guessing.",
+    `The generic labels present in this transcript are: ${labelNumbers.map((n) => `Speaker ${n}`).join(", ")}.`,
+    "Return only a JSON object whose keys are exactly those generic labels (only the ones you are confident about) and whose values are the introduced name, for example {\"Speaker 1\": \"ដារ៉ា\"}. Return {} if none are confident.",
+    "",
+    "Transcript:",
+    clean
+  ].join("\n");
+
+  try {
+    const raw = await generateOpenRouterContent([{ text: prompt }], {
+      model: textModel(),
+      json: true,
+      temperature: 0,
+      timeoutMs,
+      maxTokens: 500
+    });
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const detected = new Map<number, string>();
+    for (const [label, name] of Object.entries(parsed)) {
+      const match = label.trim().match(/^Speaker\s+(\d+)$/i);
+      if (!match || typeof name !== "string") continue;
+      const trimmedName = name.trim();
+      if (!trimmedName || trimmedName.length > 60) continue;
+      detected.set(Number(match[1]), trimmedName);
+    }
+    // Only usable if EVERY generic label seen in the transcript has a
+    // confident name - the downstream "known speaker names, assign by
+    // order" mechanism is positional (Speaker 1 = names[0], Speaker 2 =
+    // names[1], ...) and has no way to represent "this one stays generic."
+    // A partial map would force an unintroduced speaker's real turns onto
+    // someone else's name, which is the exact wrong-attribution failure
+    // mode this function exists to avoid.
+    if (detected.size !== labelNumbers.length) return [];
+    return labelNumbers.map((n) => detected.get(n)!);
+  } catch {
+    return [];
+  }
+}
+
 function fallbackSummary(transcript: string) {
   return `Meeting overview\n${transcript.slice(0, 500)}\n\nNext steps\n- Review the transcript and create action items.`;
 }

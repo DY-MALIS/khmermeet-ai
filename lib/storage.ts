@@ -3,6 +3,7 @@ import { unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import {
+  detectSelfIntroducedSpeakerNames,
   hasOpenRouterKey,
   refineOpenRouterTranscript,
   transcribeOpenRouterAudioViaChat
@@ -153,6 +154,28 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
     })
     .join("\n")
     .trim();
+}
+
+const genericSpeakerLabelPattern =
+  /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?$/i;
+
+// Reads back whichever real speaker names actually ended up in a finished
+// transcript's "Name: ..." labels, regardless of whether those names came
+// from user input, meeting-join participant names, or auto-detected
+// self-introductions (see detectSelfIntroducedSpeakerNames) - so the saved
+// meeting.speakerNames always reflects what the transcript really says
+// instead of only whatever was known before transcription ran.
+export function extractRealSpeakerNamesFromTranscript(transcript: string) {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const line of transcript.split(/\r?\n/)) {
+    const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
+    const label = match?.[1]?.trim();
+    if (!label || genericSpeakerLabelPattern.test(label) || seen.has(label)) continue;
+    seen.add(label);
+    names.push(label);
+  }
+  return names.slice(0, 100);
 }
 
 function speakerNumberToIndex(value: string) {
@@ -705,9 +728,23 @@ export async function refineSavedTranscript(
   const cleanedTranscript = cleanTranscriptionText(transcript);
   if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
 
-  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
-  const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
   const deadline = Date.now() + Math.max(1000, timeoutMs);
+  let normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
+  // No participant names were given up front - see if anyone clearly said
+  // their own name (see detectSelfIntroducedSpeakerNames for why this is a
+  // separate, narrow, all-or-nothing detection step rather than folded into
+  // the main refine prompt). A skipped/failed/timed-out detection just
+  // leaves the transcript on the existing generic-label behavior, never
+  // worse than before.
+  if (!normalizedSpeakerNames.length) {
+    const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
+    if (detectionBudget >= 5000) {
+      const detected = await detectSelfIntroducedSpeakerNames(cleanedTranscript, detectionBudget).catch(() => []);
+      if (detected.length) normalizedSpeakerNames = normalizeSpeakerNames(detected);
+    }
+  }
+
+  const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
 
   const refinedChunks = await Promise.all(
     chunks.map((chunk) =>
@@ -721,8 +758,8 @@ export async function refineSavedTranscript(
   );
   const refinedTranscript = refinedChunks.join("\n");
 
-  const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, speakerNames);
-  const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), speakerNames);
+  const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, normalizedSpeakerNames);
+  const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames);
   return chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
 }
 

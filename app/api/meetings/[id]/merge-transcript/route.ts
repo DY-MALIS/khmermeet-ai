@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import { extractRealSpeakerNamesFromTranscript, forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
@@ -152,9 +152,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // using the language mode the user picked when recording, set on the
       // meeting when it was created. Forcing "km-en" here discarded that
       // choice and made summary/task generation ignore it downstream.
+      const finalSpeakerNames = speakerNames.length ? speakerNames : extractRealSpeakerNamesFromTranscript(transcript);
       await prisma.meeting.update({
         where: { id },
-        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration, speakerNames }
+        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration, speakerNames: finalSpeakerNames }
       });
     }
 

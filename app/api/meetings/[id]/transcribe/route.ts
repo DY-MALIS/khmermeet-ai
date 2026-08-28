@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import {
+  extractRealSpeakerNamesFromTranscript,
   forceSingleSpeakerLabel,
   loadStoredAudioAsFile,
   normalizeTranscriptionLanguageMode,
@@ -153,6 +154,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return transcriptionNeedsAnotherPassResponse();
     }
 
+    // The refine pass may have auto-detected and applied real names for
+    // speakers who introduced themselves even though none were typed in
+    // (see detectSelfIntroducedSpeakerNames) - reading them back from the
+    // final transcript text keeps the saved speaker list in sync with what
+    // the transcript actually says.
+    const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(transcript);
+    const speakerNamesToSave = finalSpeakerNames.length ? finalSpeakerNames : transcriptSpeakerNames;
+
     await prisma.meeting.update({
       where: { id },
       data: {
@@ -160,7 +169,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         summary: null,
         language: languageMode,
         status: "transcribed",
-        speakerNames: transcriptSpeakerNames
+        speakerNames: speakerNamesToSave
       }
     });
 

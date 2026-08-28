@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { normalizeTranscriptionLanguageMode, refineSavedTranscript } from "@/lib/storage";
+import { extractRealSpeakerNamesFromTranscript, normalizeTranscriptionLanguageMode, refineSavedTranscript } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +29,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     const refined = await refineSavedTranscript(meeting.transcript, languageMode, meeting.speakerNames ?? []);
 
     if (refined.trim() && refined.trim() !== meeting.transcript.trim()) {
+      const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(refined);
+      const data: { transcript: string; summary: null; speakerNames?: string[] } = { transcript: refined, summary: null };
+      if (finalSpeakerNames.length) data.speakerNames = finalSpeakerNames;
       await prisma.meeting.update({
         where: { id },
-        data: { transcript: refined, summary: null }
+        data
       });
     }
 
