@@ -649,10 +649,10 @@ export async function transcribeStoredTrackRecording(
   }
 
   await Promise.all(Array.from({ length: Math.min(STORED_TRANSCRIPTION_CONCURRENCY, chunks.length) }, worker));
-  if (completed.some((done) => !done)) {
-    throw new Error("The transcription request timed out before it could finish every audio segment.");
-  }
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
+  if (completed.some((done) => !done)) {
+    return chunkTranscript;
+  }
   const remainingMs = deadline - Date.now();
   if (remainingMs < 45000) return chunkTranscript;
 
@@ -914,4 +914,3 @@ function transcriptTokenScore(transcript: string) {
   const khmerChars = transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
   return latinWords + Math.ceil(khmerChars / 6);
 }
-

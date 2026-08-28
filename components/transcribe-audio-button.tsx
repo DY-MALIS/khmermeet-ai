@@ -43,7 +43,7 @@ export function TranscribeAudioButton({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ languageMode, speakerNames: parseSpeakerNames(speakerNamesInput) })
       });
-      const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+      const data = await readJsonResponse<{ transcript?: string; error?: string; message?: string; partial?: boolean }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
       const nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
       if (!nextTranscript) {
@@ -51,9 +51,12 @@ export function TranscribeAudioButton({
       }
       onTranscribed?.(nextTranscript);
       setMessage(
-        hasTranscript
-          ? "Transcript replaced below. Refreshing meeting data..."
-          : "Transcription saved below. Refreshing meeting data..."
+        data.message ??
+          (data.partial
+            ? "Transcript saved so far. Click Re-transcribe audio again to continue."
+            : hasTranscript
+              ? "Transcript replaced below. Refreshing meeting data..."
+              : "Transcription saved below. Refreshing meeting data...")
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {

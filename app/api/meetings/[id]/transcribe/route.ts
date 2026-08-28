@@ -150,10 +150,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    if (skippedPendingSegments) {
-      return transcriptionNeedsAnotherPassResponse();
-    }
-
     // The refine pass may have auto-detected and applied real names for
     // speakers who introduced themselves even though none were typed in
     // (see detectSelfIntroducedSpeakerNames) - reading them back from the
@@ -177,6 +173,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     revalidatePath("/summaries");
     revalidatePath("/dashboard");
     revalidatePath(`/meetings/${id}`);
+
+    if (skippedPendingSegments) {
+      return NextResponse.json({
+        transcript,
+        partial: true,
+        message:
+          "Saved the transcript captured so far. Some speaker audio still needs another pass; click Re-transcribe audio again to continue from the saved segments."
+      });
+    }
 
     return NextResponse.json({ transcript });
   } catch (error) {
@@ -213,16 +218,6 @@ async function withinDeadline<T>(operation: Promise<T>, deadline: number): Promi
   }
 }
 
-function transcriptionNeedsAnotherPassResponse() {
-  return NextResponse.json(
-    {
-      error:
-        "Transcription is still processing and needs another pass. Please click Re-transcribe audio again; completed speaker audio has been saved so the next pass can continue without starting over."
-    },
-    { status: 503 }
-  );
-}
-
 async function readTranscriptionBody(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json")) {
     return { languageMode: undefined as unknown, speakerNames: [] as string[] };
@@ -252,4 +247,3 @@ async function readTranscriptionBody(request: Request) {
     speakerNames
   };
 }
-
