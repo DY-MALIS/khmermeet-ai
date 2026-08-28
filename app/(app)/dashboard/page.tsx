@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages */
-import { ArrowRight, CheckCircle2, Clock, FileAudio, Mic, ListTodo, Sparkles, Video } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, FileAudio, Mic, ListTodo, Plus, Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
@@ -37,10 +37,10 @@ export default async function DashboardPage() {
   const { meetings, tasks, segments, dbUnavailable } = data;
   const now = new Date();
   const stats = [
-    { label: text.totalMeetings, value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf" },
-    { label: text.totalTasks, value: tasks.length, icon: ListTodo, tone: "bg-sky/10 text-sky" },
-    { label: text.completedStat, value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700" },
-    { label: text.overdueStat, value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-red-100 text-red-700" }
+    { label: text.totalMeetings, value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf", accent: "bg-leaf" },
+    { label: text.totalTasks, value: tasks.length, icon: ListTodo, tone: "bg-sky/10 text-sky", accent: "bg-sky" },
+    { label: text.completedStat, value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500" },
+    { label: text.overdueStat, value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-red-100 text-red-700", accent: "bg-red-500" }
   ];
 
   const qualityScores = meetings
@@ -52,41 +52,55 @@ export default async function DashboardPage() {
   const speakingTime = computeSpeakingTimeBySpeaker(segments).slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-lg border border-white/80 bg-white/70 p-4 shadow-sm backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-leaf">{text.welcome}</p>
-          <h1 className="mt-1 text-4xl font-black tracking-normal text-ink sm:text-5xl">{text.dashboardTitle}</h1>
+          <p className="text-xs font-bold uppercase text-leaf">{text.welcome}</p>
+          <h1 className="mt-1 text-3xl font-black tracking-normal text-ink sm:text-4xl">{text.dashboardTitle}</h1>
         </div>
-        <div className="hidden items-center gap-2 rounded-lg border border-white/80 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm backdrop-blur sm:flex">
-          <Sparkles className="h-4 w-4 text-saffron" />
-          <span>AI meeting tracker</span>
+        <div className="flex flex-wrap gap-2">
+          <a href="/meetings/new" className="kh-button-primary">
+            <Plus className="h-4 w-4" />
+            Start now
+          </a>
+          <a href="/meetings/call" className="kh-button-secondary">
+            <Video className="h-4 w-4" />
+            Open call
+          </a>
         </div>
       </div>
-      <section className="kh-card overflow-hidden shadow-2xl shadow-slate-900/10">
-        <div className="grid gap-0 lg:grid-cols-[1.2fr_.8fr]">
-          <a href="/meetings/new" className="group relative block overflow-hidden bg-ink p-6 text-white transition hover:bg-ink/95 sm:p-8">
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-leaf via-sky to-saffron" />
-            <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-lg bg-white/12 shadow-lg shadow-black/20 ring-1 ring-white/15">
+      <section className="grid gap-4 xl:grid-cols-[1.4fr_.6fr]">
+        <a href="/meetings/new" className="group relative overflow-hidden rounded-lg border border-white/80 bg-white p-6 shadow-2xl shadow-slate-900/10 transition hover:-translate-y-0.5 hover:shadow-slate-900/15 sm:p-8">
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-leaf via-sky to-saffron" />
+          <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="grid h-12 w-12 place-items-center rounded-lg bg-ink text-white shadow-lg shadow-ink/15">
                 <Mic className="h-6 w-6" />
               </span>
-              <div>
-                <p className="text-sm font-semibold text-white/70">{text.primaryFeature}</p>
-                <h2 className="text-2xl font-bold sm:text-3xl">{text.startMeetingRecording}</h2>
+                <div>
+                  <p className="text-xs font-bold uppercase text-leaf">{text.primaryFeature}</p>
+                  <h2 className="text-2xl font-black text-ink sm:text-4xl">{text.startMeetingRecording}</h2>
+                </div>
+              </div>
+              <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-600">
+                {text.dashboardRecordDescription}
+              </p>
+              <div className="mt-6 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                <span className="rounded-lg bg-leaf/10 px-3 py-2 text-leaf">Audio</span>
+                <span className="rounded-lg bg-sky/10 px-3 py-2 text-sky">Transcript</span>
+                <span className="rounded-lg bg-saffron/10 px-3 py-2 text-saffron">Summary</span>
               </div>
             </div>
-            <p className="mt-4 max-w-xl text-sm leading-6 text-white/80">
-              {text.dashboardRecordDescription}
-            </p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-ink shadow-sm transition group-hover:bg-slate-100">
-              Start now
+            <div className="inline-flex w-fit items-center gap-2 rounded-lg bg-ink px-5 py-3 text-sm font-bold text-white shadow-lg shadow-ink/15 transition group-hover:bg-leaf">
+              Start recording
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
-          </a>
-          <a href="/meetings/call" className="group block border-t border-slate-200 bg-white/95 p-6 transition hover:bg-white sm:p-8 lg:border-l lg:border-t-0">
+          </div>
+        </a>
+        <a href="/meetings/call" className="group rounded-lg border border-sky/15 bg-sky/10 p-6 shadow-lg shadow-sky/5 transition hover:-translate-y-0.5 hover:bg-sky/15">
             <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-lg bg-sky/10 text-sky shadow-sm ring-1 ring-sky/10">
+              <span className="grid h-12 w-12 place-items-center rounded-lg bg-white text-sky shadow-sm ring-1 ring-sky/10">
                 <Video className="h-6 w-6" />
               </span>
               <div>
@@ -95,12 +109,11 @@ export default async function DashboardPage() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-ink shadow-sm transition group-hover:border-slate-300">
+            <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-ink shadow-sm transition group-hover:text-sky">
               Open call
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </a>
-        </div>
       </section>
       {dbUnavailable ? (
         <div className="rounded-lg border border-saffron/30 bg-saffron/10 p-4 text-sm text-ink">
@@ -109,7 +122,8 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div className="kh-card p-5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/10" key={stat.label}>
+          <div className="kh-card relative overflow-hidden p-5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/10" key={stat.label}>
+            <div className={`absolute inset-x-0 top-0 h-1 ${stat.accent}`} />
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500">{stat.label}</p>
               <span className={`rounded-lg p-2 ${stat.tone}`}><stat.icon className="h-5 w-5" /></span>
