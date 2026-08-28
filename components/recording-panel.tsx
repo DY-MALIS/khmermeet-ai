@@ -7,19 +7,13 @@ import { describeMicError } from "@/lib/mic-permission-error";
 import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-// noiseSuppression + autoGainControl on: on-screen diagnostics proved (not
-// guessed) that MediaRecorder does not faithfully capture what's sent to a
-// synthesized MediaStreamDestinationNode on this browser/OS - a live level
-// meter tapped from the same processing chain read 0.00551 while the
-// actual decoded recording read 0.00001, ~550x smaller, from the exact same
-// signal. That's not a quiet-audio problem, it's this hand-off losing
-// almost everything. So the custom compressor/gain/limiter chain has been
-// removed for the recorded track; MediaRecorder now gets the raw device
-// track, and the browser's own native processing is the only thing boosting
-// it, since that's what actually reaches MediaRecorder intact.
+// Standalone room recording should capture the room as faithfully as possible.
+// Browser noise suppression is tuned for close-talk calls and can erase quiet
+// far-field speakers as "background"; the server-side ffmpeg pass handles
+// denoise/leveling before transcription, where it can be retried safely.
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
-  noiseSuppression: true,
+  noiseSuppression: false,
   autoGainControl: true,
   channelCount: { ideal: 1 },
   sampleRate: { ideal: 48000 },
@@ -128,7 +122,9 @@ export function RecordingPanel() {
   }
 
   function getRecorderOptions(mimeType: string) {
-    return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+    // Keep enough Opus/AAC detail for distant room voices. 32 kbps made
+    // quiet syllables easier for the transcription model to miss or replace.
+    return mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 };
   }
 
   async function loadAudioDevices() {
@@ -240,17 +236,9 @@ export function RecordingPanel() {
     updateLevel();
   }
 
-  // On-screen diagnostics proved this, not a guess: a live analyser tapped
-  // from the processed graph (source -> gain -> compressor -> limiter ->
-  // destination) read a real max level of 0.00551, while the actual decoded
-  // recording from that same destination read 0.00001 - about 550x smaller,
-  // from the identical signal. MediaRecorder does not faithfully capture
-  // what's sent to a synthesized MediaStreamDestinationNode on this
-  // browser/OS. So this only builds a lightweight analyser tap for the
-  // on-screen level meter now - it does not feed the recording at all.
-  // MediaRecorder gets the raw device track directly (see start() below),
-  // with noiseSuppression/autoGainControl as the only processing, since
-  // that's what's actually proven to reach it intact.
+  // This only builds a lightweight analyser tap for the on-screen level
+  // meter. MediaRecorder gets the real device track directly; transcription
+  // enhancement happens server-side after the audio is safely saved.
   async function buildLevelAnalyser(microphoneStream: MediaStream) {
     void recordingAudioContextRef.current?.close().catch(() => undefined);
     const audioContext = new AudioContext();
@@ -608,7 +596,9 @@ export function RecordingPanel() {
             ))}
           </select>
           {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
-          <p className="text-xs text-slate-500">Records from the selected microphone only.</p>
+          <p className="text-xs text-slate-500">
+            ថតពី microphone ដែលបានជ្រើស។ សម្រាប់ចាប់គ្រប់មាត់ក្នុងបន្ទប់ សូមប្រើ conference/external mic ឬដាក់ mic កណ្តាលតុ។
+          </p>
         </label>
         <div className="space-y-2">
           <p className="text-sm font-semibold text-slate-600">Input level</p>

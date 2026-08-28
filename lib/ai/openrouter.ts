@@ -291,6 +291,8 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     selfIntroductionInstruction,
     accuracyInstruction,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
+    "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
+    "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
     "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",

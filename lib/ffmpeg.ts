@@ -7,6 +7,29 @@ import ffmpegPath from "ffmpeg-static";
 
 const execFileAsync = promisify(execFile);
 let ensuredExecutable = false;
+const speechEnhancementFilter = [
+  "highpass=f=70",
+  "lowpass=f=8000",
+  "afftdn=nf=-25",
+  // Pull distant speech up without clipping close speakers. This keeps the
+  // full timeline intact; it only changes level dynamics before transcription.
+  "compand=attacks=0.03:decays=0.25:points=-80/-80|-55/-35|-35/-20|-18/-12|0/-3:soft-knee=6:gain=8:volume=0",
+  "loudnorm=I=-16:TP=-1.5:LRA=9"
+].join(",");
+const gentleSpeechEnhancementFilter = [
+  "highpass=f=60",
+  "lowpass=f=8200",
+  "afftdn=nf=-20",
+  "acompressor=threshold=-28dB:ratio=3:attack=20:release=250:makeup=5",
+  "loudnorm=I=-18:TP=-1.5:LRA=12"
+].join(",");
+const noisyRoomSpeechEnhancementFilter = [
+  "highpass=f=90",
+  "lowpass=f=7200",
+  "afftdn=nf=-30",
+  "compand=attacks=0.02:decays=0.35:points=-85/-85|-60/-38|-42/-24|-24/-14|-10/-8|0/-4:soft-knee=8:gain=10:volume=0",
+  "loudnorm=I=-15:TP=-1.5:LRA=7"
+].join(",");
 
 // Confirmed live: Vercel's build/packaging pipeline doesn't reliably
 // preserve the executable bit ffmpeg-static's binary has in node_modules -
@@ -161,7 +184,7 @@ export async function compressWholeAudioForTranscription(
         "-map", "0:a:0",
         "-ac", "1",
         "-ar", "16000",
-        "-af", "highpass=f=80,lowpass=f=7800,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11",
+        "-af", speechEnhancementFilter,
         "-c:a", "aac",
         "-b:a", String(bitrate),
         "-movflags", "+faststart",
@@ -180,4 +203,70 @@ export async function compressWholeAudioForTranscription(
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+// Prepares short live chunks and participant segments for speech recognition.
+// It does not trim silence or remove ranges; it only converts to mono speech
+// audio, reduces steady noise, and normalizes quiet voices so distant speakers
+// are less likely to be missed by the transcription model.
+export async function prepareAudioForTranscription(
+  buffer: Buffer,
+  ext: string,
+  maxBytes: number
+): Promise<Buffer> {
+  const variants = await prepareAudioVariantsForTranscription(buffer, ext, maxBytes);
+  return variants[0]?.buffer ?? buffer;
+}
+
+export async function prepareAudioVariantsForTranscription(
+  buffer: Buffer,
+  ext: string,
+  maxBytes: number
+): Promise<Array<{ buffer: Buffer; mimeType: string; filename: string }>> {
+  if (!ffmpegPath) return [];
+
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-prepare-"));
+  const inputPath = path.join(tmpDir, `input.${ext}`);
+  const variants = [
+    { filter: gentleSpeechEnhancementFilter, filename: "speech-gentle.m4a" },
+    { filter: speechEnhancementFilter, filename: "speech-boosted.m4a" },
+    { filter: noisyRoomSpeechEnhancementFilter, filename: "speech-noisy-room.m4a" }
+  ];
+
+  try {
+    await writeFile(inputPath, buffer);
+    await ensureFfmpegExecutable();
+
+    const prepared: Array<{ buffer: Buffer; mimeType: string; filename: string }> = [];
+    for (const variant of variants) {
+      const outputPath = path.join(tmpDir, variant.filename);
+      await execFileAsync(
+        ffmpegPath,
+        [
+          "-y",
+          "-i", inputPath,
+          "-vn",
+          "-map", "0:a:0",
+          "-ac", "1",
+          "-ar", "16000",
+          "-af", variant.filter,
+          "-c:a", "aac",
+          "-b:a", "64000",
+          "-movflags", "+faststart",
+          outputPath
+        ],
+        { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
+      );
+      const output = await readFile(outputPath);
+      if (output.length >= 1000 && output.length <= maxBytes) {
+        prepared.push({ buffer: output, mimeType: "audio/mp4", filename: variant.filename });
+      }
+    }
+    return prepared;
+  } catch {
+    return [];
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 

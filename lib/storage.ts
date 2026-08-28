@@ -456,9 +456,24 @@ export async function transcribeAudio(
   }
 
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
-  const mimeType = audioFile.type || "audio/webm";
-  const filename = audioFile.name || "meeting-audio.webm";
+  const originalAudioBuffer: Buffer = Buffer.from(await audioFile.arrayBuffer());
+  const originalMimeType = audioFile.type || "audio/webm";
+  const originalFilename = audioFile.name || "meeting-audio.webm";
+  const originalExt = audioExtensionFromMime(originalMimeType);
+  const { prepareAudioVariantsForTranscription } = await import("@/lib/ffmpeg");
+  const preparedVariants = await prepareAudioVariantsForTranscription(
+    originalAudioBuffer,
+    originalExt,
+    openRouterAudioLimit
+  );
+  const audioAttempts = [
+    ...preparedVariants.map((variant) => ({
+      audioBuffer: Buffer.from(variant.buffer),
+      mimeType: variant.mimeType,
+      filename: `${path.basename(originalFilename, path.extname(originalFilename)) || "meeting-audio"}-${variant.filename}`
+    })),
+    { audioBuffer: originalAudioBuffer, mimeType: originalMimeType, filename: originalFilename }
+  ];
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
   // All languages use the configured multimodal transcription model
@@ -467,25 +482,17 @@ export async function transcribeAudio(
   // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
 
-  if (!hasUsableTranscript(cleanedTranscript)) {
-    // No .catch() here: an OpenRouterApiError (invalid key, no credits, rate
-    // limit) must propagate so the caller reports the real cause instead of
-    // the generic "no clear speech detected" message, which was silently
-    // masking account/billing errors as an audio-quality problem.
-    const fallbackTranscript = await transcribeOpenRouterAudioViaChat(
-      audioBuffer,
-      mimeType,
-      filename,
+  for (const attempt of audioAttempts) {
+    const attemptTranscript = await transcribeAndCleanAudioBuffer(
+      attempt.audioBuffer,
+      attempt.mimeType,
+      attempt.filename,
       normalizedLanguageMode,
       timeoutMs,
-      normalizeSpeakerNames(speakerNames),
+      speakerNames,
       options.singleSpeaker ?? false
     );
-    const cleanedFallback = applyKnownSpeakerLabels(
-      addSingleSpeakerLabel(cleanTranscriptionText(fallbackTranscript), speakerNames),
-      speakerNames
-    );
-    if (hasUsableTranscript(cleanedFallback)) cleanedTranscript = cleanedFallback;
+    cleanedTranscript = chooseMoreCompleteTranscript(cleanedTranscript, attemptTranscript, normalizedLanguageMode);
   }
 
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
@@ -507,6 +514,30 @@ export async function transcribeAudio(
   return bestTranscript;
 }
 
+async function transcribeAndCleanAudioBuffer(
+  audioBuffer: Buffer,
+  mimeType: string,
+  filename: string,
+  languageMode: TranscriptionLanguageMode,
+  timeoutMs: number,
+  speakerNames: string[],
+  singleSpeaker: boolean
+) {
+  const rawTranscript = await transcribeOpenRouterAudioViaChat(
+    audioBuffer,
+    mimeType,
+    filename,
+    languageMode,
+    timeoutMs,
+    normalizeSpeakerNames(speakerNames),
+    singleSpeaker
+  );
+  return applyKnownSpeakerLabels(
+    addSingleSpeakerLabel(cleanTranscriptionText(rawTranscript), speakerNames),
+    speakerNames
+  );
+}
+
 function audioExtensionFromMime(mimeType: string) {
   if (mimeType.includes("mp4")) return "m4a";
   if (mimeType.includes("webm")) return "webm";
@@ -515,8 +546,8 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 4 * 60;
-const STORED_TRANSCRIPTION_CONCURRENCY = 3;
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 30;
+const STORED_TRANSCRIPTION_CONCURRENCY = 4;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
@@ -540,7 +571,7 @@ export async function transcribeStoredTrackRecording(
     singleSpeaker: options.singleSpeaker ?? true,
     skipPrimaryModel: true
   };
-  const { splitAudioIntoChunks } = await import("@/lib/ffmpeg");
+  const { compressWholeAudioForTranscription, splitAudioIntoChunks } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
   const chunks = await splitAudioIntoChunks(
@@ -581,7 +612,24 @@ export async function transcribeStoredTrackRecording(
   if (completed.some((done) => !done)) {
     throw new Error("The transcription request timed out before it could finish every audio segment.");
   }
-  return cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
+  const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
+  const remainingMs = deadline - Date.now();
+  if (remainingMs < 45000) return chunkTranscript;
+
+  const wholeTranscript = await (async () => {
+    const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+    return transcribeAndCleanAudioBuffer(
+      Buffer.from(wholeAudio),
+      "audio/mp4",
+      "complete-recording.m4a",
+      languageMode,
+      Math.min(90000, remainingMs),
+      speakerNames,
+      options.singleSpeaker ?? true
+    );
+  })().catch(() => "");
+
+  return chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",
@@ -742,6 +790,31 @@ function chooseBetterSavedTranscript(
   }
 
   return refinedTranscript;
+}
+
+function chooseMoreCompleteTranscript(
+  currentTranscript: string,
+  candidateTranscript: string,
+  languageMode: TranscriptionLanguageMode
+) {
+  if (!candidateTranscript.trim() || isLikelyIncompleteTranscript(candidateTranscript)) return currentTranscript;
+  if (!currentTranscript.trim() || isLikelyIncompleteTranscript(currentTranscript)) return candidateTranscript;
+
+  const currentScore = transcriptTokenScore(currentTranscript);
+  const candidateScore = transcriptTokenScore(candidateTranscript);
+  const currentTurns = countTranscriptTurns(currentTranscript);
+  const candidateTurns = countTranscriptTurns(candidateTranscript);
+
+  if (candidateScore > currentScore * 1.08) return candidateTranscript;
+  if (candidateTurns > currentTurns && candidateScore >= currentScore * 0.9) return candidateTranscript;
+
+  if (languageMode === "km-en") {
+    const currentLatinWords = countLatinWords(currentTranscript);
+    const candidateLatinWords = countLatinWords(candidateTranscript);
+    if (candidateLatinWords > currentLatinWords && candidateScore >= currentScore * 0.85) return candidateTranscript;
+  }
+
+  return currentTranscript;
 }
 
 function assertUsableSavedTranscript(transcript: string) {

@@ -95,7 +95,9 @@ function getRecorderMimeType() {
 }
 
 function getLongRecordingOptions(mimeType: string) {
-  return mimeType ? { mimeType, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 };
+  // Server-side transcription can compress/split later; capture should keep
+  // enough detail for quiet or far-field voices to survive the first encode.
+  return mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 };
 }
 
 const callAudioConstraints: MediaTrackConstraints = {
@@ -843,7 +845,14 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
 
 type LiveRecordingSignal =
   | { type: "khmermeet-participant-name"; identity: string; name: string }
-  | { type: "khmermeet-participant-name-request" };
+  | { type: "khmermeet-participant-name-request" }
+  | {
+      type: "khmermeet-record-start";
+      meetingId: string;
+      languageMode: "km" | "en" | "km-en";
+      recordingStartedAt: number;
+    }
+  | { type: "khmermeet-record-stop"; meetingId: string };
 
 type EgressTrackJob = {
   egressId: string;
@@ -892,16 +901,15 @@ function LiveKitMeetingAgent({
   const [localBackupUrl, setLocalBackupUrl] = useState("");
   const [, setAnnouncedSpeakerNames] = useState<Record<string, string>>({});
   const announcedSpeakerNamesRef = useRef<Record<string, string>>({});
-  // One-click mixed recording: the host browser records one mixed audio file
-  // containing the local microphone plus every subscribed remote microphone.
-  // This keeps the saved meeting to one audio player while still letting the
-  // transcript use the participant names saved at recording start.
+  // One-click Server Rec: every participant records their own microphone
+  // locally, then the host also keeps one mixed backup in case a participant
+  // closes their tab before their track upload finishes.
   const [serverRecording, setServerRecording] = useState<{ meetingId: string; recordingStartedAt: number } | null>(null);
   const [egressRecording, setEgressRecording] = useState<EgressRecording | null>(null);
   // True on participants who received the start signal but weren't the one
   // who clicked the button - shown as a passive "recording" indicator only,
   // they have no controls of their own.
-  const remoteRecordingActive = false;
+  const [remoteRecordingActive, setRemoteRecordingActive] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const segmentRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1034,8 +1042,6 @@ function LiveKitMeetingAgent({
     };
   }, [participantName, room]);
 
-  // Older deployments used data-channel start/stop signals for per-participant
-  // recording. New recordings intentionally save one mixed audio file only.
   useEffect(() => {
     function handleData(payload: Uint8Array) {
       let message: LiveRecordingSignal;
@@ -1056,6 +1062,14 @@ function LiveKitMeetingAgent({
         room.localParticipant
           .publishData(new TextEncoder().encode(JSON.stringify(signal)), { reliable: true })
           .catch(() => undefined);
+      } else if (message.type === "khmermeet-record-start") {
+        setRemoteRecordingActive(true);
+        void startLocalTrackRecording(message.meetingId, message.languageMode, message.recordingStartedAt);
+      } else if (message.type === "khmermeet-record-stop") {
+        setRemoteRecordingActive(false);
+        if (message.meetingId === trackMeetingIdRef.current || trackSegmentingRef.current) {
+          void stopLocalTrackRecording();
+        }
       }
     }
 
@@ -1101,7 +1115,22 @@ function LiveKitMeetingAgent({
           destinationIdentities: [participant.identity]
         })
         .catch(() => undefined);
-      if (serverRecordingRef.current) window.setTimeout(connectAvailableAudioTracks, 0);
+      const currentServerRecording = serverRecordingRef.current;
+      if (currentServerRecording) {
+        const startSignal: LiveRecordingSignal = {
+          type: "khmermeet-record-start",
+          meetingId: currentServerRecording.meetingId,
+          languageMode: trackLanguageModeRef.current,
+          recordingStartedAt: currentServerRecording.recordingStartedAt
+        };
+        window.setTimeout(connectAvailableAudioTracks, 0);
+        room.localParticipant
+          .publishData(new TextEncoder().encode(JSON.stringify(startSignal)), {
+            reliable: true,
+            destinationIdentities: [participant.identity]
+          })
+          .catch(() => undefined);
+      }
     }
 
     room.on(RoomEvent.ParticipantConnected, handleConnected);
@@ -1223,7 +1252,7 @@ function LiveKitMeetingAgent({
       if (!segmentingRef.current) return;
       const media = new MediaRecorder(
         segmentStream,
-        mimeType ? { mimeType, audioBitsPerSecond: 96000 } : { audioBitsPerSecond: 96000 }
+        mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 }
       );
       const parts: Blob[] = [];
       segmentRecorderRef.current = media;
@@ -1311,7 +1340,7 @@ function LiveKitMeetingAgent({
     setRecording(false);
   }
 
-  // The single saved recording: one mixed audio file for the whole call.
+  // Backup recording: one mixed audio file for the whole call.
   function startServerMixedBackup() {
     const mixedStream = buildMixedAudioStream();
     const mimeType = getRecorderMimeType();
@@ -1450,7 +1479,11 @@ function LiveKitMeetingAgent({
     durationMs: number
   ) {
     const identity = room.localParticipant.identity;
-    const name = room.localParticipant.name || identity;
+    const name =
+      announcedSpeakerNamesRef.current[identity] ||
+      participantName.trim() ||
+      room.localParticipant.name ||
+      cleanParticipantIdentity(identity);
     try {
       const audioUrl = await uploadRecordingDirect(
         blob,
@@ -1515,8 +1548,6 @@ function LiveKitMeetingAgent({
     return true;
   }
 
-  // Kept for compatibility with old in-room signals until all active clients refresh to the mixed-audio recorder.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function startLocalTrackRecording(meetingId: string, languageMode: "km" | "en" | "km-en", recordingStartedAt: number) {
     if (trackSegmentingRef.current) return;
     const requestId = trackStartRequestRef.current + 1;
@@ -1530,7 +1561,6 @@ function LiveKitMeetingAgent({
     void tryStartPendingLocalTrackRecording();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function stopLocalTrackRecording() {
     trackStartRequestRef.current += 1;
     pendingLocalRecordingRef.current = null;
@@ -1591,12 +1621,23 @@ function LiveKitMeetingAgent({
       }
 
       const recordingStartedAt = Date.now();
+      trackLanguageModeRef.current = transcriptionLanguage;
       startServerMixedBackup();
+      const startSignal: LiveRecordingSignal = {
+        type: "khmermeet-record-start",
+        meetingId: data.meetingId,
+        languageMode: transcriptionLanguage,
+        recordingStartedAt
+      };
+      await room.localParticipant
+        .publishData(new TextEncoder().encode(JSON.stringify(startSignal)), { reliable: true })
+        .catch(() => undefined);
+      await startLocalTrackRecording(data.meetingId, transcriptionLanguage, recordingStartedAt);
       setSavedMeetingId(data.meetingId);
       setServerRecording({ meetingId: data.meetingId, recordingStartedAt });
       setSeconds(0);
       setNotice(
-        `បានចាប់ផ្តើមថត audio តែមួយ។ Audio នេះកំពុងចាប់សំឡេងពីអ្នកចូលរួម ${getCurrentSpeakerNames().length} នាក់ក្នុង call។`
+        `បានចាប់ផ្តើមថតគ្រប់មាត់។ អ្នកចូលរួម ${getCurrentSpeakerNames().length} នាក់នឹងរក្សាទុក microphone ផ្ទាល់ខ្លួន ហើយមាន mixed audio ជា backup។`
       );
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចចាប់ផ្តើម recording បានទេ។");
@@ -1646,13 +1687,19 @@ function LiveKitMeetingAgent({
 
       if (!currentRecording) return;
       const durationMs = clampMeetingDurationMs(Date.now() - currentRecording.recordingStartedAt);
+      const stopSignal: LiveRecordingSignal = { type: "khmermeet-record-stop", meetingId: currentRecording.meetingId };
+      await room.localParticipant
+        .publishData(new TextEncoder().encode(JSON.stringify(stopSignal)), { reliable: true })
+        .catch(() => undefined);
+      await stopLocalTrackRecording();
       const savedMixedAudioUrl = await stopServerMixedBackup(currentRecording.meetingId, transcriptionLanguage, durationMs);
       if (!savedMixedAudioUrl) throw new Error("Audio មិនត្រូវបានរក្សាទុកទេ។ សូមពិនិត្យ microphone/browser permission ហើយថតម្ដងទៀត។");
       const duration = clampMeetingDurationSeconds(durationMs / 1000);
       setSavedMeetingId(currentRecording.meetingId);
       setSavedAudioUrl(savedMixedAudioUrl);
       setServerRecording(null);
-      setNotice("បានឈប់ថត និងរក្សាទុក audio តែមួយរួច។ កំពុងបំលែងសំឡេងគ្រប់អ្នកទៅជា transcript។");
+      setNotice("បានឈប់ថត។ កំពុងប្រមូល audio របស់អ្នកចូលរួមម្នាក់ៗ និងបំលែងសំឡេងគ្រប់មាត់ទៅជា transcript។");
+      await new Promise((resolve) => window.setTimeout(resolve, Math.min(15000, 3500 + participantCount() * 250)));
       void finalizeServerRecording(currentRecording.meetingId, duration);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not save server recording.");
@@ -1869,7 +1916,7 @@ function LiveKitMeetingAgent({
           </p>
           <h2 className="mt-1 text-xl font-bold text-ink">ថតសំឡេង និងរក្សាទុកប្រជុំ HD</h2>
           <p className="mt-1 text-sm text-slate-500">
-            ចុចថតម្តង ដើម្បីរក្សាទុក audio តែមួយដែលមានសំឡេងអ្នកចូលរួមគ្រប់គ្នា ហើយបំលែងជា transcript មានឈ្មោះអ្នកនិយាយ។
+            ចុចថតម្តង ដើម្បីចាប់ microphone របស់អ្នកចូលរួមម្នាក់ៗ ហើយបំលែងជា transcript តាមឈ្មោះអ្នកនិយាយ។
           </p>
           {transcriptionProgress ? <p className="mt-2 text-sm text-slate-500">{transcriptionProgress}</p> : null}
         </div>

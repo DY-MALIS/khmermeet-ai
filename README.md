@@ -43,6 +43,7 @@ DATABASE_URL="postgresql://postgres:postgres@localhost:5432/khmermeet_ai?schema=
 OPEN_ROUTER_API_KEY="..."
 OPEN_ROUTER_TEXT_MODEL=openai/gpt-4o-mini
 OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3
+OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL=google/gemini-2.5-pro
 OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS=55000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 NEXTAUTH_URL="http://localhost:3000"
