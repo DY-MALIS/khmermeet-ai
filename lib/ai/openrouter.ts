@@ -296,6 +296,8 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Accuracy to the spoken audio is more important than fluency. Only write words you can actually hear in the audio.",
     "Never use general knowledge, grammar, context, or a likely meeting topic to decide what was said. The transcript must follow the sound, not an assumption.",
     "If the speaker says something unusual, informal, repeated, broken, or grammatically odd, keep it as spoken.",
+    "Capture both near and distant speakers. Do not ignore a speaker because their voice is quiet, far from the microphone, off-axis, or partially masked by room noise.",
+    "When a far or quiet voice is present, focus on the actual syllables and words in that voice before deciding whether any part is unclear.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
     "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
