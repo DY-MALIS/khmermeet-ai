@@ -580,7 +580,7 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 30;
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15;
 // Confirmed live against a real 727s recording: per-chunk transcription
 // (OpenRouter multimodal call, sometimes doubled by the empty-result safety-
 // net retry) averages ~60s. At the old concurrency of 4, a 12-minute
@@ -639,10 +639,32 @@ export async function transcribeStoredTrackRecording(
         { type: file.type || "audio/webm" }
       );
       const chunkTimeoutMs = Math.max(8000, Math.min(90000, remainingMs));
-      const transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
+      let transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
         ...transcribeOptions,
         timeoutMs: chunkTimeoutMs
       }).catch(() => "");
+      if (!hasUsableTranscript(transcript)) {
+        const retryRemainingMs = deadline - Date.now();
+        if (retryRemainingMs >= 15000) {
+          const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
+          const preparedAudio = await prepareAudioForTranscription(
+            Buffer.from(next.chunk),
+            ext,
+            openRouterAudioLimit
+          ).catch(() => null);
+          if (preparedAudio) {
+            transcript = await transcribeAndCleanAudioBuffer(
+              Buffer.from(preparedAudio),
+              "audio/mp4",
+              `recording-part-${String(next.index + 1).padStart(3, "0")}-speech.m4a`,
+              languageMode,
+              Math.min(45000, retryRemainingMs),
+              speakerNames,
+              options.singleSpeaker ?? true
+            ).catch(() => "");
+          }
+        }
+      }
       transcripts[next.index] = cleanTranscriptionText(transcript);
       completed[next.index] = true;
     }
