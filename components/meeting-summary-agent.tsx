@@ -67,7 +67,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
           placeholder={hasTranscript ? text.summaryAgentPlaceholder : text.summaryAgentNeedsTranscript}
           disabled={!hasTranscript || loading}
         />
-        <button className="kh-button-primary shrink-0" type="button" onClick={() => void runAgent()} disabled={!hasTranscript || loading || !command.trim()}>
+        <button className="kh-button-primary shrink-0 sm:w-auto" type="button" onClick={() => void runAgent()} disabled={!hasTranscript || loading || !command.trim()}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           {text.command}
         </button>

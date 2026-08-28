@@ -88,21 +88,21 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const summaryText = transcriptIsUsable ? meeting.summary : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-leaf">{text.meetingDetail}</p>
-          <h1 className="text-3xl font-bold text-ink">{meeting.title}</h1>
+          <h1 className="break-words text-2xl font-bold text-ink sm:text-3xl">{meeting.title}</h1>
           <p className="mt-2 text-sm text-slate-500">
             {meeting.createdAt.toLocaleString()} - {formatMeetingDuration(meeting.duration)}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <form action={generateSummary}>
+        <div className="grid gap-2 sm:flex sm:flex-wrap">
+          <form action={generateSummary} className="min-w-0">
             <input type="hidden" name="id" value={meeting.id} />
             <ActionButton>{text.regenerateSummary}</ActionButton>
           </form>
-          <form action={extractTasks}>
+          <form action={extractTasks} className="min-w-0">
             <input type="hidden" name="id" value={meeting.id} />
             <ActionButton className="kh-button-secondary">{text.extractTasksAgain}</ActionButton>
           </form>
@@ -173,7 +173,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </p>
           </div>
           <div className="space-y-5 p-5">
-            <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white">
+              <div className="overflow-x-auto rounded-lg border border-slate-100 bg-white">
               <div className="border-b border-slate-100 px-4 py-3">
                 <h3 className="font-bold text-ink">{text.actionTasks}</h3>
               </div>

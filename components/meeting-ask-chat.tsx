@@ -54,7 +54,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
           placeholder={hasTranscript ? "e.g. What decision have we made?" : "Transcript required first"}
           disabled={!hasTranscript || loading}
         />
-        <button className="kh-button-primary shrink-0" type="button" onClick={() => void ask()} disabled={!hasTranscript || loading || !question.trim()}>
+        <button className="kh-button-primary shrink-0 sm:w-auto" type="button" onClick={() => void ask()} disabled={!hasTranscript || loading || !question.trim()}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
@@ -79,14 +79,14 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         <div className="mt-3 rounded-lg bg-slate-50 p-3">
           <p className="text-sm leading-6 text-ink">{result.answer}</p>
           {result.quote ? (
-            <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-slate-200 bg-white p-2">
+            <div className="mt-2 flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-2 sm:flex-row sm:items-start sm:justify-between">
               <p className="text-xs text-slate-500">
                 {result.speakerName ? <span className="font-semibold text-slate-700">{result.speakerName}: </span> : null}
                 &ldquo;{result.quote}&rdquo;
               </p>
               {hasAudio && result.startMs !== null ? (
                 <button
-                  className="kh-button-secondary shrink-0"
+                  className="kh-button-secondary shrink-0 sm:w-auto"
                   type="button"
                   onClick={() => seekAudioPlayer(result.startMs ?? 0)}
                   title="Jump to this moment in the recording"

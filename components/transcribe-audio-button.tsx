@@ -100,7 +100,7 @@ export function TranscribeAudioButton({
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
-          className="kh-input max-w-xs"
+          className="kh-input w-full sm:max-w-xs"
           value={languageMode}
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
@@ -109,7 +109,7 @@ export function TranscribeAudioButton({
           <option value="km">ខ្មែរ</option>
           <option value="en">English</option>
         </select>
-        <button className="kh-button-primary" disabled={pending} onClick={transcribe} type="button">
+        <button className="kh-button-primary sm:w-auto" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
         </button>

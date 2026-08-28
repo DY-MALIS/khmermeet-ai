@@ -304,7 +304,7 @@ export function LiveKitCallRoom() {
               ចែករំលែក link នេះ ដើម្បីឲ្យអ្នកដទៃចូលរួម <span className="font-semibold text-ink">{meetingTitle()}</span> បាន។ ពួកគេគ្រាន់តែវាយឈ្មោះ។
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid gap-2 sm:flex sm:flex-wrap">
             <button className="kh-button-secondary" type="button" onClick={copyInvite}>
               <Copy className="h-4 w-4" />
               ចម្លង Link
@@ -399,8 +399,8 @@ export function LiveKitCallRoom() {
             <label className="space-y-1">
               <span className="text-sm font-semibold text-slate-600">លេខកូដ Room</span>
               <div className="flex gap-2">
-                <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
-                <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="ចម្លង Invite">
+                <input className="kh-input min-w-0 uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
+                <button className="kh-button-secondary shrink-0 px-3" type="button" onClick={copyInvite} title="ចម្លង Invite">
                   <Copy className="h-4 w-4" />
                 </button>
               </div>
@@ -418,7 +418,7 @@ export function LiveKitCallRoom() {
             បើក microphone ពេលចូល
           </label>
         </div>
-        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining || !paramsReady}>
+        <button className="kh-button-primary w-full lg:w-auto" type="button" onClick={joinRoom} disabled={joining || !paramsReady}>
           {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
           {paramsReady ? "Join HD Video Call" : "Preparing call..."}
         </button>

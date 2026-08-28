@@ -167,17 +167,17 @@ export function JitsiCallRoom() {
           <label className="space-y-1">
             <span className="text-sm font-semibold text-slate-600">Room code</span>
             <div className="flex gap-2">
-              <input className="kh-input uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
-              <button className="kh-button-secondary px-3" type="button" onClick={copyInvite} title="Copy invite">
+              <input className="kh-input min-w-0 uppercase" value={room} onChange={(event) => setRoom(event.target.value.toUpperCase())} />
+              <button className="kh-button-secondary shrink-0 px-3" type="button" onClick={copyInvite} title="Copy invite">
                 <Copy className="h-4 w-4" />
               </button>
-              <button className="kh-button-secondary px-3" type="button" onClick={resetRoom} title="New room">
+              <button className="kh-button-secondary shrink-0 px-3" type="button" onClick={resetRoom} title="New room">
                 <RefreshCw className="h-4 w-4" />
               </button>
             </div>
           </label>
         </div>
-        <button className="kh-button-primary" type="button" onClick={joinRoom} disabled={joining}>
+        <button className="kh-button-primary w-full lg:w-auto" type="button" onClick={joinRoom} disabled={joining}>
           {joining ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
           Join Free Video Call
         </button>
@@ -192,7 +192,7 @@ export function JitsiCallRoom() {
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="kh-card overflow-hidden p-0">
-        <div ref={containerRef} className="min-h-[520px] bg-slate-950" />
+        <div ref={containerRef} className="min-h-[60svh] bg-slate-950 sm:min-h-[520px]" />
         {!joined ? (
           <div className="border-t border-slate-200 bg-white p-5 text-sm text-slate-500">
             Click Join Free Video Call, allow camera/microphone, then share the invite link.
