@@ -282,7 +282,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
   const accuracyInstruction =
-    "Before returning the final transcript, mentally check the audio a second time for quiet words, fast syllables, numbers, dates, names, and short backchannel phrases. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, prefer modern Cambodian wording and preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
+    "The audio is the only source of truth. Before returning the final transcript, mentally check the audio a second time for quiet words, fast syllables, numbers, dates, names, and short backchannel phrases. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
@@ -293,7 +293,9 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
     "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
-    "Accuracy is more important than fluency. Only write words you can actually hear in the audio.",
+    "Accuracy to the spoken audio is more important than fluency. Only write words you can actually hear in the audio.",
+    "Never use general knowledge, grammar, context, or a likely meeting topic to decide what was said. The transcript must follow the sound, not an assumption.",
+    "If the speaker says something unusual, informal, repeated, broken, or grammatically odd, keep it as spoken.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
     "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
@@ -638,4 +640,3 @@ export async function answerMeetingQuestion(transcript: string, question: string
   });
   return meetingQaSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
 }
-
