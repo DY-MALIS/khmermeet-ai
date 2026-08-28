@@ -614,13 +614,32 @@ export async function transcribeStoredTrackRecording(
   const { compressWholeAudioForTranscription, splitAudioIntoChunks } = await import("@/lib/ffmpeg");
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+  const wholeTranscript = await (async () => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs < 60000) return "";
+    const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+    return transcribeAndCleanAudioBuffer(
+      Buffer.from(wholeAudio),
+      "audio/mp4",
+      "complete-recording.m4a",
+      languageMode,
+      Math.min(120000, remainingMs),
+      speakerNames,
+      options.singleSpeaker ?? true
+    );
+  })().catch(() => "");
+
+  if (hasUsableTranscript(wholeTranscript) && deadline - Date.now() < 45000) {
+    return cleanTranscriptionText(wholeTranscript);
+  }
+
   const chunks = await splitAudioIntoChunks(
     buffer,
     ext,
     openRouterAudioLimit,
     STORED_TRANSCRIPTION_SEGMENT_SECONDS
   );
-  const deadline = Date.now() + Math.max(1000, timeoutMs);
   const transcripts = new Array<string>(chunks.length).fill("");
   const completed = new Array<boolean>(chunks.length).fill(false);
   const queue = chunks.map((chunk, index) => ({ chunk, index }));
@@ -673,23 +692,8 @@ export async function transcribeStoredTrackRecording(
   await Promise.all(Array.from({ length: Math.min(STORED_TRANSCRIPTION_CONCURRENCY, chunks.length) }, worker));
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
   if (completed.some((done) => !done)) {
-    return chunkTranscript;
+    return chooseMoreCompleteTranscript(cleanTranscriptionText(wholeTranscript), chunkTranscript, languageMode);
   }
-  const remainingMs = deadline - Date.now();
-  if (remainingMs < 45000) return chunkTranscript;
-
-  const wholeTranscript = await (async () => {
-    const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
-    return transcribeAndCleanAudioBuffer(
-      Buffer.from(wholeAudio),
-      "audio/mp4",
-      "complete-recording.m4a",
-      languageMode,
-      Math.min(90000, remainingMs),
-      speakerNames,
-      options.singleSpeaker ?? true
-    );
-  })().catch(() => "");
 
   return chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);
 }
