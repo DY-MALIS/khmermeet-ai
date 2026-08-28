@@ -520,8 +520,8 @@ export function RecordingPanel() {
             disabled={state === "recording" || state === "paused" || uploading}
           >
             <option value="km-en">ខ្មែរ + English</option>
-            <option value="km">ខ្មែរសុទ្ធ</option>
-            <option value="en">English only</option>
+            <option value="km">ខ្មែរ</option>
+            <option value="en">English</option>
           </select>
         </label>
       </div>

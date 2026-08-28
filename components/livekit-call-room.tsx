@@ -1928,9 +1928,9 @@ function LiveKitMeetingAgent({
             disabled={recording || Boolean(serverRecording) || Boolean(egressRecording) || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km-en">ខ្មែរ + English — keep each spoken language (no translation)</option>
-            <option value="km">ខ្មែរសុទ្ធ — translate everything to Khmer</option>
-            <option value="en">English only — translate everything to English</option>
+            <option value="km-en">ខ្មែរ + English</option>
+            <option value="km">ខ្មែរ</option>
+            <option value="en">English</option>
           </select>
           <span className={cn("kh-badge", recording || serverRecording || egressRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording || serverRecording || egressRecording ? `Recording ${formatTime(seconds)}` : "Ready"}
