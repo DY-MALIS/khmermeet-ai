@@ -66,13 +66,13 @@ export function SidebarNav() {
             className={cn(
               "group relative flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition lg:gap-3",
               active
-                ? "bg-ink text-white shadow-md shadow-ink/10"
-                : "text-slate-600 hover:bg-white hover:text-ink hover:shadow-sm"
+                ? "bg-white text-ink shadow-md shadow-black/15"
+                : "text-white/65 hover:bg-white/10 hover:text-white"
             )}
             aria-current={active ? "page" : undefined}
           >
             {active ? <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full bg-saffron" /> : null}
-            <item.icon className={cn("h-4 w-4", active ? "text-white" : "text-slate-500")} />
+            <item.icon className={cn("h-4 w-4", active ? "text-leaf" : "text-white/45 group-hover:text-white")} />
             <span className="leading-5">{labels[item.labelKey]}</span>
           </Link>
         );

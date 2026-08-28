@@ -10,7 +10,7 @@ import Link from "next/link";
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen lg:flex">
-      <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 shadow-sm shadow-slate-200/40 backdrop-blur-xl lg:hidden">
+      <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/92 shadow-sm shadow-slate-200/40 backdrop-blur-xl lg:hidden">
         <details>
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between px-4 py-3">
             <Link href="/dashboard" className="flex items-center gap-3">
@@ -33,13 +33,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </details>
       </div>
 
-      <aside className="sticky top-0 z-20 hidden border-b border-white/70 bg-white/78 shadow-sm shadow-slate-200/50 backdrop-blur-2xl lg:flex lg:h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
+      <aside className="sticky top-0 z-20 hidden bg-ink text-white shadow-2xl shadow-ink/15 lg:flex lg:h-screen lg:w-72 lg:flex-col">
         <div className="flex items-center justify-between px-4 py-5 lg:block lg:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-lg bg-ink text-lg font-black text-white shadow-lg shadow-ink/15 ring-1 ring-white/20">K</div>
+            <div className="grid h-11 w-11 place-items-center rounded-lg bg-white text-lg font-black text-ink shadow-lg shadow-black/20">K</div>
             <div>
-              <p className="font-bold text-ink">KhmerMeet AI</p>
-              <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
+              <p className="font-bold text-white">KhmerMeet AI</p>
+              <p className="text-xs text-white/55"><LocalizedText k="appSubtitle" /></p>
             </div>
           </Link>
         </div>
@@ -47,11 +47,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-4 pb-4">
           <LanguageSwitcher compact />
         </div>
-        <div className="mt-auto hidden border-t border-white/80 p-4 lg:block">
+        <div className="mt-auto hidden border-t border-white/10 p-4 lg:block">
           <ShellStatusCard />
         </div>
       </aside>
-      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-7xl">{children}</div>
       </main>
     </div>
