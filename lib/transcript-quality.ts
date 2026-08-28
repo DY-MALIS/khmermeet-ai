@@ -36,7 +36,34 @@ export function hasTranscriptionPromptLeakage(text: string) {
     /\b(?:audio|recording) (?:contains|appears to contain|is in)\b/i.test(text) ||
     /^\s*(?:probe|test|diagnostic|analysis)\s*[:：]/im.test(text) ||
     /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of\b/i.test(compact) ||
-    /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im.test(text);
+    /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im.test(text) ||
+    // Confirmed live: a chat-completion model can echo its own reasoning
+    // process ("Known speakers: X, Y, Z" / "First speaker heard: X" /
+    // "Let's transcribe:") as if it were spoken content, sometimes with a
+    // real speaker label already stuck on front (e.g. "malis: Known
+    // speakers: ...") - same optional-leading-label shape as the transcript/
+    // here-is-the-transcript checks above.
+    /^\s*(?:[^:\n]{1,60}\s*[:：]\s*)?Known\s+speakers?\s*[:：]/im.test(text) ||
+    /^\s*(?:[^:\n]{1,60}\s*[:：]\s*)?First\s+speaker\s+heard\s*[:：]/im.test(text) ||
+    /^\s*(?:[^:\n]{1,60}\s*[:：]\s*)?Let'?s\s+transcribe\s*[:：]?\s*$/im.test(text) ||
+    // The exact wording of this reasoning-leakage varies each time it
+    // happens (confirmed live: "Known speakers/First speaker heard/Let's
+    // transcribe" one attempt, "Females voice:" a completely different one
+    // on the same audio) - chasing each new phrasing individually doesn't
+    // scale. What's consistent across every observed case is a fabricated
+    // "H:MM - H:MM:" timestamp-range annotation, which the transcription
+    // prompt never asks for and a real spoken transcript would never
+    // naturally contain - so treat that structural marker itself as proof
+    // of leakage regardless of the surrounding wording.
+    /\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\s*[:：]/.test(text) ||
+    // A third distinct wording of the same failure mode, confirmed live on
+    // the same audio ("Felix/malis is the speaker: "...""), shares this
+    // shape instead: a short reasoning phrase ending in a colon directly
+    // followed by the real line wrapped in quotes. The prompt's requested
+    // output is plain "Name: text" with no quote marks, so a colon
+    // immediately followed by an opening quote is not something a real
+    // transcript line produces on its own.
+    /[:：]\s*["“]/.test(text);
   if (directLeak) return true;
 
   const signals = [
