@@ -588,6 +588,8 @@ const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15;
 // transcription budget (414s observed). Raising concurrency is what actually
 // cuts wall time - the per-call latency itself doesn't shrink.
 const STORED_TRANSCRIPTION_CONCURRENCY = 10;
+const WHOLE_AUDIO_TRANSCRIPTION_MAX_MS = 75000;
+const CHUNK_FALLBACK_RESERVE_MS = 90000;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
@@ -617,20 +619,20 @@ export async function transcribeStoredTrackRecording(
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const wholeTranscript = await (async () => {
     const remainingMs = deadline - Date.now();
-    if (remainingMs < 60000) return "";
+    if (remainingMs < CHUNK_FALLBACK_RESERVE_MS + 15000) return "";
     const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
     return transcribeAndCleanAudioBuffer(
       Buffer.from(wholeAudio),
       "audio/mp4",
       "complete-recording.m4a",
       languageMode,
-      Math.min(120000, remainingMs),
+      Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMs - CHUNK_FALLBACK_RESERVE_MS),
       speakerNames,
       options.singleSpeaker ?? true
     );
   })().catch(() => "");
 
-  if (hasUsableTranscript(wholeTranscript) && deadline - Date.now() < 45000) {
+  if (hasUsableTranscript(wholeTranscript) && deadline - Date.now() < 30000) {
     return cleanTranscriptionText(wholeTranscript);
   }
 

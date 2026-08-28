@@ -34,7 +34,7 @@ export function publicAiTranscriptionError(error: unknown) {
   if (error instanceof Error && error.message.toLowerCase().includes("timed out")) {
     return {
       message:
-        "The transcription request timed out. Audio is saved; try a shorter recording or transcribe from the meeting detail page after deployment settings are increased.",
+        "Transcription needs more time. Audio is saved; click Re-transcribe audio again to continue processing the saved recording.",
       status: 504
     };
   }
