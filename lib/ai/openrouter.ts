@@ -293,6 +293,8 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
     "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
+    "Capture every audible speaker mouth and every audible word. Do not merge multiple people's speech into one cleaned sentence, and do not drop short interjections such as yes, no, okay, ah, um, or brief Khmer acknowledgements.",
+    "When speakers overlap, transcribe each voice you can understand as its own turn in the closest chronological order. Only the truly unintelligible words inside the overlap should become [unclear].",
     "Accuracy to the spoken audio is more important than fluency. Only write words you can actually hear in the audio.",
     "Never use general knowledge, grammar, context, or a likely meeting topic to decide what was said. The transcript must follow the sound, not an assumption.",
     "If the speaker says something unusual, informal, repeated, broken, or grammatically odd, keep it as spoken.",

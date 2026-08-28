@@ -13,16 +13,16 @@
 
 html {
   min-height: 100%;
-  background: #f4f7f5;
+  background: #eef5f3;
 }
 
 body {
   min-height: 100%;
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(24, 116, 95, 0.12), transparent 34rem),
-    linear-gradient(180deg, rgba(46, 134, 171, 0.08), rgba(244, 247, 245, 0) 26rem),
-    #f4f7f5;
+    linear-gradient(135deg, rgba(24, 116, 95, 0.12), transparent 28rem),
+    linear-gradient(225deg, rgba(216, 145, 42, 0.12), transparent 24rem),
+    linear-gradient(180deg, #f7fbfa 0%, #eef5f3 46%, #f8fafc 100%);
   color: #17202a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -36,7 +36,7 @@ select {
 }
 
 .kh-card {
-  @apply rounded-lg border border-slate-200/80 bg-white/95 shadow-soft backdrop-blur;
+  @apply rounded-lg border border-white/70 bg-white/90 shadow-soft backdrop-blur-xl;
 }
 
 .kh-input {
@@ -52,7 +52,7 @@ select {
 }
 
 .kh-button-primary {
-  @apply kh-button bg-leaf text-white shadow-sm shadow-leaf/20 hover:bg-leaf/90 hover:shadow-md hover:shadow-leaf/20;
+  @apply kh-button bg-leaf text-white shadow-sm shadow-leaf/20 hover:bg-leaf/90 hover:shadow-md hover:shadow-leaf/25;
 }
 
 .kh-button-secondary {
