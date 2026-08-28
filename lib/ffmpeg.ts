@@ -109,7 +109,15 @@ export async function splitAudioIntoChunks(
       if (buffer.length <= maxBytesPerChunk) return [buffer];
       throw error;
     }
-    if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || durationSeconds === null || durationSeconds <= preferredSegmentSeconds)) {
+    // Chrome MediaRecorder webm files routinely have no Duration header
+    // (durationSeconds === null, see probeDurationSeconds above) no matter
+    // how long the actual recording is - treating "unknown" as "short
+    // enough to skip splitting" here meant a full multi-minute/hour meeting
+    // recording was sent to the transcription model as one oversized
+    // request instead of STORED_TRANSCRIPTION_SEGMENT_SECONDS chunks,
+    // confirmed live against a real 727s recording (returned 1 unsplit
+    // chunk). Only skip splitting when duration is actually known to fit.
+    if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || (durationSeconds !== null && durationSeconds <= preferredSegmentSeconds))) {
       return [buffer];
     }
 

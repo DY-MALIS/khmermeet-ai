@@ -36,7 +36,7 @@ export function hasTranscriptionPromptLeakage(text: string) {
     /\b(?:audio|recording) (?:contains|appears to contain|is in)\b/i.test(text) ||
     /^\s*(?:probe|test|diagnostic|analysis)\s*[:：]/im.test(text) ||
     /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of\b/i.test(compact) ||
-    /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im;
+    /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im.test(text);
   if (directLeak) return true;
 
   const signals = [

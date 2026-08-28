@@ -461,12 +461,22 @@ export async function transcribeAudio(
   const originalMimeType = audioFile.type || "audio/webm";
   const originalFilename = audioFile.name || "meeting-audio.webm";
   const originalExt = audioExtensionFromMime(originalMimeType);
-  const { prepareAudioVariantsForTranscription } = await import("@/lib/ffmpeg");
-  const preparedVariants = await prepareAudioVariantsForTranscription(
-    originalAudioBuffer,
-    originalExt,
-    openRouterAudioLimit
-  );
+  // "live" mode is only ever used for many-chunk loops (stored-recording
+  // splitting, in-progress-call chunk transcription) where every chunk needs
+  // to come back fast. Generating 3 ffmpeg-processed variants and trying up
+  // to 4 full-timeout OpenRouter calls per chunk (below) is a one-shot
+  // quality maximization meant for a single short upload, not something
+  // that scales across dozens of chunks - confirmed live it was the actual
+  // cause of a 12-minute recording's chunk loop taking 400s+ even after
+  // fixing the chunking itself and raising worker concurrency.
+  const skipVariants = options.mode === "live";
+  const preparedVariants = skipVariants
+    ? []
+    : await (await import("@/lib/ffmpeg")).prepareAudioVariantsForTranscription(
+        originalAudioBuffer,
+        originalExt,
+        openRouterAudioLimit
+      );
   const audioAttempts = [
     ...preparedVariants.map((variant) => ({
       audioBuffer: Buffer.from(variant.buffer),
@@ -548,7 +558,13 @@ function audioExtensionFromMime(mimeType: string) {
 }
 
 const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 30;
-const STORED_TRANSCRIPTION_CONCURRENCY = 4;
+// Confirmed live against a real 727s recording: per-chunk transcription
+// (OpenRouter multimodal call, sometimes doubled by the empty-result safety-
+// net retry) averages ~60s. At the old concurrency of 4, a 12-minute
+// recording (25 chunks) needed ~7 sequential rounds and blew past the ~180s
+// transcription budget (414s observed). Raising concurrency is what actually
+// cuts wall time - the per-call latency itself doesn't shrink.
+const STORED_TRANSCRIPTION_CONCURRENCY = 10;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
