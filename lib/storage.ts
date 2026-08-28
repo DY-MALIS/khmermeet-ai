@@ -617,20 +617,36 @@ export async function transcribeStoredTrackRecording(
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  const wholeTranscript = await (async () => {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs < CHUNK_FALLBACK_RESERVE_MS + 15000) return "";
-    const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
-    return transcribeAndCleanAudioBuffer(
-      Buffer.from(wholeAudio),
-      "audio/mp4",
-      "complete-recording.m4a",
-      languageMode,
-      Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMs - CHUNK_FALLBACK_RESERVE_MS),
-      speakerNames,
-      options.singleSpeaker ?? true
-    );
-  })().catch(() => "");
+  // Confirmed live (5 runs across a 124s and a 727s real recording): the
+  // short-circuit below almost never actually fires - compressing+
+  // transcribing the whole file consistently finishes in ~15s for a short
+  // recording (leaving nowhere near <30s of budget used) and this whole
+  // attempt still costs real time even when it's skipped for being too
+  // large. For a long recording (727s), spending up to WHOLE_AUDIO_
+  // TRANSCRIPTION_MAX_MS here before chunking even starts pushed total
+  // transcription time from ~60s to ~163s against the same ~180s budget -
+  // a real erosion of the timeout-fix margin (see transcription-timeout-fix)
+  // for a step that provided no benefit in testing. Only attempt it for
+  // files small enough that it's actually likely to matter (a recording
+  // this size might complete in one request without ever needing chunking).
+  const wholeAudioAttemptSizeLimit = 1.5 * 1024 * 1024;
+  const wholeTranscript =
+    buffer.length > wholeAudioAttemptSizeLimit
+      ? ""
+      : await (async () => {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs < CHUNK_FALLBACK_RESERVE_MS + 15000) return "";
+          const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+          return transcribeAndCleanAudioBuffer(
+            Buffer.from(wholeAudio),
+            "audio/mp4",
+            "complete-recording.m4a",
+            languageMode,
+            Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMs - CHUNK_FALLBACK_RESERVE_MS),
+            speakerNames,
+            options.singleSpeaker ?? true
+          );
+        })().catch(() => "");
 
   if (hasUsableTranscript(wholeTranscript) && deadline - Date.now() < 30000) {
     return cleanTranscriptionText(wholeTranscript);
