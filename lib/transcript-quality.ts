@@ -28,9 +28,14 @@ export function hasCorruptedEncoding(text: string) {
 // long, so the normal low-speech checks consider it valid unless we identify
 // the characteristic meta-language explicitly.
 export function hasTranscriptionPromptLeakage(text: string) {
+  const compact = text.replace(/\s+/g, " ").trim();
   const directLeak = /\bi need to follow (?:these|the) rules\b/i.test(text) ||
     /\bthe user has provided (?:a list of )?(?:known )?participants\b/i.test(text) ||
     /\bverbatim transcript of (?:the )?(?:khmer|english|audio|meeting)/i.test(text) ||
+    /\btranscript of (?:the )?(?:khmer|english|audio|meeting|provided audio)\b/i.test(text) ||
+    /\b(?:audio|recording) (?:contains|appears to contain|is in)\b/i.test(text) ||
+    /^\s*(?:probe|test|diagnostic|analysis)\s*[:：]/im.test(text) ||
+    /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of\b/i.test(compact) ||
     /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im;
   if (directLeak) return true;
 

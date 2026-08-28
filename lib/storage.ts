@@ -78,9 +78,10 @@ function cleanTranscriptionText(text: string) {
     /no speech detected/i
   ];
   const boilerplatePatterns = [
-    /^(?:[^:\n]{1,60}\s*:\s*)?verbatim transcript of (?:the )?(?:khmer|english|audio|meeting)/i,
+    /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of (?:the )?(?:khmer|english|audio|meeting|provided audio)/i,
     /^(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/i,
-    /^(?:[^:\n]{1,60}\s*:\s*)?(?:transcript|final transcript)\s*[:：]\s*$/i
+    /^(?:[^:\n]{1,60}\s*:\s*)?(?:transcript|final transcript)\s*[:：]\s*$/i,
+    /^(?:probe|test|diagnostic|analysis)\s*[:：]/i
   ];
 
   const cleaned = text
