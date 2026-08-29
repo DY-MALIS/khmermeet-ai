@@ -7,12 +7,12 @@ function CallLoading() {
   return <div className="kh-card h-48 animate-pulse bg-slate-100" aria-label="Loading video meeting" />;
 }
 
-function CallLoadFallback({ provider }: { provider: "livekit" | "jitsi" }) {
+function CallLoadFallback() {
   return (
     <div className="kh-card space-y-3 p-5">
       <p className="text-sm font-semibold text-red-600">Video call could not load</p>
       <p className="text-sm leading-6 text-slate-600">
-        The {provider === "livekit" ? "LiveKit" : "Jitsi"} meeting module failed to start in this browser. Please refresh the page. If it still fails, open Dashboard and come back to Meetings.
+        The LiveKit meeting module failed to start in this browser. Please refresh the page. If it still fails, open Dashboard and come back to Meetings.
       </p>
       <div className="flex flex-wrap gap-2">
         <button className="kh-button-primary" type="button" onClick={() => window.location.reload()}>
@@ -26,32 +26,16 @@ function CallLoadFallback({ provider }: { provider: "livekit" | "jitsi" }) {
   );
 }
 
-function LiveKitImportFallback() {
-  return <CallLoadFallback provider="livekit" />;
-}
-
-function JitsiImportFallback() {
-  return <CallLoadFallback provider="jitsi" />;
-}
-
 const LiveKitCallRoom = dynamic(
   () =>
     import("@/components/livekit-call-room")
       .then((module) => module.LiveKitCallRoom)
-      .catch(() => LiveKitImportFallback),
-  { ssr: false, loading: CallLoading }
-);
-
-const JitsiCallRoom = dynamic(
-  () =>
-    import("@/components/jitsi-call-room")
-      .then((module) => module.JitsiCallRoom)
-      .catch(() => JitsiImportFallback),
+      .catch(() => CallLoadFallback),
   { ssr: false, loading: CallLoading }
 );
 
 class VideoCallErrorBoundary extends Component<
-  { children: ReactNode; provider: "livekit" | "jitsi" },
+  { children: ReactNode },
   { failed: boolean; message: string }
 > {
   state = { failed: false, message: "" };
@@ -73,7 +57,7 @@ class VideoCallErrorBoundary extends Component<
         <div className="kh-card space-y-3 p-5">
           <p className="text-sm font-semibold text-red-600">Video call error</p>
           <p className="text-sm leading-6 text-slate-600">
-            The meeting page opened, but the {this.props.provider === "livekit" ? "LiveKit" : "Jitsi"} call UI crashed before it could connect.
+            The meeting page opened, but the LiveKit call UI crashed before it could connect.
           </p>
           {this.state.message ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{this.state.message}</p> : null}
           <div className="flex flex-wrap gap-2">
@@ -92,10 +76,10 @@ class VideoCallErrorBoundary extends Component<
   }
 }
 
-export function VideoCallClient({ provider }: { provider: "livekit" | "jitsi" }) {
+export function VideoCallClient() {
   return (
-    <VideoCallErrorBoundary key={provider} provider={provider}>
-      {provider === "livekit" ? <LiveKitCallRoom /> : <JitsiCallRoom />}
+    <VideoCallErrorBoundary>
+      <LiveKitCallRoom />
     </VideoCallErrorBoundary>
   );
 }

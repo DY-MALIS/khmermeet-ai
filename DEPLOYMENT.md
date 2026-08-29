@@ -8,7 +8,7 @@ Use this checklist before giving the app to real users.
 - PostgreSQL database, for example Supabase or Neon.
 - OpenRouter API key for transcript, summary, and action extraction.
 - Supabase Storage bucket for persistent recordings.
-- LiveKit Cloud project if `NEXT_PUBLIC_VIDEO_PROVIDER=livekit`.
+- LiveKit Cloud project for video calls.
 
 ## 2. Environment Variables
 
@@ -29,7 +29,6 @@ SUPABASE_SERVICE_ROLE_KEY="..."
 SUPABASE_STORAGE_BUCKET="meeting-recordings"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
 
-NEXT_PUBLIC_VIDEO_PROVIDER="livekit"
 NEXT_PUBLIC_LIVEKIT_URL="wss://your-livekit-project.livekit.cloud"
 LIVEKIT_API_KEY="..."
 LIVEKIT_API_SECRET="..."
