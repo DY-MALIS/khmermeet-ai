@@ -14,7 +14,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <details>
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between px-4 py-3">
             <Link href="/dashboard" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-base font-black text-white shadow-sm">K</div>
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-leaf text-base font-black text-white shadow-sm shadow-leaf/20">K</div>
               <div>
                 <p className="font-bold text-ink">KhmerMeet AI</p>
                 <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
@@ -51,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ShellStatusCard />
         </div>
       </aside>
-      <main className="flex-1 px-4 py-5 sm:px-6 lg:px-8">
+      <main className="flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mx-auto w-full max-w-7xl">{children}</div>
       </main>
     </div>

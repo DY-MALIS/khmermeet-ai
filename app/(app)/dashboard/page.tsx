@@ -195,32 +195,40 @@ export default async function DashboardPage() {
         </section>
       ) : null}
       {!dbUnavailable ? <PersonalAssistant /> : null}
-      {!dbUnavailable ? <div className="grid gap-6 xl:grid-cols-2">
-        <section className="kh-card p-5">
-          <h2 className="mb-4 text-lg font-bold">{text.recentMeetings}</h2>
+      {!dbUnavailable ? <div className="grid gap-5 xl:grid-cols-2">
+        <section className="kh-card overflow-hidden">
+          <div className="border-b border-slate-100 bg-white px-5 py-4">
+            <h2 className="text-lg font-bold">{text.recentMeetings}</h2>
+          </div>
+          <div className="p-5">
           {meetings.length ? (
             <div className="space-y-3">
               {meetings.slice(0, 5).map((meeting) => (
-                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="block rounded-lg border border-slate-100 bg-slate-50/50 p-3 transition hover:border-slate-200 hover:bg-white hover:shadow-sm">
-                  <p className="font-semibold text-ink">{meeting.title}</p>
+                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="group block rounded-lg border border-slate-100 bg-slate-50/70 p-3 transition hover:border-leaf/20 hover:bg-white hover:shadow-sm">
+                  <p className="break-words font-semibold text-ink group-hover:text-leaf">{meeting.title}</p>
                   <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} {text.tasksCount}</p>
                 </a>
               ))}
             </div>
           ) : <EmptyState title={text.noMeetingsYet} description={text.noMeetingsYetDescription} />}
+          </div>
         </section>
-        <section className="kh-card p-5">
-          <h2 className="mb-4 text-lg font-bold">{text.pendingTasks}</h2>
+        <section className="kh-card overflow-hidden">
+          <div className="border-b border-slate-100 bg-white px-5 py-4">
+            <h2 className="text-lg font-bold">{text.pendingTasks}</h2>
+          </div>
+          <div className="p-5">
           {tasks.filter((task) => task.status !== "completed").length ? (
             <div className="space-y-3">
               {pendingTasks.slice(0, 6).map((task) => (
-                <div key={task.id} className="rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-                  <p className="font-semibold text-ink">{task.title}</p>
+                <div key={task.id} className="rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+                  <p className="break-words font-semibold text-ink">{task.title}</p>
                   <p className="text-sm text-slate-500">{task.assigneeName ?? text.unassigned} · {task.deadline?.toLocaleDateString() ?? text.noDueDate}</p>
                 </div>
               ))}
             </div>
           ) : <EmptyState title={text.noPendingTasks} description={text.noPendingTasksDescription} />}
+          </div>
         </section>
       </div> : null}
     </div>
