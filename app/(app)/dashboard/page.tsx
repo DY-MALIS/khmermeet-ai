@@ -74,13 +74,13 @@ export default async function DashboardPage() {
           </a>
         </div>
       </div>
-      <section className="grid gap-4 xl:grid-cols-[1.35fr_.65fr]">
-        <a href="/meetings/new" className="group relative overflow-hidden rounded-2xl border border-leaf/15 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
+      <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
+        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-2xl border border-leaf/15 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
           <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-leaf via-sky to-saffron" />
           <div className="absolute right-6 top-6 hidden rounded-full border border-leaf/20 bg-white px-3 py-2 text-xs font-bold text-leaf shadow-sm xl:block">
             Live capture ready
           </div>
-          <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
               <div className="flex items-center gap-3">
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-leaf text-white shadow-lg shadow-leaf/30">
@@ -91,10 +91,10 @@ export default async function DashboardPage() {
                   <h2 className="text-2xl font-black text-ink sm:text-4xl">{text.startMeetingRecording}</h2>
                 </div>
               </div>
-              <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-600">
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
                 {text.dashboardRecordDescription}
               </p>
-              <div className="mt-6 flex flex-wrap gap-2 text-xs font-bold">
+              <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold">
                 <span className="rounded-full bg-leaf/10 px-3 py-2 text-leaf shadow-sm ring-1 ring-leaf/15">Audio</span>
                 <span className="rounded-full bg-sky/10 px-3 py-2 text-sky shadow-sm ring-1 ring-sky/15">Transcript</span>
                 <span className="rounded-full bg-saffron/15 px-3 py-2 text-saffron shadow-sm ring-1 ring-saffron/20">Summary</span>

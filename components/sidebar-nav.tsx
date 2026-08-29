@@ -50,7 +50,7 @@ export function SidebarNav() {
   }
 
   return (
-    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-4">
+    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-5">
       {nav.map((item) => {
         const active =
           pathname === item.href ||
@@ -64,7 +64,7 @@ export function SidebarNav() {
             href={item.href}
             onClick={(event) => navigate(event, item.href)}
             className={cn(
-              "group relative flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition lg:gap-3",
+              "group relative flex min-h-11 min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition lg:gap-3 lg:px-4",
               active
                 ? "bg-leaf text-white shadow-lg shadow-leaf/20"
                 : "text-slate-600 hover:bg-white hover:text-leaf hover:shadow-sm"
@@ -73,7 +73,7 @@ export function SidebarNav() {
           >
             {active ? <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full bg-saffron" /> : null}
             <item.icon className={cn("h-4 w-4", active ? "text-white" : "text-slate-500 group-hover:text-leaf")} />
-            <span className="leading-5">{labels[item.labelKey]}</span>
+            <span className="min-w-0 truncate leading-5">{labels[item.labelKey]}</span>
           </Link>
         );
       })}
