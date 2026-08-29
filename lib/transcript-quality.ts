@@ -34,7 +34,13 @@ export function hasTranscriptionPromptLeakage(text: string) {
     /\bverbatim transcript of (?:the )?(?:khmer|english|audio|meeting)/i.test(text) ||
     /\btranscript of (?:the )?(?:khmer|english|audio|meeting|provided audio)\b/i.test(text) ||
     /\b(?:audio|recording) (?:contains|appears to contain|is in)\b/i.test(text) ||
-    /^\s*(?:probe|test|diagnostic|analysis)\s*[:：]/im.test(text) ||
+    // "diagnostic"/"analysis" are extremely unlikely to be a real chosen
+    // display name. "probe" and "test" are NOT safe here - confirmed live
+    // this user's own meeting used the literal speaker name "probe" for
+    // testing, so every line ("probe: <real speech>") was being discarded
+    // as leakage, producing "No clear speech text was detected" on a
+    // recording that actually had normal, real content.
+    /^\s*(?:diagnostic|analysis)\s*[:：]/im.test(text) ||
     /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of\b/i.test(compact) ||
     /^\s*(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/im.test(text) ||
     // Confirmed live: a chat-completion model can echo its own reasoning

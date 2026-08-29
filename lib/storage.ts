@@ -702,6 +702,23 @@ export async function transcribeStoredTrackRecording(
           }
         }
       }
+      if (!hasUsableTranscript(transcript) && speakerNames.length) {
+        // Confirmed live: a specific known-participant name can make the
+        // model return an empty completion for every chunk regardless of
+        // audio content or quality (e.g. "probe" - a real user's own test
+        // meeting, reproduced directly: the exact same audio chunk returned
+        // real text with the name "Sokha" and nothing at all with "probe").
+        // The two retries above still pass the same names, so they can't
+        // recover from this. Last resort: drop the name hint entirely and
+        // accept generic Speaker N labels rather than losing the chunk.
+        const noNameRemainingMs = deadline - Date.now();
+        if (noNameRemainingMs >= 12000) {
+          transcript = await transcribeAudio(chunkFile, [], languageMode, {
+            ...transcribeOptions,
+            timeoutMs: Math.max(8000, Math.min(90000, noNameRemainingMs))
+          }).catch(() => "");
+        }
+      }
       transcripts[next.index] = cleanTranscriptionText(transcript);
       completed[next.index] = true;
     }
