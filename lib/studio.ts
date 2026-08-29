@@ -37,7 +37,7 @@ export async function processStudioText(input: ProcessStudioInput) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXTAUTH_URL ?? "http://localhost:3000",
+      "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://khmermeet-ai.vercel.app",
       "X-Title": "KhmerMeet AI Scribe Studio"
     },
     body: JSON.stringify({
@@ -81,4 +81,3 @@ export function transcriptToSrt(text: string) {
     })
     .join("\n\n");
 }
-

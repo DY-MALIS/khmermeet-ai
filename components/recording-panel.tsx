@@ -264,7 +264,7 @@ export function RecordingPanel() {
       return;
     }
     if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      setError("Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមប្រើ localhost លើកុំព្យូទ័រ ឬ deploy/open តាម HTTPS ដូចជា Vercel។");
+      setError("Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមបើកតាម domain HTTPS របស់ app។");
       return;
     }
     try {

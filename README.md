@@ -46,7 +46,7 @@ OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3
 OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL=google/gemini-2.5-pro
 OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS=55000
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
-NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_URL="https://khmermeet-ai.vercel.app"
 ```
 
 4. Create the database and seed demo data:
