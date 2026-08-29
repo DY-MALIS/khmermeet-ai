@@ -13,16 +13,17 @@
 
 html {
   min-height: 100%;
-  background: #effaf6;
+  background: #e7f6ee;
 }
 
 body {
   min-height: 100%;
   margin: 0;
   background:
-    radial-gradient(circle at 10% 10%, rgba(15, 138, 112, 0.19), transparent 26rem),
-    radial-gradient(circle at 88% 6%, rgba(229, 154, 35, 0.19), transparent 23rem),
-    linear-gradient(180deg, #fbfffd 0%, #effaf6 42%, #f6fafc 100%);
+    radial-gradient(circle at 8% 8%, rgba(15, 138, 112, 0.24), transparent 28rem),
+    radial-gradient(circle at 88% 6%, rgba(229, 154, 35, 0.22), transparent 24rem),
+    radial-gradient(circle at 72% 62%, rgba(22, 136, 184, 0.14), transparent 28rem),
+    linear-gradient(180deg, #f2fbf5 0%, #e6f6ef 44%, #edf7f9 100%);
   color: #13231f;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -37,11 +38,11 @@ select {
 }
 
 .kh-card {
-  @apply rounded-xl border border-white/80 bg-white/95 shadow-soft backdrop-blur-xl;
+  @apply rounded-xl border border-leaf/10 bg-emerald-50/70 shadow-soft backdrop-blur-xl;
 }
 
 .kh-input {
-  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
+  @apply w-full rounded-xl border border-leaf/15 bg-white/85 px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
 }
 
 .kh-password-input {
@@ -57,7 +58,7 @@ select {
 }
 
 .kh-button-secondary {
-  @apply kh-button border border-slate-200 bg-white text-ink shadow-sm shadow-slate-200/40 hover:-translate-y-0.5 hover:border-leaf/30 hover:bg-leaf/5 hover:text-leaf;
+  @apply kh-button border border-leaf/15 bg-emerald-50 text-ink shadow-sm shadow-leaf/10 hover:-translate-y-0.5 hover:border-leaf/30 hover:bg-leaf/10 hover:text-leaf;
 }
 
 .kh-badge {

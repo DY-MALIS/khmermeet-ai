@@ -67,7 +67,7 @@ export function SidebarNav() {
               "group relative flex min-h-11 min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition lg:gap-3 lg:px-4",
               active
                 ? "bg-leaf text-white shadow-lg shadow-leaf/20"
-                : "text-slate-600 hover:bg-white hover:text-leaf hover:shadow-sm"
+                : "text-slate-600 hover:bg-white/80 hover:text-leaf hover:shadow-sm"
             )}
             aria-current={active ? "page" : undefined}
           >

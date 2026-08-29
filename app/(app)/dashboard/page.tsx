@@ -55,7 +55,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-leaf/10 bg-white/95 p-4 shadow-xl shadow-leaf/10 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <div className="flex flex-col gap-4 rounded-2xl border border-leaf/15 bg-gradient-to-r from-emerald-50 via-teal-50 to-amber-50/70 p-4 shadow-xl shadow-leaf/10 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div>
           <p className="text-xs font-bold uppercase text-leaf">{text.welcome}</p>
           <h1 className="mt-1 text-3xl font-black tracking-normal text-ink sm:text-4xl">{text.dashboardTitle}</h1>
@@ -75,9 +75,9 @@ export default async function DashboardPage() {
         </div>
       </div>
       <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
-        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-2xl border border-leaf/15 bg-gradient-to-br from-emerald-50 via-white to-sky-50 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
+        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-2xl border border-leaf/20 bg-gradient-to-br from-emerald-100/85 via-teal-50 to-sky-100/80 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
           <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-leaf via-sky to-saffron" />
-          <div className="absolute right-6 top-6 hidden rounded-full border border-leaf/20 bg-white px-3 py-2 text-xs font-bold text-leaf shadow-sm xl:block">
+          <div className="absolute right-6 top-6 hidden rounded-full border border-leaf/20 bg-white/75 px-3 py-2 text-xs font-bold text-leaf shadow-sm xl:block">
             Live capture ready
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -107,7 +107,7 @@ export default async function DashboardPage() {
           </div>
         </a>
         <div className="grid gap-4">
-          <a href="/meetings/call" className="group rounded-2xl border border-sky/15 bg-white/95 p-5 shadow-xl shadow-sky/10 backdrop-blur-xl transition hover:-translate-y-0.5">
+          <a href="/meetings/call" className="group rounded-2xl border border-sky/20 bg-sky-50/85 p-5 shadow-xl shadow-sky/10 backdrop-blur-xl transition hover:-translate-y-0.5">
             <div className="flex items-center gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-2xl bg-sky/10 text-sky shadow-sm ring-1 ring-sky/10">
                 <Video className="h-6 w-6" />
@@ -118,12 +118,12 @@ export default async function DashboardPage() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-ink shadow-sm ring-1 ring-slate-100 transition group-hover:text-sky">
+            <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white/80 px-4 py-2 text-sm font-bold text-ink shadow-sm ring-1 ring-sky/10 transition group-hover:text-sky">
               Open call
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </a>
-          <div className="rounded-2xl border border-saffron/20 bg-gradient-to-br from-white to-amber-50/80 p-5 shadow-xl shadow-saffron/10 backdrop-blur-xl">
+          <div className="rounded-2xl border border-saffron/25 bg-gradient-to-br from-amber-50 via-orange-50/60 to-emerald-50 p-5 shadow-xl shadow-saffron/10 backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-leaf/10 text-leaf shadow-sm">
                 <Radio className="h-5 w-5" />
@@ -146,7 +146,7 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div className="kh-card relative overflow-hidden p-5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-leaf/15" key={stat.label}>
+          <div className="kh-card relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50/80 p-5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-leaf/15" key={stat.label}>
             <div className={`absolute inset-x-0 top-0 h-1 ${stat.accent}`} />
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500">{stat.label}</p>
@@ -160,8 +160,8 @@ export default async function DashboardPage() {
         ))}
       </div> : null}
       {!dbUnavailable ? (
-        <section className="kh-card overflow-hidden p-0 shadow-xl shadow-slate-900/5">
-          <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-50 to-white px-5 py-4">
+        <section className="kh-card overflow-hidden bg-emerald-50/80 p-0 shadow-xl shadow-leaf/10">
+          <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-100/80 via-teal-50 to-sky-50 px-5 py-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase text-leaf">Insights</p>
@@ -183,7 +183,7 @@ export default async function DashboardPage() {
                 {speakingTime.map((speaker) => {
                   const maxSeconds = speakingTime[0].seconds || 1;
                   return (
-                    <div key={speaker.name} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white/80 px-3 py-2 shadow-sm">
+                    <div key={speaker.name} className="flex items-center gap-3 rounded-xl border border-leaf/10 bg-white/70 px-3 py-2 shadow-sm">
                       <span className="w-28 shrink-0 truncate text-xs text-slate-600">{speaker.name}</span>
                       <div className="h-2 flex-1 rounded-full bg-slate-100">
                         <div className="h-2 rounded-full bg-leaf" style={{ width: `${Math.max(4, (speaker.seconds / maxSeconds) * 100)}%` }} />
@@ -199,15 +199,15 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <PersonalAssistant /> : null}
       {!dbUnavailable ? <div className="grid gap-5 xl:grid-cols-2">
-        <section className="kh-card overflow-hidden">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/50 px-5 py-4">
+        <section className="kh-card overflow-hidden bg-teal-50/70">
+          <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-100/70 to-teal-50 px-5 py-4">
             <h2 className="text-lg font-bold">{text.recentMeetings}</h2>
           </div>
           <div className="p-5">
           {meetings.length ? (
             <div className="space-y-3">
               {meetings.slice(0, 5).map((meeting) => (
-                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="group block rounded-xl border border-slate-100 bg-slate-50/70 p-3 transition hover:border-leaf/20 hover:bg-white hover:shadow-sm">
+                <a href={`/meetings/${meeting.id}`} key={meeting.id} className="group block rounded-xl border border-leaf/10 bg-white/65 p-3 transition hover:border-leaf/25 hover:bg-white/85 hover:shadow-sm">
                   <p className="break-words font-semibold text-ink group-hover:text-leaf">{meeting.title}</p>
                   <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {meeting.tasks.length} {text.tasksCount}</p>
                 </a>
@@ -216,15 +216,15 @@ export default async function DashboardPage() {
           ) : <EmptyState title={text.noMeetingsYet} description={text.noMeetingsYetDescription} />}
           </div>
         </section>
-        <section className="kh-card overflow-hidden">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-white to-sky-50/50 px-5 py-4">
+        <section className="kh-card overflow-hidden bg-sky-50/65">
+          <div className="border-b border-sky/10 bg-gradient-to-r from-sky-100/70 to-emerald-50 px-5 py-4">
             <h2 className="text-lg font-bold">{text.pendingTasks}</h2>
           </div>
           <div className="p-5">
           {tasks.filter((task) => task.status !== "completed").length ? (
             <div className="space-y-3">
               {pendingTasks.slice(0, 6).map((task) => (
-                <div key={task.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                <div key={task.id} className="rounded-xl border border-sky/10 bg-white/65 p-3">
                   <p className="break-words font-semibold text-ink">{task.title}</p>
                   <p className="text-sm text-slate-500">{task.assigneeName ?? text.unassigned} · {task.deadline?.toLocaleDateString() ?? text.noDueDate}</p>
                 </div>
@@ -246,7 +246,7 @@ function AnalyticsTile({ label, value, tone }: { label: string; value: string; t
     ink: "bg-ink"
   }[tone];
   return (
-    <div className="rounded-xl border border-slate-100 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className="rounded-xl border border-leaf/10 bg-white/65 p-4 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-md">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
