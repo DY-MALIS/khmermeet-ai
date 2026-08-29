@@ -82,7 +82,12 @@ function cleanTranscriptionText(text: string) {
     /^(?:[^:\n]{1,60}\s*[:：]\s*)?(?:verbatim\s+)?transcript of (?:the )?(?:khmer|english|audio|meeting|provided audio)/i,
     /^(?:[^:\n]{1,60}\s*:\s*)?(?:here is|here's)\s+(?:the\s+)?(?:verbatim\s+)?transcript\b/i,
     /^(?:[^:\n]{1,60}\s*:\s*)?(?:transcript|final transcript)\s*[:：]\s*$/i,
-    /^(?:probe|test|diagnostic|analysis)\s*[:：]/i
+    // "diagnostic"/"analysis" are extremely unlikely to be a real chosen
+    // display name; "probe"/"test" are not safe here - see the matching fix
+    // and full explanation in transcript-quality.ts's hasTranscriptionPromptLeakage
+    // (this is a duplicate of that same original word list from commit
+    // 57e3de1, missed when that one was fixed).
+    /^(?:diagnostic|analysis)\s*[:：]/i
   ];
 
   const cleaned = text
@@ -580,6 +585,15 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
+// Tried raising this (30s, 45s) to see if more context per chunk helps the
+// model notice multiple voices in a mixed recording - confirmed live it's
+// a real trade-off, not a clean win: larger chunks occasionally caught more
+// speakers on a short 3-speaker test recording (inconsistent across
+// repeats: 1-3 of 3 depending on the run either way) but consistently lost
+// real content on a long 727s recording (~4500-5700 chars at 30-45s vs
+// ~6500-7500 chars at 15s, repeatable). Kept at 15s: losing speech content
+// is worse than imperfect speaker labels, and the speaker-separation
+// benefit wasn't reliable enough to justify the trade either way.
 const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15;
 // Confirmed live against a real 727s recording: per-chunk transcription
 // (OpenRouter multimodal call, sometimes doubled by the empty-result safety-
