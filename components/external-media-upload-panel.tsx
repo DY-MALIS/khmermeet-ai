@@ -93,9 +93,9 @@ export function ExternalMediaUploadPanel() {
         throw new Error(meetingJson.error ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
       }
 
-      setWarning("ឯកសារត្រូវបានរក្សាទុករួច។ សម្រាប់វីដេអូ/សំឡេងវែង សូមបើក meeting ហើយចុច Transcribe audio ពេលក្រោយ ដើម្បីជៀសវាង timeout។");
-      setStatus("បានរក្សាទុករួច។ កំពុងបើកប្រជុំ...");
-      router.push(`/meetings/${meetingJson.id}`);
+      setWarning("");
+      setStatus("បានរក្សាទុករួច។ កំពុងបើកប្រជុំ និងចាប់ផ្តើមបំលែងសំឡេងជាអក្សរ...");
+      router.push(`/meetings/${meetingJson.id}?transcribe=1#transcript`);
       router.refresh();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "មិនអាច upload ឯកសារនេះបានទេ។");

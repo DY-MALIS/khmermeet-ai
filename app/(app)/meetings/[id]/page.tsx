@@ -36,8 +36,15 @@ function meetingLoadErrorMessage(error: unknown) {
   return "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again.";
 }
 
-export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MeetingDetailPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ transcribe?: string }>;
+}) {
   const { id } = await params;
+  const query = searchParams ? await searchParams : {};
   const { text } = await getServerUiText();
   const meetingResult = await getMeetingById(id)
     .then((meeting) => ({ meeting, error: "" }))
@@ -146,6 +153,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
           rawTranscript={labeledTranscript}
           transcriptIsUsable={transcriptIsUsable}
           speakerNames={speakerNames}
+          autoStartTranscription={query.transcribe === "1" || query.transcribe === "true"}
         />
 
         <section>

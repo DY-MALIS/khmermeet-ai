@@ -2,7 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
@@ -11,20 +11,31 @@ type TranscribeAudioButtonProps = {
   meetingId: string;
   hasTranscript?: boolean;
   speakerNames?: string[];
+  autoStart?: boolean;
   onTranscribed?: (transcript: string) => void;
 };
+
+const progressSteps = [
+  "កំពុងរៀបចំសំឡេង...",
+  "កំពុងស្តាប់សំឡេងជាបំណែកតូចៗ...",
+  "កំពុងចាប់ពាក្យ និងឈ្មោះអ្នកនិយាយ...",
+  "កំពុងសម្អាតអត្ថបទ និងរក្សាទុក..."
+];
 
 export function TranscribeAudioButton({
   meetingId,
   hasTranscript = false,
   speakerNames = [],
+  autoStart = false,
   onTranscribed
 }: TranscribeAudioButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [progressStep, setProgressStep] = useState(0);
   const [speakerNamesInput, setSpeakerNamesInput] = useState(speakerNames.join("\n"));
+  const autoStartedRef = useRef(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
@@ -33,10 +44,14 @@ export function TranscribeAudioButton({
     setSpeakerNamesInput(speakerNames.join("\n"));
   }, [speakerNames]);
 
-  async function transcribe() {
+  const transcribe = useCallback(async () => {
     setPending(true);
+    setProgressStep(0);
     setMessage("");
     setError("");
+    const progressTimer = window.setInterval(() => {
+      setProgressStep((step) => Math.min(step + 1, progressSteps.length - 1));
+    }, 14000);
     try {
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
@@ -60,11 +75,23 @@ export function TranscribeAudioButton({
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not transcribe audio.");
+      const detail = error instanceof Error ? error.message : "Could not transcribe audio.";
+      setError(
+        detail.includes("more time") || detail.toLowerCase().includes("timed out")
+          ? `${detail} អត្ថបទដែលចាប់បានមុននេះត្រូវបានរក្សាទុក ប្រសិនបើមាន។ សូមចុចម្តងទៀត ដើម្បីបន្តពីសំឡេងដែលបានរក្សាទុក។`
+          : detail
+      );
     } finally {
+      window.clearInterval(progressTimer);
       setPending(false);
     }
-  }
+  }, [hasTranscript, languageMode, meetingId, onTranscribed, router, speakerNamesInput]);
+
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current || pending || hasTranscript) return;
+    autoStartedRef.current = true;
+    void transcribe();
+  }, [autoStart, hasTranscript, pending, transcribe]);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
@@ -114,6 +141,24 @@ export function TranscribeAudioButton({
           {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
         </button>
       </div>
+
+      {pending ? (
+        <div className="rounded-xl border border-leaf/20 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+            <span>{progressSteps[progressStep]}</span>
+            <span>{progressStep + 1}/{progressSteps.length}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-leaf transition-all duration-500"
+              style={{ width: `${((progressStep + 1) / progressSteps.length) * 100}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            សំឡេងវែងអាចយកពេលច្រើន។ កុំបិទទំព័រនេះ រហូតដល់វារក្សាទុក transcript។
+          </p>
+        </div>
+      ) : null}
 
       {message ? (
         <p className="flex items-start gap-2 rounded-lg bg-leaf/10 p-3 text-sm leading-6 text-leaf">

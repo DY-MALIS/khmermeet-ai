@@ -129,8 +129,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const skippedPendingSegments =
-      participantAudioSegments.some((segment) => !segment.text.trim()) &&
-      Date.now() > workDeadline - REFINE_RESERVE_MS - MINIMUM_ATTEMPT_MS;
+      participantAudioSegments.length > 0 &&
+      (participantAudioSegments.some((segment) => !segment.text.trim()) ||
+        Date.now() > workDeadline - REFINE_RESERVE_MS - MINIMUM_ATTEMPT_MS);
     const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
     const transcript = refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
@@ -179,7 +180,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcript,
         partial: true,
         message:
-          "Saved the transcript captured so far. Some speaker audio still needs another pass; click Re-transcribe audio again to continue from the saved segments."
+          "Saved every transcript segment captured so far. Some speaker audio may still need another pass; click Re-transcribe audio again to continue from the saved recording."
       });
     }
 

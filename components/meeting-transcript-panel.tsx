@@ -12,6 +12,7 @@ type MeetingTranscriptPanelProps = {
   rawTranscript?: string | null;
   transcriptIsUsable: boolean;
   speakerNames?: string[] | null;
+  autoStartTranscription?: boolean;
 };
 
 export function MeetingTranscriptPanel({
@@ -20,7 +21,8 @@ export function MeetingTranscriptPanel({
   initialTranscript,
   rawTranscript,
   transcriptIsUsable,
-  speakerNames
+  speakerNames,
+  autoStartTranscription = false
 }: MeetingTranscriptPanelProps) {
   const [transcript, setTranscript] = useState(initialTranscript);
   const [speakerLabelToRename, setSpeakerLabelToRename] = useState("");
@@ -107,6 +109,7 @@ export function MeetingTranscriptPanel({
             meetingId={meetingId}
             hasTranscript={hasAnyTranscript}
             speakerNames={meetingSpeakerNames}
+            autoStart={autoStartTranscription}
             onTranscribed={handleTranscribed}
           />
         </div>
