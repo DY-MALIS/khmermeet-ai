@@ -8,13 +8,13 @@ const config: Config = {
         sans: ["var(--font-khmer)", "Inter", "system-ui", "sans-serif"]
       },
       colors: {
-        ink: "#17202A",
-        leaf: "#18745F",
-        saffron: "#D8912A",
-        sky: "#2E86AB"
+        ink: "#13231F",
+        leaf: "#0F8A70",
+        saffron: "#E59A23",
+        sky: "#1688B8"
       },
       boxShadow: {
-        soft: "0 18px 50px rgba(23, 32, 42, 0.08)"
+        soft: "0 18px 55px rgba(15, 138, 112, 0.12)"
       }
     }
   },

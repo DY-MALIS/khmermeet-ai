@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </details>
       </div>
 
-      <aside className="sticky top-0 z-20 hidden border-r border-white/80 bg-white/80 text-ink shadow-xl shadow-slate-900/5 backdrop-blur-2xl lg:flex lg:h-screen lg:w-72 lg:flex-col">
+      <aside className="sticky top-0 z-20 hidden border-r border-leaf/10 bg-white/90 text-ink shadow-xl shadow-leaf/10 backdrop-blur-2xl lg:flex lg:h-screen lg:w-72 lg:flex-col">
         <div className="flex items-center justify-between px-4 py-5 lg:block lg:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-xl bg-leaf text-lg font-black text-white shadow-lg shadow-leaf/20">K</div>
