@@ -94,7 +94,7 @@ export function TranscribeAudioButton({
   }, [autoStart, hasTranscript, pending, transcribe]);
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+    <div className="space-y-3 rounded-2xl border border-leaf/10 bg-gradient-to-br from-white to-emerald-50/50 p-4 shadow-sm">
       <div>
         <p className="font-semibold text-ink">
           {hasTranscript ? "ស្តាប់សំឡេងឡើងវិញ (Re-transcribe audio)" : "ថតបំលែងសំឡេងទៅជាអត្ថបទ (Transcribe audio)"}
@@ -105,7 +105,7 @@ export function TranscribeAudioButton({
             : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          ជ្រើសភាសា transcript ខ្លីៗ៖ ខ្មែរ, English, ឬ ខ្មែរ + English។
+          ជ្រើសភាសា transcript៖ ខ្មែរ, English, ឬ ខ្មែរ + English។
         </p>
         {speakerNames.length ? (
           <p className="mt-1 text-xs leading-5 text-leaf">
@@ -143,7 +143,7 @@ export function TranscribeAudioButton({
       </div>
 
       {pending ? (
-        <div className="rounded-xl border border-leaf/20 bg-white p-3">
+        <div className="rounded-2xl border border-leaf/20 bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
             <span>{progressSteps[progressStep]}</span>
             <span>{progressStep + 1}/{progressSteps.length}</span>

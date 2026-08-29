@@ -13,16 +13,16 @@
 
 html {
   min-height: 100%;
-  background: #eef5f3;
+  background: #f4faf8;
 }
 
 body {
   min-height: 100%;
   margin: 0;
   background:
-    linear-gradient(135deg, rgba(24, 116, 95, 0.12), transparent 28rem),
-    linear-gradient(225deg, rgba(216, 145, 42, 0.12), transparent 24rem),
-    linear-gradient(180deg, #f7fbfa 0%, #eef5f3 46%, #f8fafc 100%);
+    radial-gradient(circle at 12% 12%, rgba(24, 116, 95, 0.13), transparent 24rem),
+    radial-gradient(circle at 88% 4%, rgba(216, 145, 42, 0.14), transparent 22rem),
+    linear-gradient(180deg, #fbfefd 0%, #f3faf7 42%, #f8fafc 100%);
   color: #17202a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -37,11 +37,11 @@ select {
 }
 
 .kh-card {
-  @apply rounded-lg border border-white/70 bg-white/90 shadow-soft backdrop-blur-xl;
+  @apply rounded-xl border border-white/80 bg-white/90 shadow-soft backdrop-blur-xl;
 }
 
 .kh-input {
-  @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
 }
 
 .kh-password-input {
@@ -49,15 +49,15 @@ select {
 }
 
 .kh-button {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .kh-button-primary {
-  @apply kh-button bg-leaf text-white shadow-sm shadow-leaf/20 hover:bg-leaf/90 hover:shadow-md hover:shadow-leaf/25;
+  @apply kh-button bg-leaf text-white shadow-sm shadow-leaf/20 hover:-translate-y-0.5 hover:bg-leaf/90 hover:shadow-lg hover:shadow-leaf/25;
 }
 
 .kh-button-secondary {
-  @apply kh-button border border-slate-200 bg-white text-ink shadow-sm shadow-slate-200/40 hover:border-slate-300 hover:bg-slate-50;
+  @apply kh-button border border-slate-200 bg-white text-ink shadow-sm shadow-slate-200/40 hover:-translate-y-0.5 hover:border-leaf/30 hover:bg-leaf/5 hover:text-leaf;
 }
 
 .kh-badge {

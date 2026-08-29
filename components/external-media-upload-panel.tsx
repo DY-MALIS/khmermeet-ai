@@ -105,9 +105,10 @@ export function ExternalMediaUploadPanel() {
   }
 
   return (
-    <section className="kh-card p-5">
+    <section className="kh-card overflow-hidden p-0">
+      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 p-5">
       <div className="mb-4 flex items-start gap-3">
-        <div className="rounded-xl bg-leaf/10 p-3 text-leaf">
+        <div className="rounded-2xl bg-leaf/10 p-3 text-leaf shadow-sm ring-1 ring-leaf/10">
           <UploadCloud className="h-5 w-5" />
         </div>
         <div>
@@ -119,9 +120,11 @@ export function ExternalMediaUploadPanel() {
           </p>
         </div>
       </div>
+      </div>
 
+      <div className="space-y-3 p-5">
       <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
-        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-leaf/50 hover:bg-leaf/5">
+        <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-leaf/50 hover:bg-leaf/5">
           <FileAudio className="h-5 w-5 shrink-0 text-leaf" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{fileLabel}</span>
@@ -180,6 +183,7 @@ export function ExternalMediaUploadPanel() {
           <span>{error}</span>
         </p>
       ) : null}
+      </div>
     </section>
   );
 }

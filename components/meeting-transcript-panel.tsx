@@ -73,7 +73,10 @@ export function MeetingTranscriptPanel({
 
   return (
     <section className="kh-card p-5" id="transcript">
-      <h2 className="mb-4 text-lg font-bold">Transcript</h2>
+      <div className="mb-4 flex flex-col gap-1">
+        <p className="text-xs font-bold uppercase text-leaf">Transcript</p>
+        <h2 className="text-xl font-black text-ink">Audio to text workspace</h2>
+      </div>
 
       {!transcriptIsUsable && rawTranscript ? (
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
@@ -84,7 +87,7 @@ export function MeetingTranscriptPanel({
 
       {audioUrl ? (
         <div className="mb-4 space-y-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-sky-50/40 p-4 shadow-sm">
             <p className="text-sm font-semibold text-ink">Meeting speakers</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
               KhmerMeet uses the participant names saved from the video meeting. If a voice is unclear in the mixed
@@ -118,7 +121,7 @@ export function MeetingTranscriptPanel({
       <form action={updateTranscript} className="space-y-3">
         <input type="hidden" name="id" value={meetingId} />
         {transcriptSpeakerLabels.length ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
             <p className="text-sm font-semibold text-ink">Fix speaker name</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <select

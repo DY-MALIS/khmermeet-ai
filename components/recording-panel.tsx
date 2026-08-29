@@ -461,28 +461,28 @@ export function RecordingPanel() {
 
   return (
     <div className="kh-card overflow-hidden">
-      <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4 sm:px-6">
+      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 px-5 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-leaf">Recorder</p>
             <h2 className="text-xl font-bold text-ink">ថតសំឡេងប្រជុំ</h2>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm">
             {state === "recording" ? "កំពុងថត" : state === "paused" ? "បានផ្អាក" : state === "stopped" ? "ថតរួច" : "រួចរាល់"}
           </div>
         </div>
       </div>
       <div className="p-5 sm:p-6">
-      <div className="mb-4 rounded-lg border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
+      <div className="mb-4 rounded-xl border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
         សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
       </div>
       {dbUnavailable ? (
-        <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
+        <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
           មិនអាចត្រួតពិនិត្យស្ថានភាព database ពី browser នេះបានទេ។ អ្នកនៅតែអាចថត ហើយសាកល្បងរក្សាទុកបាន server នឹងបញ្ជាក់នៅពេលរក្សាទុកជោគជ័យ។
         </div>
       ) : null}
       {error ? (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">
           <p>{error}</p>
           {!savedMeetingId && audioUrl ? (
             <button
@@ -496,7 +496,7 @@ export function RecordingPanel() {
         </div>
       ) : null}
       {quietWarning ? (
-        <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
+        <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
           {quietWarning}
         </div>
       ) : null}
@@ -525,9 +525,9 @@ export function RecordingPanel() {
           </select>
         </label>
       </div>
-      <div className="mb-4 rounded-lg border border-leaf/20 bg-leaf/10 p-4">
+      <div className="mb-4 rounded-2xl border border-leaf/20 bg-gradient-to-br from-leaf/10 to-white p-4">
         <div className="flex items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-leaf text-white">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-leaf text-white shadow-sm">
             <UserRoundCheck className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
@@ -613,7 +613,7 @@ export function RecordingPanel() {
           </p>
         </div>
       </div>
-      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-inner sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>

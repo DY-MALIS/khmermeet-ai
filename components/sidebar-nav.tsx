@@ -50,7 +50,7 @@ export function SidebarNav() {
   }
 
   return (
-    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-1.5 lg:px-4">
+    <nav className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 lg:block lg:space-y-2 lg:px-4">
       {nav.map((item) => {
         const active =
           pathname === item.href ||
@@ -64,10 +64,10 @@ export function SidebarNav() {
             href={item.href}
             onClick={(event) => navigate(event, item.href)}
             className={cn(
-              "group relative flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition lg:gap-3",
+              "group relative flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition lg:gap-3",
               active
-                ? "bg-leaf text-white shadow-md shadow-leaf/20"
-                : "text-slate-600 hover:bg-leaf/8 hover:text-leaf"
+                ? "bg-leaf text-white shadow-lg shadow-leaf/20"
+                : "text-slate-600 hover:bg-white hover:text-leaf hover:shadow-sm"
             )}
             aria-current={active ? "page" : undefined}
           >
