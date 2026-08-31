@@ -77,16 +77,9 @@ The MVP stores audio files under `uploads/` locally and serves them through `/ap
 
 Server Rec records each participant's microphone locally in their own browser (a room-wide signal over the LiveKit data channel starts it automatically for everyone once one person clicks the button) and posts segments straight to the transcription API - no S3-compatible storage is required and no extra environment variables need to be set. This replaced an earlier LiveKit Egress + S3 upload design after hitting a confirmed, unresolved AWS SDK V2 signature-validation bug in Supabase Storage's S3-compatible API (see https://github.com/supabase/storage/issues/646); `lib/livekit-egress.ts` and the `/api/livekit-egress/*` routes are kept in the codebase unused in case that upstream bug gets fixed and server-side recording becomes worth revisiting.
 
-Video meetings use browser WebRTC with server signaling. For reliable calls across different networks, configure a TURN server in Vercel:
+Video meetings run entirely on LiveKit Cloud (WebRTC SFU) - it handles STUN/TURN relay for reliable calls across different networks internally, so no separate TURN server configuration is needed.
 
-```env
-NEXT_PUBLIC_STUN_URL="stun:stun.l.google.com:19302"
-NEXT_PUBLIC_TURN_URL="turn:your-turn-host:3478"
-NEXT_PUBLIC_TURN_USERNAME="..."
-NEXT_PUBLIC_TURN_CREDENTIAL="..."
-```
-
-OpenRouter powers transcription, summary generation, and task extraction. OpenRouter is not a media server; video/audio transport is handled by WebRTC.
+OpenRouter powers transcription, summary generation, and task extraction. OpenRouter is not a media server; video/audio transport is handled by LiveKit.
 
 ## Future Improvements
 

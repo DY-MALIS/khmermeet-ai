@@ -32,11 +32,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
 NEXT_PUBLIC_LIVEKIT_URL="wss://your-livekit-project.livekit.cloud"
 LIVEKIT_API_KEY="..."
 LIVEKIT_API_SECRET="..."
-
-NEXT_PUBLIC_STUN_URL="stun:stun.l.google.com:19302"
-NEXT_PUBLIC_TURN_URL=""
-NEXT_PUBLIC_TURN_USERNAME=""
-NEXT_PUBLIC_TURN_CREDENTIAL=""
 ```
 
 Optional email reset support:
