@@ -243,15 +243,14 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-// Cost-driven choice (owner decision, 2026-08-31): flash only, no pro
-// fallback - owner explicitly chose to skip the pro safety-net retry for
-// maximum cost savings. Known trade-off: flash has a confirmed ~1/6
-// empty-result rate on real audio, and with no fallback that now surfaces
-// to the user as "No clear speech text was detected" with no automatic
-// retry. Set TRANSCRIPTION_SAFETY_NET_MODEL equal to the primary model so
-// transcribeOpenRouterAudioViaChat's retry-on-empty branch never fires.
+// Cost-driven choice (owner decision, 2026-08-31): flash is the default
+// listener for cost savings, with pro kept as the safety-net retry
+// (transcribeOpenRouterAudioViaChat) for the ~1/6 of calls where flash
+// comes back empty - confirmed via OpenRouter's published pricing this
+// only adds ~36% versus flash-only (pro is billed on that fraction of
+// calls only), while avoiding pro-only cost entirely on the rest.
 const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
-const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-3.7-flash";
+const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-2.5-pro";
 
 function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
