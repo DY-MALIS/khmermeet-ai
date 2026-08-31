@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square, UserRoundCheck } from "lucide-react";
+import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -54,9 +54,6 @@ export function RecordingPanel() {
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
   const [seconds, setSeconds] = useState(0);
   const [title, setTitle] = useState("");
-  const [speakerNamesInput, setSpeakerNamesInput] = useState("");
-  const [checkInName, setCheckInName] = useState("");
-  const speakerNamesInputRef = useRef("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [activeMicLabel, setActiveMicLabel] = useState("");
@@ -73,10 +70,6 @@ export function RecordingPanel() {
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
-
-  useEffect(() => {
-    speakerNamesInputRef.current = speakerNamesInput;
-  }, [speakerNamesInput]);
 
   useEffect(() => {
     setSupported(
@@ -137,23 +130,6 @@ export function RecordingPanel() {
     return selectedDeviceId
       ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
       : clearVoiceAudioConstraints;
-  }
-
-  function addCheckInName() {
-    const nextName = checkInName.trim();
-    if (!nextName) return;
-    const currentNames = speakerNamesInputRef.current
-      .split(/[,，\n]/)
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (currentNames.some((name) => name.toLocaleLowerCase() === nextName.toLocaleLowerCase())) {
-      setCheckInName("");
-      return;
-    }
-    const nextInput = [...currentNames, nextName].join(", ");
-    speakerNamesInputRef.current = nextInput;
-    setSpeakerNamesInput(nextInput);
-    setCheckInName("");
   }
 
   function cleanupRecording() {
@@ -376,16 +352,6 @@ export function RecordingPanel() {
       // .current here always gets the true final elapsed time regardless of
       // when this closure was created.
       const durationSeconds = clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000));
-      // Passed through to the transcription prompt as a vocabulary hint (see
-      // lib/ai/openrouter.ts's transcriptionChatPrompt) so the model has a
-      // chance to correctly recognize a name from the audio itself - a
-      // misheard name can't be recovered by the later text-only refine pass,
-      // which has no access to the audio to re-check against.
-      const speakerNames = speakerNamesInputRef.current
-        .split(/[,，\n]/)
-        .map((name) => name.trim())
-        .filter(Boolean)
-        .slice(0, 100);
       const response = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -394,8 +360,7 @@ export function RecordingPanel() {
           audioUrl: savedAudioUrl,
           transcript: "",
           duration: durationSeconds,
-          languageMode: transcriptionLanguage,
-          speakerNames
+          languageMode: transcriptionLanguage
         })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
@@ -411,16 +376,11 @@ export function RecordingPanel() {
 
   async function transcribeCompleteRecording(meetingId: string) {
     setTranscriptionProgress("កំពុងកែលម្អគុណភាពសំឡេង និងបំលែងឯកសារពេញជាអក្សរ...");
-    const speakerNames = speakerNamesInputRef.current
-      .split(/[,，\n]/)
-      .map((name) => name.trim())
-      .filter(Boolean)
-      .slice(0, 100);
     try {
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode: transcriptionLanguage, speakerNames })
+        body: JSON.stringify({ languageMode: transcriptionLanguage })
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
       if (!response.ok || !data.transcript?.trim()) {
@@ -523,60 +483,6 @@ export function RecordingPanel() {
             <option value="km">ខ្មែរ</option>
             <option value="en">English</option>
           </select>
-        </label>
-      </div>
-      <div className="mb-4 rounded-2xl border border-leaf/20 bg-gradient-to-br from-leaf/10 to-white p-4">
-        <div className="flex items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-leaf text-white shadow-sm">
-            <UserRoundCheck className="h-4 w-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-base font-bold text-ink">បញ្ចូលឈ្មោះអ្នកចូលរួម</p>
-              <p className="text-xs font-medium text-leaf">អាចបន្ថែមមុន ឬកំពុងថត</p>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                className="kh-input min-w-0 flex-1"
-                value={checkInName}
-                onChange={(event) => setCheckInName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    addCheckInName();
-                  }
-                }}
-                placeholder="ឧទាហរណ៍៖ ដារ៉ា"
-                disabled={state === "paused"}
-              />
-              <button
-                className="kh-button-primary h-11 px-4"
-                type="button"
-                onClick={addCheckInName}
-                disabled={state === "paused" || !checkInName.trim()}
-              >
-                បន្ថែម
-              </button>
-            </div>
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              ឈ្មោះដែលបន្ថែមនឹងត្រូវប្រើសម្រាប់សម្គាល់អ្នកនិយាយក្នុងអត្ថបទ។
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className="mb-4">
-        <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម (ស្រេចចិត្ត)</span>
-          <input
-            className="kh-input"
-            value={speakerNamesInput}
-            onChange={(event) => setSpeakerNamesInput(event.target.value)}
-            placeholder="ឧទាហរណ៍៖ ដារ៉ា, ចាន់ថា, សុខា"
-            disabled={state === "recording" || state === "paused"}
-          />
-          <p className="text-xs text-slate-500">
-            ជួយឲ្យការបំលែងជាអក្សរស្គាល់ឈ្មោះត្រឹមត្រូវជាងមុន (ដាក់ក្បាច់ខណ្ឌដោយសញ្ញា ,)
-          </p>
         </label>
       </div>
       <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">

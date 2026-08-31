@@ -34,15 +34,10 @@ export function TranscribeAudioButton({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [progressStep, setProgressStep] = useState(0);
-  const [speakerNamesInput, setSpeakerNamesInput] = useState(speakerNames.join("\n"));
   const autoStartedRef = useRef(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
-
-  useEffect(() => {
-    setSpeakerNamesInput(speakerNames.join("\n"));
-  }, [speakerNames]);
 
   const transcribe = useCallback(async () => {
     setPending(true);
@@ -56,7 +51,7 @@ export function TranscribeAudioButton({
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode, speakerNames: parseSpeakerNames(speakerNamesInput) })
+        body: JSON.stringify({ languageMode })
       });
       const data = await readJsonResponse<{ transcript?: string; error?: string; message?: string; partial?: boolean }>(response);
       if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
@@ -85,7 +80,7 @@ export function TranscribeAudioButton({
       window.clearInterval(progressTimer);
       setPending(false);
     }
-  }, [hasTranscript, languageMode, meetingId, onTranscribed, router, speakerNamesInput]);
+  }, [hasTranscript, languageMode, meetingId, onTranscribed, router]);
 
   useEffect(() => {
     if (!autoStart || autoStartedRef.current || pending || hasTranscript) return;
@@ -113,17 +108,6 @@ export function TranscribeAudioButton({
           </p>
         ) : null}
       </div>
-
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold text-slate-600">Speaker names</span>
-        <textarea
-          className="kh-input min-h-20 text-sm"
-          value={speakerNamesInput}
-          onChange={(event) => setSpeakerNamesInput(event.target.value)}
-          placeholder={"ដារ៉ា\nសុខា\nចាន់ថា"}
-          disabled={pending}
-        />
-      </label>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
@@ -174,16 +158,5 @@ export function TranscribeAudioButton({
       ) : null}
     </div>
   );
-}
-
-function parseSpeakerNames(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(/[,，\n]/)
-        .map((name) => name.trim())
-        .filter(Boolean)
-    )
-  ].slice(0, 100);
 }
 
