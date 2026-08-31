@@ -473,8 +473,9 @@ export async function transcribeAudio(
   languageMode: TranscriptionLanguageMode = "km",
   options: TranscriptionOptions = {}
 ) {
-  // TODO: Real-time speech-to-text streaming.
-  // TODO: Speaker detection.
+  // Live calls use this same path in small, bounded chunks, while saved
+  // recordings run a final refine pass that can infer self-introduced speaker
+  // names when the user did not provide labels up front.
   if (!hasOpenRouterKey()) return "";
   if (audioFile.size > openRouterAudioLimit) {
     throw new Error(

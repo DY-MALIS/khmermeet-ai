@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, FileSpreadsheet, FileText, Presentation } from "lucide-react";
+import type JSZip from "jszip";
 import { useState } from "react";
 import { summaryHeadings } from "@/lib/ai/prompts/summaryPrompt";
 
@@ -25,6 +26,72 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+type SlideContent = { title: string; lines: string[]; titleSlide?: boolean };
+type JSZipCtor = typeof JSZip;
+
+function xmlEscape(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function textRun(text: string, size: number, color = "17202A", bold = false) {
+  return `<a:r><a:rPr lang="km-KH" sz="${size}"${bold ? ' b="1"' : ""}><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="${xmlEscape(KHMER_FONT)}"/><a:ea typeface="${xmlEscape(KHMER_FONT)}"/></a:rPr><a:t>${xmlEscape(text)}</a:t></a:r>`;
+}
+
+function textShape(id: number, name: string, x: number, y: number, cx: number, cy: number, paragraphs: string[], options: { size: number; color?: string; bold?: boolean; center?: boolean }) {
+  const body = paragraphs
+    .map((paragraph) => `<a:p><a:pPr${options.center ? ' algn="ctr"' : ""}/>${textRun(paragraph, options.size, options.color, options.bold)}</a:p>`)
+    .join("");
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square" anchor="mid"/><a:lstStyle/>${body}</p:txBody></p:sp>`;
+}
+
+function slideXml(slide: SlideContent, index: number) {
+  const titleColor = slide.titleSlide ? "FFFFFF" : "18745F";
+  const background = slide.titleSlide ? "18745F" : "FFFFFF";
+  const titleY = slide.titleSlide ? 1550000 : 520000;
+  const titleSize = slide.titleSlide ? 3400 : 2400;
+  const lines = slide.lines.length ? slide.lines : [""];
+  const lineSize = slide.titleSlide ? 1500 : 1450;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:bg><p:bgPr><a:solidFill><a:srgbClr val="${background}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      ${textShape(2, "Title", 650000, titleY, 7850000, 950000, [slide.title], { size: titleSize, color: titleColor, bold: true, center: slide.titleSlide })}
+      ${textShape(3, "Content", 850000, slide.titleSlide ? 3000000 : 1500000, 7700000, 3100000, lines, { size: lineSize, color: slide.titleSlide ? "FFFFFF" : "17202A", center: slide.titleSlide })}
+      ${textShape(4, "Footer", 650000, 4800000, 7850000, 300000, [`KhmerMeet AI  ${String(index + 1).padStart(2, "0")}`], { size: 850, color: slide.titleSlide ? "FFFFFF" : "5B6672", center: true })}
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>`;
+}
+
+async function buildPptx(JSZip: JSZipCtor, slides: SlideContent[]) {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides.map((_, index) => `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join("")}</Types>`);
+  zip.folder("_rels")?.file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>`);
+  zip.folder("ppt")?.file("presentation.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slides.map((_, index) => `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`).join("")}</p:sldIdLst><p:sldSz cx="9144000" cy="5143500" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
+  zip.folder("ppt")?.folder("_rels")?.file("presentation.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>${slides.map((_, index) => `<Relationship Id="rId${index + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${index + 1}.xml"/>`).join("")}</Relationships>`);
+  zip.folder("ppt")?.folder("slides");
+  zip.folder("ppt")?.folder("slides")?.folder("_rels");
+  slides.forEach((slide, index) => {
+    zip.file(`ppt/slides/slide${index + 1}.xml`, slideXml(slide, index));
+    zip.file(`ppt/slides/_rels/slide${index + 1}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
+  });
+  zip.file("ppt/slideMasters/slideMaster1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`);
+  zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`);
+  zip.file("ppt/slideLayouts/slideLayout1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld></p:sldLayout>`);
+  zip.file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`);
+  zip.file("ppt/theme/theme1.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="KhmerMeet"><a:themeElements><a:clrScheme name="KhmerMeet"><a:dk1><a:srgbClr val="17202A"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="18745F"/></a:dk2><a:lt2><a:srgbClr val="F7F5F0"/></a:lt2><a:accent1><a:srgbClr val="18745F"/></a:accent1><a:accent2><a:srgbClr val="D8912A"/></a:accent2><a:accent3><a:srgbClr val="2E86AB"/></a:accent3><a:accent4><a:srgbClr val="5B6672"/></a:accent4><a:accent5><a:srgbClr val="E7F3EF"/></a:accent5><a:accent6><a:srgbClr val="FBF0DE"/></a:accent6><a:hlink><a:srgbClr val="2E86AB"/></a:hlink><a:folHlink><a:srgbClr val="18745F"/></a:folHlink></a:clrScheme><a:fontScheme name="KhmerMeet"><a:majorFont><a:latin typeface="${xmlEscape(KHMER_FONT)}"/><a:ea typeface="${xmlEscape(KHMER_FONT)}"/><a:cs typeface="${xmlEscape(KHMER_FONT)}"/></a:majorFont><a:minorFont><a:latin typeface="${xmlEscape(KHMER_FONT)}"/><a:ea typeface="${xmlEscape(KHMER_FONT)}"/><a:cs typeface="${xmlEscape(KHMER_FONT)}"/></a:minorFont></a:fontScheme><a:fmtScheme name="KhmerMeet"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+  return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
 }
 
 export function ExportButton({
@@ -151,54 +218,15 @@ export function ExportButton({
   async function exportSlides() {
     setExportingSlides(true);
     try {
-      const PptxGenJS = (await import("pptxgenjs")).default;
-      const pptx = new PptxGenJS();
-      pptx.defineLayout({ name: "KH_16x9", width: 10, height: 5.63 });
-      pptx.layout = "KH_16x9";
-      pptx.theme = { headFontFace: KHMER_FONT, bodyFontFace: KHMER_FONT };
-      type PSlide = ReturnType<typeof pptx.addSlide>;
-
-      // Brand palette, matching the app's own leaf/saffron/sky/ink colors,
-      // plus light tints for card/pill backgrounds so accents read as flat
-      // modern fills instead of the old plain-bullet look.
-      const BRAND = {
-        leaf: "18745F",
-        leafLight: "E7F3EF",
-        saffron: "D8912A",
-        saffronLight: "FBF0DE",
-        sky: "2E86AB",
-        skyLight: "E7F1F7",
-        ink: "17202A",
-        slate: "5B6672",
-        line: "E7EAED",
-        paper: "F7F5F0"
-      };
-      const priorityColor: Record<string, string> = { high: "C0392B", medium: BRAND.saffron, low: BRAND.sky };
-      const priorityTint: Record<string, string> = { high: "FBEAE8", medium: BRAND.saffronLight, low: BRAND.skyLight };
-      let pageNumber = 0;
-
-      // Slide language follows the meeting's own language - "km-en" (mixed,
-      // preserve-as-spoken) defaults to Khmer labels since that's this app's
-      // primary language.
+      const JSZip = (await import("jszip")).default;
       const isEnglish = language === "en";
       const labels = {
         summary: isEnglish ? "Summary" : "សង្ខេប (Summary)",
-        summaryPage: isEnglish ? "Summary" : "សង្ខេប",
         tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
-        tasksPage: isEnglish ? "Tasks" : "កិច្ចការ",
         noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។",
         outline: isEnglish ? "Outline" : "មាតិកា (Outline)"
       };
 
-      // The AI summary text already comes back structured as
-      // "heading\n- bullet\n- bullet\n\nheading\n- bullet..." (see
-      // buildSummaryPrompt) - split it into named sections instead of
-      // dumping every line as one flat bullet list, so the deck reads like
-      // a lesson (chapter title + sub-points) instead of a wall of bullets.
-      // A line only starts a new section if it's one of the prompt's own
-      // known heading strings - anything else (including the overview's
-      // plain paragraph, which has no "- " prefix) is content for whichever
-      // section is currently open, not a new section title of its own.
       const knownHeadings = new Set(Object.values(summaryHeadings[language === "en" ? "en" : "km"]));
       function parseSummarySections(text: string): { title: string; bullets: string[] }[] {
         const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -223,250 +251,45 @@ export function ExportButton({
           : [{ title: labels.summary, bullets: [labels.noSummary] }];
       }
 
-      function addLogoMark(slide: PSlide, x: number, y: number, size: number, fill: string, textColor: string) {
-        slide.addShape("roundRect", { x, y, w: size, h: size, rectRadius: size * 0.28, fill: { color: fill }, line: { type: "none" } });
-        slide.addText("K", {
-          x,
-          y,
-          w: size,
-          h: size,
-          align: "center",
-          valign: "middle",
-          bold: true,
-          color: textColor,
-          fontSize: size * 34,
-          fontFace: KHMER_FONT
-        });
-      }
-
-      function addFooter(slide: PSlide) {
-        pageNumber += 1;
-        slide.addShape("line", { x: 0.4, y: 5.22, w: 9.2, h: 0, line: { color: BRAND.line, width: 0.75 } });
-        slide.addShape("ellipse", { x: 0.4, y: 5.33, w: 0.07, h: 0.07, fill: { color: BRAND.saffron }, line: { type: "none" } });
-        slide.addText("KhmerMeet AI", { x: 0.54, y: 5.28, w: 3, h: 0.28, fontSize: 9, color: BRAND.slate, fontFace: KHMER_FONT });
-        slide.addShape("roundRect", { x: 9.05, y: 5.27, w: 0.45, h: 0.24, rectRadius: 0.12, fill: { color: BRAND.leafLight }, line: { type: "none" } });
-        slide.addText(String(pageNumber).padStart(2, "0"), {
-          x: 9.05,
-          y: 5.27,
-          w: 0.45,
-          h: 0.24,
-          fontSize: 9,
-          bold: true,
-          color: BRAND.leaf,
-          align: "center",
-          valign: "middle",
-          fontFace: KHMER_FONT
-        });
-      }
-
-      // Chapter slides carry a small colored "eyebrow" pill above the title
-      // instead of the old inline "01  Title" run - reads as a modern deck,
-      // and the title itself gets room to be bigger and bolder on its own line.
-      function addHeader(slide: PSlide, headerTitle: string, chapterNumber?: number, eyebrow?: string) {
-        slide.background = { color: "FFFFFF" };
-        slide.addShape("rect", { x: 0, y: 0, w: 6.2, h: 0.09, fill: { color: BRAND.leaf }, line: { type: "none" } });
-        slide.addShape("rect", { x: 6.2, y: 0, w: 3.8, h: 0.09, fill: { color: BRAND.saffron }, line: { type: "none" } });
-        addLogoMark(slide, 0.4, 0.32, 0.4, BRAND.leaf, "FFFFFF");
-
-        if (chapterNumber) {
-          const pillLabel = `${String(chapterNumber).padStart(2, "0")}${eyebrow ? `   ·   ${eyebrow}` : ""}`;
-          const pillWidth = Math.min(6.5, 0.55 + pillLabel.length * 0.09);
-          slide.addShape("roundRect", {
-            x: 0.95,
-            y: 0.32,
-            w: pillWidth,
-            h: 0.3,
-            rectRadius: 0.15,
-            fill: { color: BRAND.saffronLight },
-            line: { type: "none" }
-          });
-          slide.addText(pillLabel, {
-            x: 0.95,
-            y: 0.32,
-            w: pillWidth,
-            h: 0.3,
-            fontSize: 11,
-            bold: true,
-            color: BRAND.saffron,
-            align: "center",
-            valign: "middle",
-            fontFace: KHMER_FONT
-          });
-          slide.addText(headerTitle, { x: 0.95, y: 0.68, w: 8.5, h: 0.55, fontSize: 25, bold: true, color: BRAND.ink, fontFace: KHMER_FONT });
-        } else {
-          slide.addText(headerTitle, { x: 0.95, y: 0.34, w: 8.5, h: 0.55, fontSize: 25, bold: true, color: BRAND.ink, fontFace: KHMER_FONT, valign: "middle" });
-        }
-        addFooter(slide);
-      }
-
-      // Title slide - large centered title over the brand color with a
-      // couple of soft geometric accents instead of a flat block of color,
-      // and a small date pill instead of plain floating text.
-      const titleSlide = pptx.addSlide();
-      titleSlide.background = { color: BRAND.leaf };
-      titleSlide.addShape("ellipse", { x: 7.6, y: -1.4, w: 3.6, h: 3.6, fill: { color: "FFFFFF", transparency: 92 }, line: { type: "none" } });
-      titleSlide.addShape("ellipse", { x: -1.2, y: 3.9, w: 2.6, h: 2.6, fill: { color: "FFFFFF", transparency: 92 }, line: { type: "none" } });
-      addLogoMark(titleSlide, 4.55, 0.95, 0.9, "FFFFFF", BRAND.leaf);
-      titleSlide.addText(title, {
-        x: 0.6,
-        y: 2.15,
-        w: 8.8,
-        h: 1.3,
-        fontSize: 32,
-        bold: true,
-        align: "center",
-        valign: "middle",
-        color: "FFFFFF",
-        fontFace: KHMER_FONT
-      });
-      titleSlide.addShape("rect", { x: 4.55, y: 3.55, w: 0.9, h: 0.025, fill: { color: BRAND.saffron }, line: { type: "none" } });
-      titleSlide.addShape("roundRect", { x: 3.75, y: 3.75, w: 2.5, h: 0.4, rectRadius: 0.2, fill: { color: "FFFFFF", transparency: 88 }, line: { type: "none" } });
-      titleSlide.addText(new Date().toLocaleDateString(), {
-        x: 3.75,
-        y: 3.75,
-        w: 2.5,
-        h: 0.4,
-        fontSize: 13,
-        align: "center",
-        valign: "middle",
-        color: "FFFFFF",
-        fontFace: KHMER_FONT
-      });
-
-      // Summary sections - each becomes its own "chapter" slide (title +
-      // sub-bullets), lesson-style, instead of one flat bullet dump. Each
-      // chapter is named after the meeting itself (e.g. "plan"), not a
-      // generic "AI Summary" label - the section name (Summary/Tasks/etc.)
-      // is kept as the eyebrow pill so chapters stay distinguishable.
       const sections = parseSummarySections(summary ?? "");
-      const chapterName = (sectionLabel: string) => `${title} — ${sectionLabel}`;
+      const chapterName = (sectionLabel: string) => `${title} - ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
-      const contentTop = 1.55;
-      const contentHeight = 3.6;
-
-      // Outline slide - numbered pill badges per row instead of a flat
-      // "01  text" string, so it reads like a modern deck's table of contents.
+      const slides: { title: string; lines: string[]; titleSlide?: boolean }[] = [
+        { title, lines: [new Date().toLocaleDateString(), "KhmerMeet AI"], titleSlide: true }
+      ];
       if (outlineEntries.length > 1) {
-        const outlineSlide = pptx.addSlide();
-        addHeader(outlineSlide, labels.outline);
-        const rowHeight = Math.min(0.62, contentHeight / outlineEntries.length);
-        outlineEntries.forEach((entryTitle, index) => {
-          const y = contentTop + index * rowHeight;
-          outlineSlide.addShape("roundRect", {
-            x: 0.5,
-            y: y + 0.03,
-            w: 0.42,
-            h: 0.42,
-            rectRadius: 0.1,
-            fill: { color: index % 2 === 0 ? BRAND.leafLight : BRAND.saffronLight },
-            line: { type: "none" }
-          });
-          outlineSlide.addText(String(index + 1).padStart(2, "0"), {
-            x: 0.5,
-            y: y + 0.03,
-            w: 0.42,
-            h: 0.42,
-            fontSize: 13,
-            bold: true,
-            align: "center",
-            valign: "middle",
-            color: index % 2 === 0 ? BRAND.leaf : BRAND.saffron,
-            fontFace: KHMER_FONT
-          });
-          outlineSlide.addText(chapterName(entryTitle), {
-            x: 1.1,
-            y,
-            w: 8.1,
-            h: 0.48,
-            fontSize: 16,
-            bold: true,
-            valign: "middle",
-            color: BRAND.ink,
-            fontFace: KHMER_FONT
-          });
-          if (index < outlineEntries.length - 1) {
-            outlineSlide.addShape("line", { x: 1.1, y: y + rowHeight - 0.03, w: 8.1, h: 0, line: { color: BRAND.line, width: 0.75 } });
-          }
-        });
+        slides.push({ title: labels.outline, lines: outlineEntries.map((entry, index) => `${index + 1}. ${chapterName(entry)}`) });
       }
-
-      let chapter = 0;
       const bulletsPerSlide = 7;
       for (const section of sections) {
-        chapter += 1;
         const pageCount = Math.max(1, Math.ceil(section.bullets.length / bulletsPerSlide));
         for (let p = 0; p < pageCount; p += 1) {
-          const slide = pptx.addSlide();
           const sectionLabel = pageCount > 1 ? `(${p + 1}/${pageCount})` : "";
-          addHeader(slide, chapterName(section.title), chapter, sectionLabel || labels.summaryPage);
           const pageBullets = section.bullets.slice(p * bulletsPerSlide, (p + 1) * bulletsPerSlide);
-          slide.addText(
-            (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => ({
-              text: line,
-              options: {
-                bullet: { indent: 20, characterCode: "25AA", color: BRAND.saffron },
-                color: BRAND.ink,
-                fontFace: KHMER_FONT,
-                breakLine: true,
-                paraSpaceAfter: 14,
-                lineSpacing: 25
-              }
-            })),
-            { x: 0.55, y: contentTop, w: 8.9, h: contentHeight, fontSize: 17, valign: "top" }
-          );
+          slides.push({
+            title: [chapterName(section.title), sectionLabel].filter(Boolean).join(" "),
+            lines: (pageBullets.length ? pageBullets : [labels.noSummary]).map((line) => `• ${line}`)
+          });
         }
       }
 
-      // Tasks slide(s) - each task is its own rounded card with a colored
-      // priority stripe instead of a plain colored bullet line, closer to a
-      // kanban row than a text dump.
       if (tasks.length) {
-        chapter += 1;
         const tasksPerSlide = 7;
         const taskPageCount = Math.ceil(tasks.length / tasksPerSlide);
         for (let i = 0; i < taskPageCount; i += 1) {
-          const slide = pptx.addSlide();
           const tasksLabel = taskPageCount > 1 ? `(${i + 1}/${taskPageCount})` : "";
-          addHeader(slide, chapterName(labels.tasksPage), chapter, tasksLabel || labels.tasksPage);
           const pageTasks = tasks.slice(i * tasksPerSlide, (i + 1) * tasksPerSlide);
-          const cardGap = 0.09;
-          const cardHeight = Math.min(0.5, (contentHeight - (pageTasks.length - 1) * cardGap) / pageTasks.length);
-          pageTasks.forEach((task, index) => {
-            const y = contentTop + index * (cardHeight + cardGap);
-            const tint = priorityTint[task.priority] ?? "F1F3F5";
-            const accent = priorityColor[task.priority] ?? BRAND.ink;
-            const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
-
-            slide.addShape("roundRect", { x: 0.55, y, w: 8.9, h: cardHeight, rectRadius: 0.08, fill: { color: tint }, line: { type: "none" } });
-            slide.addShape("roundRect", { x: 0.55, y, w: 0.09, h: cardHeight, rectRadius: 0.045, fill: { color: accent }, line: { type: "none" } });
-            slide.addText(task.title, {
-              x: 0.85,
-              y: y + (meta.length ? 0.04 : 0),
-              w: 8.3,
-              h: meta.length ? cardHeight * 0.6 : cardHeight,
-              fontSize: 14,
-              bold: true,
-              valign: meta.length ? "bottom" : "middle",
-              color: BRAND.ink,
-              fontFace: KHMER_FONT
-            });
-            if (meta.length) {
-              slide.addText(meta.join("   ·   "), {
-                x: 0.85,
-                y: y + cardHeight * 0.55,
-                w: 8.3,
-                h: cardHeight * 0.4,
-                fontSize: 10.5,
-                valign: "top",
-                color: BRAND.slate,
-                fontFace: KHMER_FONT
-              });
-            }
+          slides.push({
+            title: [chapterName(labels.tasks), tasksLabel].filter(Boolean).join(" "),
+            lines: pageTasks.map((task) => {
+              const meta = [task.assigneeName, task.deadline ? task.deadline.toISOString().slice(0, 10) : null].filter(Boolean);
+              return `• ${task.title}${meta.length ? ` (${meta.join(", ")})` : ""} - ${task.priority}/${task.status}`;
+            })
           });
         }
       }
 
-      const blob = (await pptx.write({ outputType: "blob" })) as Blob;
+      const blob = await buildPptx(JSZip, slides);
       downloadBlob(blob, `${safeTitle}.pptx`);
     } finally {
       setExportingSlides(false);

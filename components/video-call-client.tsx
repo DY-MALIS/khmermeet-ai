@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 function CallLoading() {
@@ -18,11 +19,19 @@ function CallLoadFallback() {
         <button className="kh-button-primary" type="button" onClick={() => window.location.reload()}>
           Refresh
         </button>
-        <button className="kh-button-secondary" type="button" onClick={() => window.location.assign("/dashboard")}>
-          Back to dashboard
-        </button>
+        <BackToDashboardButton />
       </div>
     </div>
+  );
+}
+
+function BackToDashboardButton() {
+  const router = useRouter();
+
+  return (
+    <button className="kh-button-secondary" type="button" onClick={() => router.push("/dashboard")}>
+      Back to dashboard
+    </button>
   );
 }
 
@@ -64,9 +73,7 @@ class VideoCallErrorBoundary extends Component<
             <button className="kh-button-primary" type="button" onClick={() => window.location.reload()}>
               Try again
             </button>
-            <button className="kh-button-secondary" type="button" onClick={() => window.location.assign("/dashboard")}>
-              Back to dashboard
-            </button>
+            <BackToDashboardButton />
           </div>
         </div>
       );

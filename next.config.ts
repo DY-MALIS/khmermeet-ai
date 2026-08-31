@@ -17,6 +17,7 @@ if (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("[SENSITIVE]"
 }
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb"
@@ -39,28 +40,6 @@ const nextConfig: NextConfig = {
     "/api/meetings/[id]/transcribe": ["./node_modules/ffmpeg-static/**"],
     "/api/meetings/[id]/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**"],
     "/api/meetings/[id]/merge-transcript": ["./node_modules/ffmpeg-static/**"]
-  },
-  webpack: (config, { isServer, webpack }) => {
-    // pptxgenjs's ESM build contains guarded `require("node:fs"/"node:https")`
-    // calls for a Node-only codepath that never runs in the browser. Webpack
-    // still tries to statically resolve the "node:" URI scheme and fails, so
-    // ignore those specifiers outright for the client bundle instead of
-    // resolving them. (Do NOT alias to pptxgenjs's prebuilt UMD "browser
-    // bundle" instead - its export shape doesn't match `.default` cleanly
-    // and it silently breaks PptxGenJS's constructor at runtime.)
-    if (!isServer) {
-      config.plugins.push(new webpack.IgnorePlugin({ resourceRegExp: /^node:/ }));
-      // Vercel CLI masks sensitive pulled env vars as "[SENSITIVE]" for local
-      // builds. next-auth/react parses NEXTAUTH_URL at import time, so keep the
-      // browser bundle on same-origin auth URLs and let the server use the real
-      // runtime value.
-      config.plugins.push(
-        new webpack.DefinePlugin({
-          "process.env.NEXTAUTH_URL": JSON.stringify(authUrl)
-        })
-      );
-    }
-    return config;
   },
   async headers() {
     return [

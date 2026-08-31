@@ -246,7 +246,7 @@ export async function prepareAudioVariantsForTranscription(
 
     const prepared: Array<{ buffer: Buffer; mimeType: string; filename: string }> = [];
     for (const variant of variants) {
-      const outputPath = path.join(tmpDir, variant.filename);
+      const outputPath = path.join(/* turbopackIgnore: true */ tmpDir, variant.filename);
       await execFileAsync(
         ffmpegPath,
         [
@@ -264,7 +264,7 @@ export async function prepareAudioVariantsForTranscription(
         ],
         { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
       );
-      const output = await readFile(outputPath);
+      const output = await readFile(/* turbopackIgnore: true */ outputPath);
       if (output.length >= 1000 && output.length <= maxBytes) {
         prepared.push({ buffer: output, mimeType: "audio/mp4", filename: variant.filename });
       }
@@ -276,5 +276,4 @@ export async function prepareAudioVariantsForTranscription(
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
-
 

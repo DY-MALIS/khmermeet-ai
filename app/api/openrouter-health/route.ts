@@ -92,8 +92,6 @@ function getDiagnostics() {
   return {
     hasKey: Boolean(key),
     keyFingerprint: key ? createHash("sha256").update(key).digest("hex").slice(0, 10) : null,
-    keyEnding: key ? `...${key.slice(-4)}` : null,
-    keyLength: key.length || 0,
     textModel: textModel(),
     transcriptionModelKm: transcriptionModel("km"),
     transcriptionModelEn: transcriptionModel("en"),

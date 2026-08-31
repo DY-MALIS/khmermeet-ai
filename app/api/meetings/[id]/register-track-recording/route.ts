@@ -28,16 +28,17 @@ function isRecentLiveMeeting(meeting: { status: string; createdAt: Date } | null
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const meeting = await prisma.meeting.findUnique({ where: { id } });
-    if (!meeting || !isRecentLiveMeeting(meeting)) {
-      return NextResponse.json({ error: "No live recording found for this meeting." }, { status: 404 });
-    }
-
     const body = await request.json().catch(() => ({}));
     const session = await getServerSession(authOptions);
     if (!session?.user?.id && !verifyInviteToken(body.room, body.inviteToken)) {
       return NextResponse.json({ error: "Invite link is required to register this recording." }, { status: 401 });
     }
+
+    const meeting = await prisma.meeting.findUnique({ where: { id } });
+    if (!meeting || !isRecentLiveMeeting(meeting)) {
+      return NextResponse.json({ error: "No live recording found for this meeting." }, { status: 404 });
+    }
+
     const speakerIdentity = String(body.speakerIdentity ?? "").trim();
     const speakerName = String(body.speakerName ?? "").trim();
     const audioUrl = String(body.audioUrl ?? "").trim();

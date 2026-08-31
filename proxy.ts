@@ -10,16 +10,20 @@ const PUBLIC_API_PREFIXES = [
   "/api/health",
   "/api/openrouter-health",
   "/api/livekit-token",
+  "/api/uploads/direct-init",
   "/api/register",
   "/api/forgot-password",
   "/api/reset-password"
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
 
   if (isApi && PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+  if (isApi && /^\/api\/meetings\/[^/]+\/register-track-recording$/.test(pathname)) {
     return NextResponse.next();
   }
   if (pathname === "/meetings/call" && request.nextUrl.searchParams.has("room") && request.nextUrl.searchParams.has("invite")) {
