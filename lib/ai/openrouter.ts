@@ -243,12 +243,13 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-2.5-pro";
-// Accuracy beats speed for meeting transcripts: users need the model to
-// actually listen for Khmer/English mixed speech, names, dates, and quiet
-// replies instead of returning fluent but wrong text. Keep 2.5-pro as both
-// the default multimodal listener and the safety-net retry unless an
-// environment override intentionally changes it.
+// Cost-driven choice (owner decision, 2026-08-31): flash is cheaper than
+// pro, so it's the default listener. flash has a confirmed ~1/6 empty-
+// result rate on real audio, so pro stays wired as the safety-net retry
+// (see transcribeOpenRouterAudioViaChat) - flash runs first for the cost
+// saving, and pro only gets called (and only gets paid for) on the
+// fraction of requests where flash comes back empty.
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
 const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-2.5-pro";
 
 function multimodalTranscriptionModel() {
