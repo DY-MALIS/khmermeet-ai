@@ -108,6 +108,36 @@ function cleanTranscriptionText(text: string) {
   return rejoinKhmerWordSpacing(cleaned);
 }
 
+// Confirmed live: for a known participant name with an internal space (a
+// name+title combo, e.g. "លោកគ្រូ សុភាព"), the transcription model doesn't
+// reliably preserve that internal space when it writes out the label
+// itself, and separately, sometimes restates a variant of the same name
+// again immediately after the real label ("លោកគ្រូសុភាព: លោកគ្រូសុភាព: <real
+// speech>", spacing inconsistent between the two occurrences and across
+// different chunks/calls) - reproduced repeatedly across live calls on the
+// same real recording, so both are handled by whitespace-insensitive
+// comparison here rather than a strict regex or a prompt-wording fix
+// (an explicit instruction against the restatement did not stop the model
+// from doing it in testing).
+function normalizeForNameCompare(value: string) {
+  return value.replace(/\s+/g, "").trim();
+}
+
+function extractLeadingLabel(line: string) {
+  const match = line.match(/^([^\n:：]{1,60})[:：]\s*/);
+  if (!match) return null;
+  return { normalized: normalizeForNameCompare(match[1]), matchedLength: match[0].length };
+}
+
+function stripDuplicateLeadingName(body: string, knownSpeaker: string) {
+  const normalizedName = normalizeForNameCompare(knownSpeaker);
+  const leading = extractLeadingLabel(body);
+  if (leading && leading.normalized && leading.normalized === normalizedName) {
+    return body.slice(leading.matchedLength).trim();
+  }
+  return body.trim();
+}
+
 export function applyKnownSpeakerLabels(transcript: string, speakerNames: string[]) {
   const names = normalizeSpeakerNames(speakerNames);
   if (!names.length || !transcript.trim()) return transcript;
@@ -128,15 +158,14 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
         return `${speakerName}: ${numberedMatch[2].trim()}`;
       }
 
-      const knownSpeaker = names.find((name) =>
-        new RegExp(`^${escapeRegExp(name)}\\s*[:：]`, "i").test(line)
-      );
-      if (knownSpeaker) {
+      const leadingLabel = extractLeadingLabel(line);
+      const knownSpeaker = leadingLabel
+        ? names.find((name) => normalizeForNameCompare(name) === leadingLabel.normalized)
+        : undefined;
+      if (knownSpeaker && leadingLabel) {
         lastSpeaker = knownSpeaker;
-        return line.replace(
-          new RegExp(`^${escapeRegExp(knownSpeaker)}\\s*[:：]\\s*`, "i"),
-          `${knownSpeaker}: `
-        );
+        const body = line.slice(leadingLabel.matchedLength);
+        return `${knownSpeaker}: ${stripDuplicateLeadingName(body, knownSpeaker)}`;
       }
 
       const unidentifiedMatch = line.match(
