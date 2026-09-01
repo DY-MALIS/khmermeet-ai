@@ -113,12 +113,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       )
     ];
     const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
+    const hasChronologicalSpeakerSegments = segments.some(
+      (segment) => segment.text.trim() && !segment.audioUrl && segment.endMs > segment.startMs
+    );
     // Per-speaker stored recordings are each full-call files starting at
     // 0ms; appending them would group one speaker's whole call before the
-    // next. The mixed backup is the chronological source of truth when
-    // several speakers are present.
+    // next. LiveKit server track segments are already sliced by time and
+    // carry the registered participant name, so they are the preferred
+    // source. The mixed backup is only the fallback when those timed
+    // per-speaker segments are not available.
     const shouldUseMixedAudio =
       Boolean(meeting.audioUrl) &&
+      !hasChronologicalSpeakerSegments &&
       (speakerNames.length > 1 || usableSegmentCount < 2 || usableSegmentCount < speakerNames.length);
 
     const mixedAudioBudget = workDeadline - Date.now() - REFINE_RESERVE_MS;
