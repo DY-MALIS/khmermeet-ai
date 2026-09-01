@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import {
   generateOpenRouterContent,
+  multimodalTranscriptionModel,
+  multimodalTranscriptionSafetyNetModel,
   OpenRouterApiError,
   textModel,
   transcribeOpenRouterAudio,
@@ -93,6 +95,8 @@ function getDiagnostics() {
     hasKey: Boolean(key),
     keyFingerprint: key ? createHash("sha256").update(key).digest("hex").slice(0, 10) : null,
     textModel: textModel(),
+    multimodalTranscriptionModel: multimodalTranscriptionModel(),
+    multimodalTranscriptionSafetyNetModel: multimodalTranscriptionSafetyNetModel() || null,
     transcriptionModelKm: transcriptionModel("km"),
     transcriptionModelEn: transcriptionModel("en"),
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",

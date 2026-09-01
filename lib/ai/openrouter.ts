@@ -250,10 +250,14 @@ export async function transcribeOpenRouterAudio(
 // only adds ~36% versus flash-only (pro is billed on that fraction of
 // calls only), while avoiding pro-only cost entirely on the rest.
 const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
-const TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-2.5-pro";
+const DEFAULT_TRANSCRIPTION_SAFETY_NET_MODEL = "";
 
-function multimodalTranscriptionModel() {
+export function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;
+}
+
+export function multimodalTranscriptionSafetyNetModel() {
+  return process.env.OPEN_ROUTER_TRANSCRIBE_SAFETY_NET_MODEL?.trim() || DEFAULT_TRANSCRIPTION_SAFETY_NET_MODEL;
 }
 
 function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: string[] = [], singleSpeaker = false) {
@@ -424,6 +428,7 @@ export async function transcribeOpenRouterAudioViaChat(
   // real timeout would already have thrown, not returned empty).
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const primaryModel = multimodalTranscriptionModel();
+  const safetyNetModel = multimodalTranscriptionSafetyNetModel();
   const result = await callMultimodalTranscription(
     primaryModel,
     audio,
@@ -436,7 +441,7 @@ export async function transcribeOpenRouterAudioViaChat(
   );
   if (hasUsableTranscript(result)) return result;
 
-  if (result || primaryModel === TRANSCRIPTION_SAFETY_NET_MODEL) return result;
+  if (result || !safetyNetModel || primaryModel === safetyNetModel) return result;
 
   const remaining = deadline - Date.now();
   if (remaining < 8000) return result;
@@ -444,7 +449,7 @@ export async function transcribeOpenRouterAudioViaChat(
   // Primary model came back empty on audio the caller believes has speech -
   // give the safety-net model one shot with whatever time budget is left.
   return callMultimodalTranscription(
-    TRANSCRIPTION_SAFETY_NET_MODEL,
+    safetyNetModel,
     audio,
     mimeType,
     filename,
