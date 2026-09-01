@@ -1922,15 +1922,15 @@ function LiveKitMeetingAgent({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
-            className="kh-input h-10 w-auto min-w-36 py-1 text-sm"
+            className="kh-input h-10 w-auto min-w-64 py-1 text-sm"
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={recording || Boolean(serverRecording) || Boolean(egressRecording) || saving}
             title="Choose how OpenRouter should transcribe the saved meeting audio."
           >
-            <option value="km-en">ខ្មែរ + English</option>
-            <option value="km">ខ្មែរ</option>
-            <option value="en">English</option>
+            <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
+            <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
+            <option value="en">English only (translate all to English)</option>
           </select>
           <span className={cn("kh-badge", recording || serverRecording || egressRecording ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600")}>
             {recording || serverRecording || egressRecording ? `Recording ${formatTime(seconds)}` : "Ready"}

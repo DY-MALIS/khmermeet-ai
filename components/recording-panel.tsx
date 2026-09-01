@@ -479,9 +479,9 @@ export function RecordingPanel() {
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="km-en">ខ្មែរ + English</option>
-            <option value="km">ខ្មែរ</option>
-            <option value="en">English</option>
+            <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
+            <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
+            <option value="en">English only (translate all to English)</option>
           </select>
         </label>
       </div>

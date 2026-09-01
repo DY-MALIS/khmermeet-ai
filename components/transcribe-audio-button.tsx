@@ -100,7 +100,7 @@ export function TranscribeAudioButton({
             : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          ជ្រើសភាសា transcript៖ ខ្មែរ, English, ឬ ខ្មែរ + English។
+          ជ្រើសរបៀប transcript៖ ខ្មែរ/English បកគ្រប់ពាក្យទៅភាសានោះ។ ខ្មែរ + English រក្សាភាសាតាមដែលនិយាយ។
         </p>
         {speakerNames.length ? (
           <p className="mt-1 text-xs leading-5 text-leaf">
@@ -116,9 +116,9 @@ export function TranscribeAudioButton({
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km-en">ខ្មែរ + English</option>
-          <option value="km">ខ្មែរ</option>
-          <option value="en">English</option>
+          <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
+          <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
+          <option value="en">English only (translate all to English)</option>
         </select>
         <button className="kh-button-primary sm:w-auto" disabled={pending} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
