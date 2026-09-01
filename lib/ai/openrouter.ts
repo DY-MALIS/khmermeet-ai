@@ -270,7 +270,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
       ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
       : language === "en"
         ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
-        : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate.";
+        : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate. Khmer speech must remain Khmer script. English speech must remain English. Do not translate Khmer speech into English to create a mixed transcript, and do not translate English speech into Khmer.";
   // Speaker names used to only reach the later text-only refine pass, which
   // can't re-listen to the audio - by then a misheard name (confirmed live:
   // "ដារ៉ា" heard as "តារា") is already locked into the transcript as wrong
@@ -467,7 +467,7 @@ export async function refineOpenRouterTranscript(
       ? "The selected output language is Khmer. Return Khmer script only, using modern, natural Khmer as used in Cambodia today. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Do not rewrite into archaic, overly literary, or old-fashioned Khmer unless the speaker actually used that wording. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
       : language === "en"
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
-        : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language.";
+        : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language. Khmer phrases in the raw transcript must remain Khmer script, and English phrases must remain English. Never translate Khmer speech into English or English speech into Khmer in Khmer + English mode.";
   const speakerInstruction = speakerNames.length
     ? `Known speaker names, in the same order entered by the user: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert all generic labels by order: Speaker 1 is ${speakerNames[0]}${speakerNames[1] ? `, Speaker 2 is ${speakerNames[1]}` : ""}${speakerNames[2] ? `, Speaker 3 is ${speakerNames[2]}` : ""}${speakerNames.length > 3 ? ", and so on" : ""}. Every spoken turn must start with one of these names followed by a colon. Never return Speaker 1:, Speaker 2:, Participant 1:, User 1:, or Unknown Speaker: when known speaker names are provided. If there is only one known speaker, prefix each spoken line with that speaker name.`
     : "Preserve Speaker 1, Speaker 2 labels if present. Keep self-introduced names inside the spoken sentence, but do not turn those names into speaker labels. Do not invent real person names.";
@@ -486,7 +486,8 @@ export async function refineOpenRouterTranscript(
     "- Do not combine different speakers into one paragraph.",
     "- For Khmer mode, normalize every clear spoken phrase into Khmer script only.",
     "- For English mode, normalize every clear spoken phrase into English only.",
-    "- For Khmer + English mode, preserve each clear phrase in the language that was spoken.",
+    "- For Khmer + English mode, preserve each clear phrase in the language that was spoken: Khmer stays Khmer script; English stays English.",
+    "- In Khmer + English mode, do not translate Khmer sentences into English to make the transcript mixed. A mixed transcript means mixed because the speakers actually used both languages.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the meaning and word order as close as possible to the raw transcript.",
     "- Preserve all real spoken content, including short replies, hesitations, repeated words, corrections, names, numbers, dates, and question endings.",

@@ -936,16 +936,21 @@ function chooseBetterSavedTranscript(
   // The refine pass is a text-only proofreading step with no access to the
   // audio - for km-en mode it's instructed to keep each phrase in whichever
   // language it was actually spoken in, but a text LLM can silently
-  // translate English portions into Khmer instead of preserving them
-  // (a known LLM failure mode, distinct from dropping content, so the
-  // length-based check above doesn't catch it). A steep drop in Latin/English
-  // word count between the raw (audio-grounded) and refined transcript is a
-  // reliable signal that happened, so fall back to the raw transcript rather
-  // than silently changing what the audio actually said.
+  // translate one language into the other instead of preserving what was
+  // spoken (a known LLM failure mode, distinct from dropping content, so
+  // the length-based check above doesn't catch it). A steep drop in either
+  // Latin/English words or Khmer characters between the raw (audio-grounded)
+  // and refined transcript is a reliable signal that happened, so fall back
+  // to the raw transcript rather than silently changing what the audio
+  // actually said.
   if (languageMode === "km-en") {
     const rawLatinWords = countLatinWords(rawTranscript);
     const refinedLatinWords = countLatinWords(refinedTranscript);
     if (rawLatinWords >= 4 && refinedLatinWords < rawLatinWords * 0.4) return rawTranscript;
+
+    const rawKhmerChars = countKhmerChars(rawTranscript);
+    const refinedKhmerChars = countKhmerChars(refinedTranscript);
+    if (rawKhmerChars >= 12 && refinedKhmerChars < rawKhmerChars * 0.4) return rawTranscript;
   }
 
   return refinedTranscript;
@@ -1007,6 +1012,10 @@ function countLatinWords(transcript: string) {
   return transcript.match(/[A-Za-z0-9][A-Za-z0-9'_-]*/g)?.length ?? 0;
 }
 
+function countKhmerChars(transcript: string) {
+  return transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
+}
+
 function countTranscriptTurns(transcript: string) {
   return transcript
     .split(/\n+/)
@@ -1016,6 +1025,6 @@ function countTranscriptTurns(transcript: string) {
 
 function transcriptTokenScore(transcript: string) {
   const latinWords = countLatinWords(transcript);
-  const khmerChars = transcript.match(/[\u1780-\u17FF]/g)?.length ?? 0;
+  const khmerChars = countKhmerChars(transcript);
   return latinWords + Math.ceil(khmerChars / 6);
 }
