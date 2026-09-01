@@ -72,6 +72,56 @@ async function probeDurationSeconds(inputPath: string): Promise<number | null> {
   throw new Error("Could not determine audio duration (no Duration line in ffmpeg output).");
 }
 
+// Decodes the stream once with ffmpeg's silencedetect filter to find real
+// gaps between words, then nudges each rough target boundary to the nearest
+// detected silence within a few seconds either side - so a chunk split
+// almost never lands in the middle of a word. Falls back to the untouched
+// targets (a plain fixed-interval cut) if silence detection itself fails;
+// worst case matches the old behavior, never worse. Also trims any target
+// past the real decoded length, since callers may pass optimistic targets
+// based on a byte-rate guess rather than a known duration.
+async function findSilenceAdjustedCutTimes(inputPath: string, targetBoundarySeconds: number[]): Promise<number[]> {
+  if (!ffmpegPath) return targetBoundarySeconds;
+  try {
+    const { stderr } = await execFileAsync(
+      ffmpegPath,
+      ["-i", inputPath, "-af", "silencedetect=noise=-30dB:d=0.25", "-f", "null", "-"],
+      { maxBuffer: 16 * 1024 * 1024 }
+    );
+    const silenceStarts = [...stderr.matchAll(/silence_start:\s*(-?\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+    const timeMatches = [...stderr.matchAll(/time=(\d+):(\d+):(\d+\.\d+)/g)];
+    const last = timeMatches[timeMatches.length - 1];
+    const actualDurationSeconds = last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : null;
+
+    const searchWindowSeconds = 4;
+    const adjusted = targetBoundarySeconds
+      .filter((target) => actualDurationSeconds === null || target < actualDurationSeconds - 1)
+      .map((target) => {
+        let best: number | null = null;
+        let bestDistance = Infinity;
+        for (const candidate of silenceStarts) {
+          const distance = Math.abs(candidate - target);
+          if (distance <= searchWindowSeconds && distance < bestDistance) {
+            best = candidate;
+            bestDistance = distance;
+          }
+        }
+        return best ?? target;
+      });
+    // Segment boundaries must be strictly increasing - a silence nudge can
+    // otherwise pull two adjacent targets past each other.
+    const strictlyIncreasing: number[] = [];
+    for (const value of adjusted) {
+      if (!strictlyIncreasing.length || value > strictlyIncreasing[strictlyIncreasing.length - 1] + 0.5) {
+        strictlyIncreasing.push(value);
+      }
+    }
+    return strictlyIncreasing;
+  } catch {
+    return targetBoundarySeconds;
+  }
+}
+
 // Splits a large audio buffer into a series of smaller, independently
 // decodable audio files using ffmpeg's segment muxer with stream copy (no
 // re-encoding - fast even for hours of audio, just remuxes existing
@@ -130,13 +180,35 @@ export async function splitAudioIntoChunks(
       ? Math.min(sizeBasedSegmentSeconds, preferredSegmentSeconds)
       : sizeBasedSegmentSeconds;
 
+    // A fixed-interval cut (the old -segment_time approach) lands wherever
+    // it lands, including mid-word - confirmed live: a 19s clip cut at a
+    // flat 15s split "ផែនការ" into "ផែន" + "ការ", and the isolated back half
+    // came back transcribed as a different, unrelated word with no
+    // surrounding context to disambiguate it. Nudging each target boundary
+    // to the nearest actual silence in the audio (when one exists nearby)
+    // means the cut almost always falls in a real gap between words instead.
+    const estimatedTotalSeconds = durationSeconds ?? buffer.length / bytesPerSecond;
+    const targetBoundaries: number[] = [];
+    // 20% headroom past the estimate for the common case (webm with no
+    // header duration) where estimatedTotalSeconds is only a byte-rate
+    // guess - findSilenceAdjustedCutTimes trims anything past the real
+    // decoded length once it knows it, so overshooting here is harmless.
+    for (let t = segmentSeconds; t < estimatedTotalSeconds * 1.2; t += segmentSeconds) {
+      targetBoundaries.push(t);
+    }
+    const segmentTimes = targetBoundaries.length
+      ? await findSilenceAdjustedCutTimes(inputPath, targetBoundaries)
+      : [];
+
     await execFileAsync(ffmpegPath, [
       "-y",
       "-i", inputPath,
       "-c", "copy",
       "-map", "0:a",
       "-f", "segment",
-      "-segment_time", String(segmentSeconds),
+      ...(segmentTimes.length
+        ? ["-segment_times", segmentTimes.join(",")]
+        : ["-segment_time", String(segmentSeconds)]),
       "-reset_timestamps", "1",
       outputPattern
     ]);
