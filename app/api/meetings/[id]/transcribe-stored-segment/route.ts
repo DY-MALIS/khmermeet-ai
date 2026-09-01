@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { meetingOwnerWhere, requireUser } from "@/lib/session";
 import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -37,7 +37,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const segment = await prisma.meetingTranscriptSegment.findFirst({
-      where: { meetingId: id, speakerIdentity, segmentIndex: index }
+      where: { meetingId: id, speakerIdentity, segmentIndex: index, ...meetingOwnerWhere(user) }
     });
     if (!segment) {
       return NextResponse.json({ error: "Segment not found." }, { status: 404 });

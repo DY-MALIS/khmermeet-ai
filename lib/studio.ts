@@ -12,7 +12,7 @@ const actionPrompts: Record<StudioAction, string> = {
   clean:
     "Correct punctuation, obvious recognition mistakes, filler words, and paragraph structure. Preserve every fact and speaker label. Do not invent content.",
   translate:
-    "Translate faithfully. Preserve speaker labels, timestamps, names, numbers, and paragraph order. Return only the translated transcript.",
+    "Translate faithfully and naturally, not word-for-word. Preserve speaker labels, timestamps, names, company/product names, URLs, acronyms, numbers, and paragraph order. Preserve technical terms that are normally used in English unless the target language has a common natural equivalent. For Khmer output, use natural modern Khmer phrasing. If a sentence is unclear, translate only what is clearly present instead of guessing. Return only the translated transcript.",
   summarize:
     "Create a concise meeting summary with Overview, Key points, Decisions, Action items, and Next steps. Do not invent information."
 };

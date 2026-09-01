@@ -5,6 +5,7 @@ import { clampMeetingDurationMs } from "@/lib/meeting-duration";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { verifyInviteToken } from "@/lib/livekit-invite";
+import { isAdminEmail } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -30,13 +31,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id && !verifyInviteToken(body.room, body.inviteToken)) {
-      return NextResponse.json({ error: "Invite link is required to register this recording." }, { status: 401 });
-    }
 
     const meeting = await prisma.meeting.findUnique({ where: { id } });
     if (!meeting || !isRecentLiveMeeting(meeting)) {
       return NextResponse.json({ error: "No live recording found for this meeting." }, { status: 404 });
+    }
+    const hasOwnerAccess =
+      Boolean(session?.user?.id) &&
+      (meeting.createdById === session?.user?.id || isAdminEmail(session?.user?.email));
+    if (!hasOwnerAccess && !verifyInviteToken(body.room, body.inviteToken)) {
+      return NextResponse.json({ error: "Invite link is required to register this recording." }, { status: 401 });
     }
 
     const speakerIdentity = String(body.speakerIdentity ?? "").trim();

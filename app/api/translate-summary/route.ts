@@ -32,8 +32,12 @@ export async function POST(request: Request) {
     if (!hasOpenRouterKey()) return NextResponse.json({ error: "OPEN_ROUTER_API_KEY is missing." }, { status: 500 });
 
     const prompt = [
-      "Translate the summary below into the requested target language.",
-      "Keep the same meaning, names, dates, numbers, bullet structure, and section structure.",
+      "Translate the summary below into the requested target language as a professional meeting translator.",
+      "Translate the meaning naturally and idiomatically, not word-for-word.",
+      "Keep the same names, speaker names, company/product names, dates, times, numbers, URLs, acronyms, bullet structure, and section structure.",
+      "Preserve technical terms that are normally used in English unless the target language has a common natural equivalent.",
+      "For Khmer output, use natural modern Khmer phrasing and Khmer section headings; do not leave English headings like Summary, Tasks, Decisions, or Next steps unless they are part of a proper name.",
+      "If a source sentence is unclear, translate only what is clearly present instead of guessing.",
       "Do not add facts. Do not remove important details. Do not explain the translation.",
       "Return only the translated summary text.",
       "",
