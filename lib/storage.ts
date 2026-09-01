@@ -142,7 +142,6 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
   const names = normalizeSpeakerNames(speakerNames);
   if (!names.length || !transcript.trim()) return transcript;
 
-  let nextUnidentifiedSpeaker = 0;
   let lastSpeaker = "";
   return transcript
     .split(/\n+/)
@@ -172,17 +171,16 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
         /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*[:：]\s*(.*)$/i
       );
       if (unidentifiedMatch) {
-        const speakerName = names[nextUnidentifiedSpeaker % names.length];
-        nextUnidentifiedSpeaker += 1;
+        const speakerName = names.length === 1 ? names[0] : "Unknown Speaker";
         lastSpeaker = speakerName;
         return `${speakerName}: ${unidentifiedMatch[1].trim()}`;
       }
 
       // The transcription prompt requests one turn per line. If a provider
-      // omits the label anyway, keep the continuation with the previous
-      // speaker (or the first supplied participant for the first line) so the
-      // saved transcript always has the requested "Name: speech" shape.
-      const speakerName = lastSpeaker || names[0];
+      // omits the label anyway, keep the continuation with the previous speaker.
+      // With several known speakers, assigning an unlabeled line to the first
+      // participant is a name guess, so leave it unknown instead.
+      const speakerName = lastSpeaker || (names.length === 1 ? names[0] : "Unknown Speaker");
       lastSpeaker = speakerName;
       return `${speakerName}: ${line.trim()}`;
     })
