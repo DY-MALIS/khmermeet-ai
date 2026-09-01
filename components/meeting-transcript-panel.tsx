@@ -78,8 +78,8 @@ export function MeetingTranscriptPanel({
           <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-sky-50/40 p-4 shadow-sm">
             <p className="text-sm font-semibold text-ink">Meeting speakers</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              KhmerMeet uses the participant names saved from the video meeting. If a voice is unclear in the mixed
-              recording, the transcript may use Unknown Speaker instead of guessing.
+              KhmerMeet uses the participant names saved from the video meeting and attaches each name to the matching
+              participant audio track when available.
             </p>
             {meetingSpeakerNames.length ? (
               <div className="mt-3 flex flex-wrap gap-2">

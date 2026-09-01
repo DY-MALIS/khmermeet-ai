@@ -62,7 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const shouldUseMixedAudio =
       Boolean(meeting.audioUrl) &&
       !chronologicalSpeakerSegments.length &&
-      (!participantAudioSegments.length || participantAudioSegments.length > 1 || speakerNames.length > participantAudioSegments.length);
+      (!participantAudioSegments.length || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
     let transcriptSpeakerNames = speakerNames;
 
