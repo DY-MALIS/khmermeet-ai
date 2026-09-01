@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
+import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -18,7 +19,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const duration = "duration" in body ? clampMeetingDurationSeconds(body.duration) : undefined;
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
-    const speakerNames = normalizeSpeakerNames(body.speakerNames);
+    const room = typeof body.room === "string" ? body.room.trim() : "";
+    const liveKitSpeakerNames = room ? await listLiveKitParticipantNames(room).catch(() => []) : [];
+    const speakerNames = normalizeSpeakerNames([...normalizeSpeakerNames(body.speakerNames), ...liveKitSpeakerNames]);
     const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     const nextSpeakerNames = [

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -17,7 +18,9 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
-    const speakerNames = normalizeSpeakerNames(body.speakerNames);
+    const room = typeof body.room === "string" ? body.room.trim() : "";
+    const liveKitSpeakerNames = room ? await listLiveKitParticipantNames(room).catch(() => []) : [];
+    const speakerNames = normalizeSpeakerNames([...normalizeSpeakerNames(body.speakerNames), ...liveKitSpeakerNames]);
     const participantCount = clampParticipantCount(body.participantCount, speakerNames.length);
 
     await prisma.user.upsert({

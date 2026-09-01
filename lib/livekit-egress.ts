@@ -58,6 +58,17 @@ function roomServiceClient() {
   return new RoomServiceClient(liveKitHttpUrl(), requiredEnv("LIVEKIT_API_KEY"), requiredEnv("LIVEKIT_API_SECRET"));
 }
 
+export async function listLiveKitParticipantNames(room: string) {
+  const participants = await roomServiceClient().listParticipants(room);
+  return [
+    ...new Set(
+      participants
+        .map((participant) => (participant.name || participant.identity || "").trim())
+        .filter(Boolean)
+    )
+  ].slice(0, 100);
+}
+
 function egressS3Upload() {
   const accessKey = requiredEnv("LIVEKIT_EGRESS_S3_ACCESS_KEY");
   const secret = requiredEnv("LIVEKIT_EGRESS_S3_SECRET");

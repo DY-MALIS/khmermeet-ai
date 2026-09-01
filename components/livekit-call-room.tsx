@@ -1407,6 +1407,7 @@ function LiveKitMeetingAgent({
               audioUrl,
               duration: clampMeetingDurationSeconds(durationMs / 1000),
               languageMode,
+              room: recordingRoom,
               speakerNames: getCurrentSpeakerNames()
             })
           });
@@ -1613,7 +1614,7 @@ function LiveKitMeetingAgent({
       const response = await fetch("/api/meetings/start-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, speakerNames: speakers, participantCount: expectedParticipants })
+        body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, room: recordingRoom, speakerNames: speakers, participantCount: expectedParticipants })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
       if (!response.ok || !data.meetingId) {
