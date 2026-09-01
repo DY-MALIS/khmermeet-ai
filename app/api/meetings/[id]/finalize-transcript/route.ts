@@ -31,7 +31,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     if (refined.trim() && refined.trim() !== meeting.transcript.trim()) {
       const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(refined);
       const data: { transcript: string; summary: null; speakerNames?: string[] } = { transcript: refined, summary: null };
-      if (finalSpeakerNames.length) data.speakerNames = finalSpeakerNames;
+      const speakerNames = [
+        ...new Set([...(meeting.speakerNames ?? []), ...finalSpeakerNames].map((name) => name.trim()).filter(Boolean))
+      ].slice(0, 100);
+      if (speakerNames.length) data.speakerNames = speakerNames;
       await prisma.meeting.update({
         where: { id },
         data

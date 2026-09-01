@@ -154,13 +154,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    // The refine pass may have auto-detected and applied real names for
-    // speakers who introduced themselves even though none were typed in
-    // (see detectSelfIntroducedSpeakerNames) - reading them back from the
-    // final transcript text keeps the saved speaker list in sync with what
-    // the transcript actually says.
+    // The refine pass may detect additional real names, but it must never
+    // shrink the roster captured when the call started. If AI only labels
+    // three of four people, keep the fourth saved participant name.
     const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(transcript);
-    const speakerNamesToSave = finalSpeakerNames.length ? finalSpeakerNames : transcriptSpeakerNames;
+    const speakerNamesToSave = [
+      ...new Set([...transcriptSpeakerNames, ...finalSpeakerNames].map((name) => name.trim()).filter(Boolean))
+    ].slice(0, 100);
 
     await prisma.meeting.update({
       where: { id },
