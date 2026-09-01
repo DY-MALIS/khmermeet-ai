@@ -283,7 +283,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
   const accuracyInstruction =
-    "The audio is the only source of truth. First focus on hearing and resolving the speech as clearly as possible, including quiet voices, distant voices, fast syllables, numbers, dates, names, and short backchannel phrases, before writing the transcript. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
+    "The audio is the only source of truth. First focus on hearing and resolving the speech as clearly as possible, including quiet voices, distant voices, fast syllables, numbers, dates, names, and short backchannel phrases, before writing the transcript. Write what is actually spoken, in the way it is spoken; do not guess, paraphrase, summarize, polish, or translate unless the selected language mode explicitly requires translation. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
@@ -294,6 +294,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Do a clarity-first pass before writing: listen for faint syllables, repeated context, speaker changes, and words hidden under room noise. Only after that pass should you decide whether any span is truly unclear.",
     "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
+    "Never invent words from context. Never fill in a sentence because it would sound natural. If you cannot hear the exact word after careful listening, mark only that exact span as [unclear].",
     "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
     "Capture every audible speaker mouth and every audible word. Do not merge multiple people's speech into one cleaned sentence, and do not drop short interjections such as yes, no, okay, ah, um, or brief Khmer acknowledgements.",
     "When speakers overlap, separate each voice you can understand as its own turn in the closest chronological order. Listen carefully for both voices before using [unclear]; only the truly unintelligible words inside the overlap should become [unclear].",
@@ -302,7 +303,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "If the speaker says something unusual, informal, repeated, broken, or grammatically odd, keep it as spoken.",
     "Capture both near and distant speakers. Do not ignore a speaker because their voice is quiet, far from the microphone, off-axis, or partially masked by room noise.",
     "When a far or quiet voice is present, focus on the actual syllables and words in that voice before deciding whether any part is unclear. Do not give up on a word just because the volume is low.",
-    "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
+    "This is a literal transcription task, not a summary or translation task - do not skip, condense, paraphrase, polish, or rewrite the speaker's wording.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
     "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
     // Per-track chunks (client-mesh Server Rec, one file per participant's
@@ -490,7 +491,8 @@ export async function refineOpenRouterTranscript(
     "- For Khmer + English mode, preserve each clear phrase in the language that was spoken: Khmer stays Khmer script; English stays English.",
     "- In Khmer + English mode, do not translate Khmer sentences into English to make the transcript mixed. A mixed transcript means mixed because the speakers actually used both languages.",
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
-    "- Keep the meaning and word order as close as possible to the raw transcript.",
+    "- Keep the speaker's wording and word order as close as possible to the raw transcript.",
+    "- Do not rewrite awkward, informal, repeated, or broken speech into a polished sentence.",
     "- Preserve all real spoken content, including short replies, hesitations, repeated words, corrections, names, numbers, dates, and question endings.",
     "- Treat [unclear] as evidence from the audio; preserve it exactly and do not replace it with a guessed phrase.",
     "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
