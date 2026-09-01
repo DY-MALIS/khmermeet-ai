@@ -33,7 +33,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       where: { id, ...ownerWhere(user) },
       include: {
         transcriptSegments: {
-          where: { audioUrl: { not: null } },
           orderBy: [{ startMs: "asc" }, { segmentIndex: "asc" }, { id: "asc" }]
         }
       }
@@ -52,16 +51,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
     const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
-    // Per-participant recordings all start at 0ms, so concatenating them
-    // groups the transcript by person. Use the mixed backup whenever it is
-    // available for a multi-speaker meeting so turns stay chronological.
+    const chronologicalSpeakerSegments = meeting.transcriptSegments.filter(
+      (segment) => segment.text.trim() && !segment.audioUrl && segment.endMs > segment.startMs
+    );
+    // LiveKit server track segments are already sliced by time and carry the
+    // registered participant name. Prefer those because they preserve both
+    // the call roster and the spoken order. Per-participant full-call files
+    // all start at 0ms, so concatenating those would group by person; mixed
+    // audio stays as the fallback when timed track segments are unavailable.
     const shouldUseMixedAudio =
       Boolean(meeting.audioUrl) &&
+      !chronologicalSpeakerSegments.length &&
       (!participantAudioSegments.length || participantAudioSegments.length > 1 || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
     let transcriptSpeakerNames = speakerNames;
 
-    if (shouldUseMixedAudio && meeting.audioUrl) {
+    if (chronologicalSpeakerSegments.length) {
+      rawTranscript = chronologicalSpeakerSegments
+        .sort((a, b) => a.startMs - b.startMs || a.segmentIndex - b.segmentIndex)
+        .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+        .join("\n");
+      transcriptSpeakerNames = [
+        ...new Set(chronologicalSpeakerSegments.map((segment) => segment.speakerName || segment.speakerIdentity))
+      ];
+    } else if (shouldUseMixedAudio && meeting.audioUrl) {
       const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
       if (audioFile.size < 1500) {
         return NextResponse.json(
