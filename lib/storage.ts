@@ -664,35 +664,31 @@ export async function transcribeStoredTrackRecording(
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  // Confirmed live (5 runs across a 124s and a 727s real recording):
-  // chunking below is the more reliable path for completeness once there's
-  // enough budget to run it in full. The old version here always attempted
-  // this whole-audio call first whenever there was time to spare, then
-  // discarded the result and fell through to chunking anyway once it
-  // finished quickly (which it almost always did) - paying for two
-  // transcription passes (each carrying its own ~700-token fixed
-  // instruction overhead, on top of the audio itself) for a result that
-  // only the second one ever kept. Only attempt this whole-audio shortcut
-  // now when there genuinely isn't enough time left to run chunking's full
-  // CHUNK_FALLBACK_RESERVE_MS budget - i.e. only when it's actually going
-  // to be the one used, not a wasted trial run.
-  const wholeAudioAttemptSizeLimit = 1.5 * 1024 * 1024;
+  // Owner decision (2026-09-01): a recording should show as one OpenRouter
+  // transaction, not one per ~15s chunk - so always try the whole-audio
+  // request first now, and only fall back to chunking when that single
+  // request genuinely can't be used (too large even after compression, ran
+  // out of time, or came back empty/unusable). compressWholeAudioForTranscription
+  // already adapts its bitrate to fit the provider's byte ceiling for
+  // however long the recording actually is, so this isn't bounded to short
+  // clips the way the old size pre-filter was.
   const remainingMsAtStart = deadline - Date.now();
-  const shouldAttemptWholeAudio = buffer.length <= wholeAudioAttemptSizeLimit && remainingMsAtStart < CHUNK_FALLBACK_RESERVE_MS;
-  const wholeTranscript = shouldAttemptWholeAudio
-    ? await (async () => {
-        const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
-        return transcribeAndCleanAudioBuffer(
-          Buffer.from(wholeAudio),
-          "audio/mp4",
-          "complete-recording.m4a",
-          languageMode,
-          Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMsAtStart),
-          speakerNames,
-          options.singleSpeaker ?? true
-        );
-      })().catch(() => "")
-    : "";
+  const wholeAudioTimeoutMs = Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMsAtStart - CHUNK_FALLBACK_RESERVE_MS);
+  const wholeTranscript =
+    wholeAudioTimeoutMs > 10000
+      ? await (async () => {
+          const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+          return transcribeAndCleanAudioBuffer(
+            Buffer.from(wholeAudio),
+            "audio/mp4",
+            "complete-recording.m4a",
+            languageMode,
+            wholeAudioTimeoutMs,
+            speakerNames,
+            options.singleSpeaker ?? true
+          );
+        })().catch(() => "")
+      : "";
 
   if (hasUsableTranscript(wholeTranscript)) {
     return cleanTranscriptionText(wholeTranscript);
