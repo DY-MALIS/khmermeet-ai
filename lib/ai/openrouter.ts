@@ -283,7 +283,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
   const accuracyInstruction =
-    "The audio is the only source of truth. Before returning the final transcript, mentally check the audio a second time for quiet words, fast syllables, numbers, dates, names, and short backchannel phrases. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
+    "The audio is the only source of truth. First focus on hearing and resolving the speech as clearly as possible, including quiet voices, distant voices, fast syllables, numbers, dates, names, and short backchannel phrases, before writing the transcript. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
@@ -292,15 +292,16 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     selfIntroductionInstruction,
     accuracyInstruction,
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
+    "Do a clarity-first pass before writing: listen for faint syllables, repeated context, speaker changes, and words hidden under room noise. Only after that pass should you decide whether any span is truly unclear.",
     "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
     "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
     "Capture every audible speaker mouth and every audible word. Do not merge multiple people's speech into one cleaned sentence, and do not drop short interjections such as yes, no, okay, ah, um, or brief Khmer acknowledgements.",
-    "When speakers overlap, transcribe each voice you can understand as its own turn in the closest chronological order. Only the truly unintelligible words inside the overlap should become [unclear].",
+    "When speakers overlap, separate each voice you can understand as its own turn in the closest chronological order. Listen carefully for both voices before using [unclear]; only the truly unintelligible words inside the overlap should become [unclear].",
     "Accuracy to the spoken audio is more important than fluency. Only write words you can actually hear in the audio.",
     "Never use general knowledge, grammar, context, or a likely meeting topic to decide what was said. The transcript must follow the sound, not an assumption.",
     "If the speaker says something unusual, informal, repeated, broken, or grammatically odd, keep it as spoken.",
     "Capture both near and distant speakers. Do not ignore a speaker because their voice is quiet, far from the microphone, off-axis, or partially masked by room noise.",
-    "When a far or quiet voice is present, focus on the actual syllables and words in that voice before deciding whether any part is unclear.",
+    "When a far or quiet voice is present, focus on the actual syllables and words in that voice before deciding whether any part is unclear. Do not give up on a word just because the volume is low.",
     "This is a literal transcription task, not a summary - do not skip, condense, or paraphrase.",
     "Do not infer missing words from context, grammar, meeting topic, or speaker intent.",
     "Do not complete a sentence just because it sounds likely. If the exact words are not audible, mark only that unclear span as [unclear].",
@@ -320,7 +321,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
         : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a generic speaker label such as Speaker 1:, Speaker 2:, etc. Do not use self-introduced names as speaker labels. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "For quiet or distant speech, listen carefully and transcribe the words if they can be understood - do not mark speech [unclear] merely because it is low volume or far from the microphone.",
-    "Use [unclear] only after trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
+    "Use [unclear] only as a last resort after carefully trying to understand the speech and the exact words still cannot be determined. For noisy, overlapped, muted, or truly unintelligible sections, write [unclear] instead of producing a fluent guess.",
     "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
     "Return the transcript text only - no title, no heading, no preamble, no explanation, no markdown formatting, and no commentary about the audio. Never write phrases like \"Verbatim transcript\", \"Here is the transcript\", or \"Transcript:\" unless those exact words were spoken in the audio."
   ].join(" ");
