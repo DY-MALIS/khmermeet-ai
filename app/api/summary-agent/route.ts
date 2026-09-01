@@ -8,7 +8,7 @@ import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 function shouldRegenerateSummary(command: string) {
   const lower = command.toLowerCase();
@@ -26,6 +26,11 @@ function shouldRegenerateSummary(command: string) {
     command.includes("វែង") ||
     command.includes("រៀបចំ")
   );
+}
+
+function isShortenCommand(command: string) {
+  const lower = command.toLowerCase();
+  return lower.includes("shorter") || lower.includes("concise") || command.includes("ខ្លី");
 }
 
 function fallbackAgentAnswer(command: string, meeting: { title: string; summary: string | null; transcript: string | null }) {
@@ -83,6 +88,7 @@ export async function POST(request: Request) {
     }
 
     const regeneratingSummary = shouldRegenerateSummary(command);
+    const shortenExistingSummary = isShortenCommand(command) && Boolean(meeting.summary?.trim());
     // The response must follow the meeting's own language, not the language
     // the user happened to type their command in - typing a Khmer command
     // like "សង្ខេបឡើងវិញ" over an English transcript must still answer in
@@ -117,7 +123,9 @@ export async function POST(request: Request) {
         ? "Important: The user is asking for a new or improved summary. Use ONLY the transcript below as the source of truth."
         : `Current summary:\n${meeting.summary ?? "No summary yet."}`,
       "",
-      `Transcript:\n${transcript.slice(0, 6000)}`,
+      shortenExistingSummary
+        ? `Current summary to shorten:\n${meeting.summary?.trim().slice(0, 5000)}`
+        : `Transcript:\n${transcript.slice(0, regeneratingSummary ? 6000 : 4000)}`,
       "",
       `Action tasks:\n${taskText}`,
       "",
@@ -128,8 +136,8 @@ export async function POST(request: Request) {
 
     const answer = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
-      timeoutMs: 8000,
-      maxTokens: regeneratingSummary ? 1200 : 800
+      timeoutMs: 45000,
+      maxTokens: shortenExistingSummary ? 500 : regeneratingSummary ? 1200 : 800
     });
     let updatedSummary = false;
 
