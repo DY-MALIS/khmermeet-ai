@@ -52,9 +52,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
     const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
+    // Per-participant recordings all start at 0ms, so concatenating them
+    // groups the transcript by person. Use the mixed backup whenever it is
+    // available for a multi-speaker meeting so turns stay chronological.
     const shouldUseMixedAudio =
       Boolean(meeting.audioUrl) &&
-      (!participantAudioSegments.length || participantAudioSegments.length < 2 || speakerNames.length > participantAudioSegments.length);
+      (!participantAudioSegments.length || participantAudioSegments.length > 1 || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
     let transcriptSpeakerNames = speakerNames;
 

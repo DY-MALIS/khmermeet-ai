@@ -113,9 +113,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       )
     ];
     const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
+    // Per-speaker stored recordings are each full-call files starting at
+    // 0ms; appending them would group one speaker's whole call before the
+    // next. The mixed backup is the chronological source of truth when
+    // several speakers are present.
     const shouldUseMixedAudio =
       Boolean(meeting.audioUrl) &&
-      (usableSegmentCount < 2 || (speakerNames.length > 1 && usableSegmentCount < speakerNames.length));
+      (speakerNames.length > 1 || usableSegmentCount < 2 || usableSegmentCount < speakerNames.length);
 
     const mixedAudioBudget = workDeadline - Date.now() - REFINE_RESERVE_MS;
     const canTranscribeMixedAudio = shouldUseMixedAudio && meeting.audioUrl && mixedAudioBudget >= 15000;
