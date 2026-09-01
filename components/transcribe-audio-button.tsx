@@ -100,7 +100,7 @@ export function TranscribeAudioButton({
             : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          ជ្រើសរបៀប transcript៖ ខ្មែរ/English បកគ្រប់ពាក្យទៅភាសានោះ។ ខ្មែរ + English រក្សាភាសាតាមដែលនិយាយ។
+          ជ្រើសរបៀប transcript៖ ខ្មែរ + English សរសេរតាមភាសាដែលបាននិយាយ។ Khmer only/English only ទើបបំលែងទៅភាសាតែមួយ។
         </p>
         {speakerNames.length ? (
           <p className="mt-1 text-xs leading-5 text-leaf">

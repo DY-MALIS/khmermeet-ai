@@ -148,6 +148,11 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
     .map((line) => {
       const numberedMatch = line.match(/^(?:Speaker|Participant|User|អ្នកនិយាយ|អ្នកចូលរួម)\s*([0-9០-៩]+)\s*[:：]\s*(.*)$/i);
       if (numberedMatch) {
+        if (names.length !== 1) {
+          const genericLabel = `Speaker ${numberedMatch[1]}`;
+          lastSpeaker = genericLabel;
+          return `${genericLabel}: ${numberedMatch[2].trim()}`;
+        }
         const speakerIndex = speakerNumberToIndex(numberedMatch[1]);
         const fallbackIndex = Number.isFinite(speakerIndex)
           ? ((speakerIndex % names.length) + names.length) % names.length
