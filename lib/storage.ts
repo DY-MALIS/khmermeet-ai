@@ -618,16 +618,21 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-// Tried raising this (30s, 45s) to see if more context per chunk helps the
-// model notice multiple voices in a mixed recording - confirmed live it's
-// a real trade-off, not a clean win: larger chunks occasionally caught more
-// speakers on a short 3-speaker test recording (inconsistent across
-// repeats: 1-3 of 3 depending on the run either way) but consistently lost
-// real content on a long 727s recording (~4500-5700 chars at 30-45s vs
-// ~6500-7500 chars at 15s, repeatable). Kept at 15s: losing speech content
-// is worse than imperfect speaker labels, and the speaker-separation
-// benefit wasn't reliable enough to justify the trade either way.
-const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15;
+// Owner decision (2026-09-01): this only governs the rare chunking
+// fallback now - transcribeStoredTrackRecording always tries the whole
+// recording as one OpenRouter request first (see above), so this path only
+// runs when that single request can't be used at all. Fewer, larger pieces
+// here means fewer separate OpenRouter transactions on the recordings that
+// do need it.
+//
+// An earlier attempt at 30-45s (tried before splitAudioIntoChunks' silence-
+// aware cut fix existed) found real content loss on a long 727s recording
+// compared to 15s - but that predates cutting at actual silence instead of
+// a flat time offset, which was very likely the real cause (a fixed-interval
+// cut landing mid-sentence/mid-word loses more than a silence-aware one
+// does). Revisit with fresh live testing if a similar loss shows up again at
+// this much larger size.
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15 * 60;
 // Confirmed live against a real 727s recording: per-chunk transcription
 // (OpenRouter multimodal call, sometimes doubled by the empty-result safety-
 // net retry) averages ~60s. At the old concurrency of 4, a 12-minute
@@ -636,7 +641,13 @@ const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15;
 // cuts wall time - the per-call latency itself doesn't shrink.
 const STORED_TRANSCRIPTION_CONCURRENCY = 10;
 const WHOLE_AUDIO_TRANSCRIPTION_MAX_MS = 75000;
-const CHUNK_FALLBACK_RESERVE_MS = 90000;
+// Reserve enlarged alongside raising STORED_TRANSCRIPTION_SEGMENT_SECONDS to
+// 15 minutes - the old 90s reserve was sized for many quick ~15s chunks
+// (~60s each observed), not a handful of much larger ones. Not re-tuned
+// against a real long recording yet since this fallback rarely runs now
+// (whole-audio is always tried first); revisit with live testing if it
+// turns out to still be too tight for a genuinely long fallback case.
+const CHUNK_FALLBACK_RESERVE_MS = 180000;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
@@ -717,7 +728,10 @@ export async function transcribeStoredTrackRecording(
         chunks.length === 1 ? file.name : `recording-part-${String(next.index + 1).padStart(3, "0")}.${ext}`,
         { type: file.type || "audio/webm" }
       );
-      const chunkTimeoutMs = Math.max(8000, Math.min(90000, remainingMs));
+      // Cap raised alongside STORED_TRANSCRIPTION_SEGMENT_SECONDS (15 min
+      // chunks, not 15s) - a much longer chunk needs more than 90s to
+      // transcribe.
+      const chunkTimeoutMs = Math.max(8000, Math.min(150000, remainingMs));
       let transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
         ...transcribeOptions,
         timeoutMs: chunkTimeoutMs
