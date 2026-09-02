@@ -641,13 +641,20 @@ const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15 * 60;
 // cuts wall time - the per-call latency itself doesn't shrink.
 const STORED_TRANSCRIPTION_CONCURRENCY = 10;
 const WHOLE_AUDIO_TRANSCRIPTION_MAX_MS = 75000;
-// Reserve enlarged alongside raising STORED_TRANSCRIPTION_SEGMENT_SECONDS to
-// 15 minutes - the old 90s reserve was sized for many quick ~15s chunks
-// (~60s each observed), not a handful of much larger ones. Not re-tuned
-// against a real long recording yet since this fallback rarely runs now
-// (whole-audio is always tried first); revisit with live testing if it
-// turns out to still be too tight for a genuinely long fallback case.
-const CHUNK_FALLBACK_RESERVE_MS = 180000;
+// Bug found on review (2026-09-02): raising this to 180000 broke the
+// whole-audio-first change from earlier today. wholeAudioTimeoutMs below is
+// computed as remainingMsAtStart - CHUNK_FALLBACK_RESERVE_MS, and the real
+// caller-supplied budget (transcriptionBudget() in the transcribe route) is
+// itself capped at 180000 - so with this reserve also at 180000, that
+// subtraction landed at ~0 or negative on every real call, and the
+// `wholeAudioTimeoutMs > 10000` guard then skipped the whole-audio attempt
+// every time, silently reverting straight to per-chunk transactions again.
+// Kept at the original 90000, which leaves whole-audio a real ~75s window
+// against a typical ~180s total budget. The per-chunk timeout cap and
+// chunk-size increase from that same change are unaffected and still apply
+// whenever this fallback does run - it just self-limits to whatever time is
+// actually left rather than needing a large fixed reserve up front.
+const CHUNK_FALLBACK_RESERVE_MS = 90000;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
