@@ -54,14 +54,20 @@ export function hasTranscriptionPromptLeakage(text: string) {
     /^\s*(?:[^:\n]{1,60}\s*[:：]\s*)?Let'?s\s+transcribe\s*[:：]?\s*$/im.test(text) ||
     // The exact wording of this reasoning-leakage varies each time it
     // happens (confirmed live: "Known speakers/First speaker heard/Let's
-    // transcribe" one attempt, "Females voice:" a completely different one
+    // transcribe" one attempt, "Females voice:" a completely different one,
+    // "Audio analysis: ... Let's transcribe accurately: ... Let's double-
+    // check all Khmer segments carefully" a third - each restating the
+    // whole thing again, i.e. duplicated content, not just leaked meta-talk)
     // on the same audio) - chasing each new phrasing individually doesn't
     // scale. What's consistent across every observed case is a fabricated
-    // "H:MM - H:MM:" timestamp-range annotation, which the transcription
+    // "H:MM - H:MM" timestamp-range annotation, which the transcription
     // prompt never asks for and a real spoken transcript would never
     // naturally contain - so treat that structural marker itself as proof
-    // of leakage regardless of the surrounding wording.
-    /\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\s*[:：]/.test(text) ||
+    // of leakage regardless of the surrounding wording. Allow a short
+    // description between the range and the colon (e.g. "0:00 - 0:05 TV/
+    // Cartoon voice in Khmer:") - the original version required the colon
+    // immediately after the timestamp and missed this variant entirely.
+    /\b\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}\b[^\n:：]{0,80}[:：]/.test(text) ||
     // A third distinct wording of the same failure mode, confirmed live on
     // the same audio ("Felix/malis is the speaker: "...""), shares this
     // shape instead: a short reasoning phrase ending in a colon directly
