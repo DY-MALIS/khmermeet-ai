@@ -208,6 +208,22 @@ function looksLikeLeakedSpeakerLabel(label: string) {
   return /[()]/.test(label) || /\bLet'?s\b/i.test(label) || label.length > 40;
 }
 
+// Confirmed live: a meeting whose speakerNames already picked up a leaked
+// label before this filter existed keeps it forever otherwise - the save
+// path only ever unions newly extracted names into the existing saved list
+// (see speakerNamesToSave in the transcribe route), it never removes
+// anything, and a clean re-transcription attempt extracts no new names at
+// all once every line uses a plain "Speaker N" label (nothing for
+// extractRealSpeakerNamesFromTranscript to add). Worse, the stale garbage
+// keeps getting fed back into the next attempt's "known participants" hint.
+// Callers that reuse a meeting's already-saved speakerNames (as a known-name
+// hint, or as the base for the next save) should filter through this first
+// so a name that would be rejected today doesn't get to persist just
+// because it slipped in before the rejection existed.
+export function sanitizeKnownSpeakerNames(names: string[]) {
+  return names.filter((name) => name.trim() && !looksLikeLeakedSpeakerLabel(name.trim()));
+}
+
 // Reads back whichever real speaker names actually ended up in a finished
 // transcript's "Name: ..." labels, regardless of whether those names came
 // from user input, meeting-join participant names, or auto-detected

@@ -8,6 +8,7 @@ import {
   loadStoredAudioAsFile,
   normalizeTranscriptionLanguageMode,
   refineSavedTranscript,
+  sanitizeKnownSpeakerNames,
   transcribeStoredTrackRecording
 } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
@@ -48,7 +49,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const body = await readTranscriptionBody(request);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
-    const savedSpeakerNames = Array.isArray(meeting.speakerNames) ? meeting.speakerNames : [];
+    // sanitizeKnownSpeakerNames filters out anything that looks like a
+    // leaked reasoning label - a meeting whose speakerNames already picked
+    // one up (before that filter existed, or from a run that slips past it)
+    // would otherwise carry it forward forever: the save below only ever
+    // unions in newly extracted names, it never removes anything, so a
+    // clean re-transcription attempt that extracts nothing new (every line
+    // uses a plain "Speaker N" label) leaves the old garbage untouched.
+    const savedSpeakerNames = sanitizeKnownSpeakerNames(Array.isArray(meeting.speakerNames) ? meeting.speakerNames : []);
     const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
     const chronologicalSpeakerSegments = meeting.transcriptSegments.filter(
