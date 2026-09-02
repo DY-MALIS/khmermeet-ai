@@ -27,22 +27,10 @@ export const summaryHeadings: Record<DocumentLanguageMode, { overview: string; k
 export function buildSummaryPrompt(transcript: string, language: DocumentLanguageMode) {
   const headings = summaryHeadings[language];
   const noInfo = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
-  const contentTypeLabel = language === "en" ? "Content type" : "ប្រភេទអត្ថបទ";
-  const mainIdeaLabel = language === "en" ? "Main idea" : "គំនិតស្នូល";
-  const detailsLabel = language === "en" ? "Important details" : "ចំណុចពន្យល់សំខាន់ៗ";
-  const takeawaysLabel = language === "en" ? "Takeaways" : "មេរៀន/អត្ថន័យដែលយកបាន";
-  const actionsLabel = language === "en" ? "Actions or next steps" : "កិច្ចការ ឬជំហានបន្ទាប់";
-  return `You are KhmerMeet AI's senior summarizer. The input may be a meeting transcript, a task discussion, a lesson, a lecture, a speech, a sermon, training content, or a long personal-development talk. First understand what type of content it is, then summarize it in the structure that fits that content. Do not force every transcript into a meeting-minutes format.
+  return `You are KhmerMeet AI's senior summarizer. Always summarize the transcript below as meeting minutes, using the fixed structure given further down - regardless of whether the content is a work discussion, a lesson, a lecture, a speech, training content, or anything else. Map whatever is in the transcript onto that same structure (for example, a lesson's central message and advice become the key points; its practical takeaways become the next steps) rather than inventing a different set of headings.
 
 Language rule:
 - ${buildLanguageInstruction(language)}
-
-Content-type rule:
-- Identify the content type from the transcript itself before writing.
-- If it is a meeting or work discussion, use meeting-minutes language: decisions, problems, owners, deadlines, next steps.
-- If it is a lesson, lecture, teaching, speech, sermon, or motivational talk, summarize the lesson: central message, supporting ideas, examples/advice, and practical takeaways. Do not invent meeting decisions or next steps.
-- If it is mostly a task/work instruction, summarize the objective, requirements, constraints, and work to do.
-- If it is mixed, choose the dominant type and mention the secondary type only when it affects the summary.
 
 Quality bar - this is what separates a good summary from a bad one:
 - Synthesize, don't transcribe. Paraphrase in fluent, natural, professional language - never copy sentence fragments verbatim from the transcript.
@@ -64,10 +52,10 @@ Formatting rules:
 - Do not return a table, JSON, code fences, or markdown bold markers like **.
 - The overview/main idea section is a short paragraph: 2-4 sentences for long transcripts, 1-2 sentences for short transcripts.
 - Every other section is clear bullet points: 1-2 lines per bullet.
-- For long transcripts, use 5-8 bullets in the important-details section when needed; for short transcripts, use fewer.
+- For long transcripts, use 5-8 bullets in the key-points section when there is enough real content for that many distinct points; for short transcripts, use fewer rather than padding with filler.
 - The full summary should be concise but not shallow. Do not compress a long lesson or speech into only a few generic lines.
 
-For meeting/work discussions, return exactly this structure:
+Return exactly this structure:
 
 ${headings.overview}
 (one short paragraph)
@@ -83,23 +71,6 @@ ${headings.problems}
 
 ${headings.nextSteps}
 - concrete next actions, with owner and deadline whenever the transcript gives one
-
-For lessons, speeches, lectures, sermons, training, or personal-development content, return exactly this structure instead:
-
-${contentTypeLabel}
-- the detected type and topic
-
-${mainIdeaLabel}
-(2-4 sentence paragraph explaining the core message)
-
-${detailsLabel}
-- the most important supporting ideas, advice, examples, or arguments
-
-${takeawaysLabel}
-- practical lessons the listener should remember or apply
-
-${actionsLabel}
-- only real actions/advice stated in the transcript; otherwise write "${noInfo}"
 
 Transcript:
 ${transcript}`;

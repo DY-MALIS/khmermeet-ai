@@ -98,22 +98,18 @@ export async function POST(request: Request) {
       language === "en"
         ? "Meeting overview, Key points, Decisions, Problems raised, Next steps"
         : "សង្ខេបប្រជុំ, ចំណុចសំខាន់ៗ, ការសម្រេចចិត្ត, បញ្ហាដែលបានលើកឡើង, ជំហានបន្ទាប់";
-    const adaptiveSectionLabels =
-      language === "en"
-        ? "Content type, Main idea, Important details, Takeaways, Actions or next steps"
-        : "ប្រភេទអត្ថបទ, គំនិតស្នូល, ចំណុចពន្យល់សំខាន់ៗ, មេរៀន/អត្ថន័យដែលយកបាន, កិច្ចការ ឬជំហានបន្ទាប់";
     const missingInfoPlaceholder = language === "en" ? "No clear information available." : "មិនមានព័ត៌មានច្បាស់លាស់។";
     const prompt = [
       "You are KhmerMeet AI Summary Agent for Cambodian teams.",
       "Your job is to answer the user's command using only the transcript, current summary, and tasks provided below.",
       buildLanguageInstruction(language),
-      "The transcript may be a meeting, task discussion, lesson, lecture, speech, sermon, training content, or personal-development talk. First identify the content type from the transcript. Do not force a lesson or speech into a meeting-minutes format.",
-      "If it is a meeting or work discussion, summarize decisions, problems, owners, deadlines, and next steps. If it is a lesson, lecture, speech, sermon, or motivational talk, summarize the central message, supporting ideas, advice, and practical takeaways. If it is a task instruction, summarize the objective, requirements, constraints, and work to do.",
+      "Always treat the transcript as meeting minutes and use the fixed meeting-minutes structure below, whatever the content is - a work discussion, a lesson, a lecture, a speech, training content, or anything else. Map the content onto that same structure rather than inventing a different set of headings.",
+      "Summarize decisions, problems, owners, deadlines, and next steps whenever the transcript contains them. If it is a lesson, lecture, speech, or training talk, its central message and advice become the key points, and its practical takeaways become the next steps.",
       "Do not invent facts, people, dates, decisions, problems, or tasks.",
       `If the transcript does not contain enough information for a requested section, write: ${missingInfoPlaceholder}`,
       "Do not use markdown bold markers like **.",
       "Keep the answer clean, readable, and grouped into short sections or bullets.",
-      "Default style: concise, clear, and useful. For long transcripts, include enough detail to preserve the main argument; do not return a shallow two-line summary. Use 5-8 important-detail bullets when the source is long or when the user asks for a longer summary. When the user asks to make the summary shorter, tighten the wording of each bullet but keep the same key points and the same number of bullets from the current summary - do not drop bullets, drop sections, or introduce different content.",
+      "Default style: concise, clear, and useful. For long transcripts, include enough detail to preserve the main argument; do not return a shallow two-line summary. Use 5-8 key-point bullets when there is enough real content for that many distinct points; use fewer only if the source genuinely does not contain that many distinct points - do not pad with filler or repeated points. When the user asks to make the summary shorter, tighten the wording of each bullet but keep the same key points and the same number of bullets from the current summary - do not drop bullets, drop sections, or introduce different content.",
       "",
       `User command: ${command}`,
       "",
@@ -132,7 +128,7 @@ export async function POST(request: Request) {
       `Action tasks:\n${taskText}`,
       "",
       regeneratingSummary
-        ? `If the transcript is a meeting or work discussion and the user does not specify a format, return these sections: ${sectionLabels}. If it is a lesson, speech, lecture, sermon, training, or motivational talk, return these sections instead: ${adaptiveSectionLabels}.`
+        ? `Unless the user's command asks for something else, return these sections: ${sectionLabels}.`
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 
