@@ -544,6 +544,13 @@ export function RecordingPanel() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="mb-2 text-sm font-semibold text-ink">ស្តាប់សំឡេងដែលបានថត</p>
               <audio className="w-full" controls src={previewUrl} />
+              <a
+                className="kh-button-secondary mt-3 inline-flex"
+                download={`khmermeet-${(title.trim() || "recording").replace(/[^\wក-៿-]+/g, "-")}.webm`}
+                href={previewUrl}
+              >
+                ទាញយកឯកសារសំឡេង (Download)
+              </a>
             </div>
           ) : null}
           {uploading ? (
