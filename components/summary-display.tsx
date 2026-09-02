@@ -10,16 +10,11 @@ const englishSummaryHeadings = [
   "Meeting overview",
   "Key points",
   "Key discussion points",
-  "Important details",
   "Decisions made",
   "Decisions",
   "Problems mentioned",
   "Problems raised",
-  "Next steps",
-  "Content type",
-  "Main idea",
-  "Takeaways",
-  "Actions or next steps"
+  "Next steps"
 ];
 
 const summaryHeadings = [...khmerSummaryHeadings, ...englishSummaryHeadings];
