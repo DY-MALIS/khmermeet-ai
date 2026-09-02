@@ -19,8 +19,14 @@ export async function POST(request: Request) {
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const audioUrl = typeof body.audioUrl === "string" && body.audioUrl.trim() ? body.audioUrl.trim() : null;
     const duration = clampMeetingDurationSeconds(body.duration);
-    const typedSpeakerNames = normalizeSpeakerNames(body.speakerNames);
-    const speakerNames = typedSpeakerNames.length ? typedSpeakerNames : normalizeSpeakerNames([user.name]);
+    // Owner decision (2026-09-02): don't default to the account's own name
+    // just because they're the one who clicked record - that's a guess, not
+    // something confirmed from the audio. Only a name the speaker actually
+    // says (typed in beforehand, or caught later by
+    // detectSelfIntroducedSpeakerNames on the transcript) should ever label
+    // a speaker; otherwise leave it generic (Speaker 1:) rather than assert
+    // a real name with no audio evidence for it.
+    const speakerNames = normalizeSpeakerNames(body.speakerNames);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
 
     await prisma.user.upsert({
