@@ -196,6 +196,18 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
 const genericSpeakerLabelPattern =
   /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?$/i;
 
+// Confirmed live: a leaked reasoning pass ("Speaker 1 (cartoon character
+// female/kid):", "Let's double-check all Khmer segments carefully.Speaker
+// 1:") still matches the "any text before a colon" line shape and isn't
+// caught by genericSpeakerLabelPattern's exact "Speaker N" match, so it
+// gets saved as a real participant name and shown as a "known speaker" chip
+// in the UI. A real spoken name is short and has none of this shape - reject
+// anything with a parenthetical aside, a "Let's ..." lead-in, or that's
+// simply too long to plausibly be a name someone said about themselves.
+function looksLikeLeakedSpeakerLabel(label: string) {
+  return /[()]/.test(label) || /\bLet'?s\b/i.test(label) || label.length > 40;
+}
+
 // Reads back whichever real speaker names actually ended up in a finished
 // transcript's "Name: ..." labels, regardless of whether those names came
 // from user input, meeting-join participant names, or auto-detected
@@ -208,7 +220,7 @@ export function extractRealSpeakerNamesFromTranscript(transcript: string) {
   for (const line of transcript.split(/\r?\n/)) {
     const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
     const label = match?.[1]?.trim();
-    if (!label || genericSpeakerLabelPattern.test(label) || seen.has(label)) continue;
+    if (!label || genericSpeakerLabelPattern.test(label) || looksLikeLeakedSpeakerLabel(label) || seen.has(label)) continue;
     seen.add(label);
     names.push(label);
   }
