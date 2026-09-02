@@ -113,15 +113,17 @@ export async function POST(request: Request) {
       `If the transcript does not contain enough information for a requested section, write: ${missingInfoPlaceholder}`,
       "Do not use markdown bold markers like **.",
       "Keep the answer clean, readable, and grouped into short sections or bullets.",
-      "Default style: concise, clear, and useful. For long transcripts, include enough detail to preserve the main argument; do not return a shallow two-line summary. Use 5-8 important-detail bullets when the source is long or when the user asks for a longer summary.",
+      "Default style: concise, clear, and useful. For long transcripts, include enough detail to preserve the main argument; do not return a shallow two-line summary. Use 5-8 important-detail bullets when the source is long or when the user asks for a longer summary. When the user asks to make the summary shorter, tighten the wording of each bullet but keep the same key points and the same number of bullets from the current summary - do not drop bullets, drop sections, or introduce different content.",
       "",
       `User command: ${command}`,
       "",
       `Meeting title: ${meeting.title}`,
       "",
-      regeneratingSummary
-        ? "Important: The user is asking for a new or improved summary. Use ONLY the transcript below as the source of truth."
-        : `Current summary:\n${meeting.summary ?? "No summary yet."}`,
+      shortenExistingSummary
+        ? "Important: The user wants a shorter version of the CURRENT SUMMARY below. It is already correct - only tighten the wording. Do not reinterpret the content type or change which points are covered."
+        : regeneratingSummary
+          ? "Important: The user is asking for a new or improved summary. Use ONLY the transcript below as the source of truth."
+          : `Current summary:\n${meeting.summary ?? "No summary yet."}`,
       "",
       shortenExistingSummary
         ? `Current summary to shorten:\n${meeting.summary?.trim().slice(0, 5000)}`
@@ -137,7 +139,7 @@ export async function POST(request: Request) {
     const answer = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
       timeoutMs: 45000,
-      maxTokens: shortenExistingSummary ? 500 : regeneratingSummary ? 1200 : 800
+      maxTokens: shortenExistingSummary ? 800 : regeneratingSummary ? 1200 : 800
     });
     let updatedSummary = false;
 
