@@ -164,6 +164,7 @@ export default async function MeetingDetailPage({
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.exportFile}</h2>
         <ExportButton
+          meetingId={meeting.id}
           title={meeting.title}
           transcript={transcriptText}
           summary={summaryText}

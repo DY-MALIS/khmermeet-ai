@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
+import { buildSlideBulletsPrompt } from "@/lib/ai/prompts/slidePrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
 import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
@@ -622,6 +623,16 @@ export async function generateMeetingSummary(transcript: string, language: Docum
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!hasOpenRouterKey()) return fallbackSummary(transcript);
   return generateOpenRouterContent([{ text: buildSummaryPrompt(transcript, language) }], { temperature: 0.2 });
+}
+
+export async function generateSlideBullets(summary: string, language: DocumentLanguageMode = "km") {
+  if (!summary.trim()) throw new Error("Summary is empty.");
+  if (!hasOpenRouterKey()) return summary;
+  return generateOpenRouterContent([{ text: buildSlideBulletsPrompt(summary, language) }], {
+    temperature: 0.2,
+    timeoutMs: 45000,
+    maxTokens: 1200
+  });
 }
 
 export async function extractMeetingTasks(transcript: string, language: DocumentLanguageMode = "km") {

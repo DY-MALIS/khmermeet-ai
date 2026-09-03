@@ -4,6 +4,7 @@ import { Download, FileSpreadsheet, FileText, Presentation } from "lucide-react"
 import type JSZip from "jszip";
 import { useState } from "react";
 import { summaryHeadings } from "@/lib/ai/prompts/summaryPrompt";
+import { readJsonResponse } from "@/lib/read-json-response";
 
 type ExportTask = {
   title: string;
@@ -105,12 +106,14 @@ async function buildPptx(JSZip: JSZipCtor, slides: SlideContent[]) {
 }
 
 export function ExportButton({
+  meetingId,
   title,
   transcript,
   summary,
   tasks = [],
   language = "km"
 }: {
+  meetingId?: string;
   title: string;
   transcript?: string | null;
   summary?: string | null;
@@ -261,7 +264,23 @@ export function ExportButton({
           : [{ title: labels.summary, bullets: [labels.noSummary] }];
       }
 
-      const sections = parseSummarySections(summary ?? "");
+      // Slides are read out loud and explained verbally, not read like a
+      // document - the raw summary's full sentences are too long for that,
+      // so ask the AI to shorten each bullet to a short slide phrase first.
+      // Fall back to the raw summary if that call fails for any reason
+      // (no AI key, network error, rate limit) so export never breaks.
+      let slideSummary = summary ?? "";
+      if (meetingId && slideSummary.trim()) {
+        try {
+          const response = await fetch(`/api/meetings/${meetingId}/slide-bullets`, { method: "POST" });
+          const data = await readJsonResponse<{ slideText?: string; error?: string }>(response);
+          if (data.slideText?.trim()) slideSummary = data.slideText;
+        } catch {
+          // keep slideSummary as the raw summary
+        }
+      }
+
+      const sections = parseSummarySections(slideSummary);
       const chapterName = (sectionLabel: string) => `${title} - ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
       const slides: { title: string; lines: string[]; titleSlide?: boolean }[] = [
