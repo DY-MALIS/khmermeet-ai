@@ -46,6 +46,7 @@ declare global {
 
 type PptxGenJSInstance = {
   layout: string;
+  readonly ShapeType: { rect: string };
   defineLayout(spec: { name: string; width: number; height: number }): void;
   addSlide(): PptxGenJSSlide;
   writeFile(opts: { fileName: string }): Promise<unknown>;
@@ -54,6 +55,7 @@ type PptxGenJSInstance = {
 type PptxGenJSSlide = {
   background: { color: string };
   addText(text: string | { text: string; options?: Record<string, unknown> }[], options: Record<string, unknown>): void;
+  addShape(shapeType: string, options: Record<string, unknown>): void;
 };
 
 let pptxGenJsLoad: Promise<void> | null = null;
@@ -286,46 +288,59 @@ export function ExportButton({
         }
       }
 
+      const ACCENT = "18745F";
+      const GOLD = "D8912A";
+      const INK = "2C3A3A";
+      const MUTED = "5B6672";
+
       const pptx = new PptxGenJS();
       pptx.defineLayout({ name: "KH169", width: 10, height: 5.625 });
       pptx.layout = "KH169";
+      const rect = pptx.ShapeType.rect;
 
       slidesContent.forEach((content, index) => {
         const slide = pptx.addSlide();
-        slide.background = { color: content.titleSlide ? "18745F" : "FFFFFF" };
-        slide.addText(content.title, {
-          x: 0.5,
-          y: content.titleSlide ? 1.7 : 0.4,
-          w: 9,
-          h: 1,
-          fontSize: content.titleSlide ? 34 : 24,
-          bold: true,
-          color: content.titleSlide ? "FFFFFF" : "18745F",
-          align: content.titleSlide ? "center" : "left",
-          fontFace: KHMER_FONT
+        slide.background = { color: content.titleSlide ? ACCENT : "FFFFFF" };
+
+        if (content.titleSlide) {
+          slide.addText(content.title, {
+            x: 0.5, y: 1.85, w: 9, h: 1.1,
+            fontSize: 36, bold: true, color: "FFFFFF", align: "center", fontFace: KHMER_FONT
+          });
+          slide.addShape(rect, { x: 4.35, y: 3.05, w: 1.3, h: 0.03, fill: { color: GOLD }, line: { type: "none" } });
+          slide.addText(content.lines.join("   •   "), {
+            x: 0.5, y: 3.25, w: 9, h: 0.6,
+            fontSize: 14, color: "FFFFFF", align: "center", fontFace: KHMER_FONT
+          });
+        } else {
+          slide.addShape(rect, { x: 0, y: 0, w: 0.14, h: 5.625, fill: { color: ACCENT }, line: { type: "none" } });
+          slide.addText(content.title, {
+            x: 0.55, y: 0.38, w: 8.9, h: 0.7,
+            fontSize: 22, bold: true, color: ACCENT, fontFace: KHMER_FONT
+          });
+          slide.addShape(rect, { x: 0.58, y: 1.08, w: 0.9, h: 0.025, fill: { color: GOLD }, line: { type: "none" } });
+          slide.addText(
+            content.lines.map((line) => ({ text: line, options: { bullet: { code: "25CF" }, breakLine: true } })),
+            {
+              x: 0.65, y: 1.4, w: 8.7, h: 3.4,
+              fontSize: 14, color: INK, fontFace: KHMER_FONT,
+              lineSpacingMultiple: 1.3, paraSpaceAfter: 8
+            }
+          );
+        }
+
+        slide.addShape(rect, {
+          x: 0.5, y: 5.28, w: 9, h: 0.012,
+          fill: { color: content.titleSlide ? "FFFFFF" : "E3E7E7" },
+          line: { type: "none" }
         });
-        slide.addText(
-          content.lines.map((line) => ({ text: line, options: { bullet: !content.titleSlide, breakLine: true } })),
-          {
-            x: content.titleSlide ? 0.5 : 0.6,
-            y: content.titleSlide ? 3 : 1.5,
-            w: content.titleSlide ? 9 : 8.5,
-            h: 3.2,
-            fontSize: content.titleSlide ? 16 : 14,
-            color: content.titleSlide ? "FFFFFF" : "17202A",
-            align: content.titleSlide ? "center" : "left",
-            fontFace: KHMER_FONT
-          }
-        );
-        slide.addText(`KhmerMeet AI  ${String(index + 1).padStart(2, "0")}`, {
-          x: 0.5,
-          y: 5.15,
-          w: 9,
-          h: 0.3,
-          fontSize: 9,
-          color: content.titleSlide ? "FFFFFF" : "5B6672",
-          align: "center",
-          fontFace: KHMER_FONT
+        slide.addText("KhmerMeet AI", {
+          x: 0.5, y: 5.32, w: 4, h: 0.28,
+          fontSize: 9, color: content.titleSlide ? "FFFFFF" : MUTED, fontFace: KHMER_FONT
+        });
+        slide.addText(String(index + 1).padStart(2, "0"), {
+          x: 8.5, y: 5.32, w: 1, h: 0.28,
+          fontSize: 9, color: content.titleSlide ? "FFFFFF" : MUTED, align: "right", fontFace: KHMER_FONT
         });
       });
 
