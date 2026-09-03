@@ -253,11 +253,15 @@ export function ExportButton({
       const sections = parseSummarySections(slideSummary);
       const chapterName = (sectionLabel: string) => `${title} - ${sectionLabel}`;
       const outlineEntries = [...sections.map((section) => section.title), ...(tasks.length ? [labels.tasks] : [])];
-      const slidesContent: { title: string; lines: string[]; titleSlide?: boolean }[] = [
+      const slidesContent: { title: string; lines: string[]; titleSlide?: boolean; plainList?: boolean }[] = [
         { title, lines: [new Date().toLocaleDateString(), "KhmerMeet AI"], titleSlide: true }
       ];
       if (outlineEntries.length > 1) {
-        slidesContent.push({ title: labels.outline, lines: outlineEntries.map((entry, index) => `${index + 1}. ${chapterName(entry)}`) });
+        slidesContent.push({
+          title: labels.outline,
+          lines: outlineEntries.map((entry, index) => `${index + 1}. ${chapterName(entry)}`),
+          plainList: true
+        });
       }
       const bulletsPerSlide = 7;
       for (const section of sections) {
@@ -304,27 +308,31 @@ export function ExportButton({
 
         if (content.titleSlide) {
           slide.addText(content.title, {
-            x: 0.5, y: 1.85, w: 9, h: 1.1,
-            fontSize: 36, bold: true, color: "FFFFFF", align: "center", fontFace: KHMER_FONT
+            x: 0.5, y: 1.8, w: 9, h: 1.1,
+            fontSize: 36, bold: true, color: "FFFFFF", align: "center", fontFace: KHMER_FONT,
+            lineSpacingMultiple: 1.15
           });
-          slide.addShape(rect, { x: 4.35, y: 3.05, w: 1.3, h: 0.03, fill: { color: GOLD }, line: { type: "none" } });
+          slide.addShape(rect, { x: 4.35, y: 3.02, w: 1.3, h: 0.03, fill: { color: GOLD }, line: { type: "none" } });
           slide.addText(content.lines.join("   •   "), {
-            x: 0.5, y: 3.25, w: 9, h: 0.6,
-            fontSize: 14, color: "FFFFFF", align: "center", fontFace: KHMER_FONT
+            x: 0.5, y: 3.24, w: 9, h: 0.6,
+            fontSize: 16, color: "FFFFFF", align: "center", fontFace: KHMER_FONT
           });
         } else {
           slide.addShape(rect, { x: 0, y: 0, w: 0.14, h: 5.625, fill: { color: ACCENT }, line: { type: "none" } });
           slide.addText(content.title, {
-            x: 0.55, y: 0.38, w: 8.9, h: 0.7,
-            fontSize: 22, bold: true, color: ACCENT, fontFace: KHMER_FONT
+            x: 0.55, y: 0.4, w: 8.9, h: 0.65,
+            fontSize: 24, bold: true, color: ACCENT, fontFace: KHMER_FONT, lineSpacingMultiple: 1.1
           });
-          slide.addShape(rect, { x: 0.58, y: 1.08, w: 0.9, h: 0.025, fill: { color: GOLD }, line: { type: "none" } });
+          slide.addShape(rect, { x: 0.58, y: 1.12, w: 0.9, h: 0.025, fill: { color: GOLD }, line: { type: "none" } });
           slide.addText(
-            content.lines.map((line) => ({ text: line, options: { bullet: { code: "25CF" }, breakLine: true } })),
+            content.lines.map((line) => ({
+              text: line,
+              options: { bullet: content.plainList ? false : { code: "25CF" }, breakLine: true }
+            })),
             {
-              x: 0.65, y: 1.4, w: 8.7, h: 3.4,
-              fontSize: 14, color: INK, fontFace: KHMER_FONT,
-              lineSpacingMultiple: 1.3, paraSpaceAfter: 8
+              x: 0.65, y: 1.45, w: 8.7, h: 3.35,
+              fontSize: 16, color: INK, fontFace: KHMER_FONT,
+              lineSpacingMultiple: 1.4, paraSpaceAfter: 10
             }
           );
         }
