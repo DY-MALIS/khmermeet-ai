@@ -119,10 +119,11 @@ audio {
   .kh-card{border-radius:0.75rem}
   .kh-button{min-height:2.75rem;max-width:100%}
   .kh-input{min-height:2.75rem}
-  /* 16px is also the minimum iOS Safari won't auto-zoom the page in on
-     focus for - below that, tapping into the transcript box jumps the
-     whole page's zoom level, which is its own readability problem. */
-  textarea.kh-input{font-size:1rem}
+  /* More specific than the .kh-input min-height rule above (same
+     specificity would lose to cascade order otherwise) - a transcript
+     needs real reading room on a phone screen, not the ~44px comfortable
+     for a one-line field. */
+  textarea.kh-input{font-size:1.125rem;line-height:1.8;min-height:50vh}
   audio{max-width:100%}
 }
 @media(max-width:620px){.ai-workspace{padding:14px}.ai-workspace-header{display:block}.score-block{margin-top:14px}.notes-grid,.analytics-grid{grid-template-columns:1fr}.copilot-input{grid-template-columns:1fr}.copilot-input .primary{grid-column:1/-1}.timeline-row{grid-template-columns:58px 1fr}.timeline-row>b{display:none}.document-buttons{grid-template-columns:1fr}.workspace-input{padding:14px}}
