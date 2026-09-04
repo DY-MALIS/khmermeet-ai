@@ -7,7 +7,13 @@ import { LocalizedText } from "@/components/localized-text";
 import { Menu } from "lucide-react";
 import Link from "next/link";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user
+}: {
+  children: React.ReactNode;
+  user: { name: string; email: string };
+}) {
   return (
     <div className="min-h-screen lg:flex">
       <div className="sticky top-0 z-30 border-b border-leaf/10 bg-emerald-50/95 shadow-sm shadow-leaf/10 backdrop-blur-2xl lg:hidden">
@@ -48,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <LanguageSwitcher compact />
         </div>
         <div className="mt-auto hidden border-t border-leaf/10 p-4 lg:block">
-          <ShellStatusCard />
+          <ShellStatusCard user={user} />
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">

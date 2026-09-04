@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { getOptionalUser } from "@/lib/session";
 import { VideoCallClient } from "@/components/video-call-client";
 import { getServerUiText } from "@/lib/server-ui-text";
 
@@ -24,8 +23,8 @@ export default async function MeetingCallPage({
   // even one proxy.ts's own edge bypass already decided to let through.
   const hasInviteParams = Boolean(params.room && params.invite);
   if (!hasInviteParams) {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const user = await getOptionalUser();
+    if (!user) {
       redirect("/login?callbackUrl=/meetings/call");
     }
   }

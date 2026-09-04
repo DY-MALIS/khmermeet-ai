@@ -1,10 +1,9 @@
 import { LoginForm } from "@/components/auth-form";
-import { isGoogleLoginEnabled } from "@/lib/auth";
 
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ registered?: string; reset?: string; error?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; from?: string }>;
 }) {
   const params = await searchParams;
 
@@ -13,15 +12,9 @@ export default async function LoginPage({
       <section className="kh-card w-full max-w-md p-6">
         <div className="mb-6 text-center">
           <p className="text-2xl font-bold text-ink">Sign in</p>
-          <p className="mt-2 text-sm text-slate-500">Sign in to KhmerMeet AI with your account.</p>
+          <p className="mt-2 text-sm text-slate-500">Sign in to KhmerMeet AI with your Google account.</p>
         </div>
-        <LoginForm
-          justRegistered={params.registered === "1"}
-          justReset={params.reset === "1"}
-          errorCode={params.error ?? null}
-          callbackUrl={params.from || "/dashboard"}
-          googleEnabled={isGoogleLoginEnabled()}
-        />
+        <LoginForm errorCode={params.error ?? null} callbackUrl={params.from || "/dashboard"} />
       </section>
     </main>
   );

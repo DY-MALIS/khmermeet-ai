@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseUploadTicket } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getOptionalUser, isAdminEmail } from "@/lib/session";
 import { verifyInviteToken } from "@/lib/livekit-invite";
-import { isAdminEmail } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -24,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const meetingId = typeof body.meetingId === "string" ? body.meetingId.trim() : "";
-    const session = await getServerSession(authOptions);
+    const user = await getOptionalUser();
     if (meetingId) {
       const meeting = await prisma.meeting.findUnique({
         where: { id: meetingId },
@@ -33,13 +31,11 @@ export async function POST(request: Request) {
       if (!meeting || !isRecentLiveMeeting(meeting)) {
         return NextResponse.json({ error: "No live recording found for this upload." }, { status: 404 });
       }
-      const hasOwnerAccess =
-        Boolean(session?.user?.id) &&
-        (meeting.createdById === session?.user?.id || isAdminEmail(session?.user?.email));
+      const hasOwnerAccess = Boolean(user) && (meeting.createdById === user?.id || isAdminEmail(user?.email));
       if (!hasOwnerAccess && !verifyInviteToken(body.room, body.inviteToken)) {
         return NextResponse.json({ error: "Invite link is required to upload this recording." }, { status: 401 });
       }
-    } else if (!session?.user?.id) {
+    } else if (!user) {
       return NextResponse.json({ error: "Sign in is required to prepare an upload." }, { status: 401 });
     }
     const filename = `${Date.now()}-${crypto.randomUUID()}.${cleanExtension(body.ext)}`;

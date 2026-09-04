@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getOptionalUser } from "@/lib/session";
 import { cleanRoomName, createInviteToken, verifyInviteToken } from "@/lib/livekit-invite";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +15,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const room = cleanRoomName(body.room);
     const name = cleanDisplayName(body.name);
-    const session = await getServerSession(authOptions);
+    const user = await getOptionalUser();
     const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL?.trim() || process.env.LIVEKIT_URL?.trim();
     const apiKey = process.env.LIVEKIT_API_KEY?.trim();
     const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Room code is required." }, { status: 400 });
     }
 
-    if (!session?.user?.id && !verifyInviteToken(room, body.inviteToken)) {
+    if (!user && !verifyInviteToken(room, body.inviteToken)) {
       return NextResponse.json({ error: "Invite link is required to join this call as a guest." }, { status: 401 });
     }
 

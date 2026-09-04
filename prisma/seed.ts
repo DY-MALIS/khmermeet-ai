@@ -1,5 +1,4 @@
 import { PrismaClient } from "@prisma/client";
-import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -10,8 +9,7 @@ async function main() {
     create: {
       id: "local-demo-user",
       name: "Demo User",
-      email: "demo@khmermeet.ai",
-      passwordHash: await hash("password123", 10)
+      email: "demo@khmermeet.ai"
     }
   });
 

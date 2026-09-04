@@ -29,8 +29,7 @@ export async function POST(request: Request) {
       create: {
         id: user.id,
         name: user.name ?? "Local Demo",
-        email: user.email ?? "demo@khmermeet.ai",
-        passwordHash: "local-no-login"
+        email: user.email ?? "demo@khmermeet.ai"
       }
     });
 

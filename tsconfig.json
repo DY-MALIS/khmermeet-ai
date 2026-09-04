@@ -30,8 +30,7 @@
       "node",
       "react",
       "react-dom",
-      "dom-mediacapture-record",
-      "bcryptjs"
+      "dom-mediacapture-record"
     ],
     "paths": {
       "@/*": [
