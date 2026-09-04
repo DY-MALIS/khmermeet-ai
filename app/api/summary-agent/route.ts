@@ -8,7 +8,7 @@ import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
-export const maxDuration = 60;
+export const maxDuration = 75;
 
 function shouldRegenerateSummary(command: string) {
   const lower = command.toLowerCase();
@@ -134,8 +134,14 @@ export async function POST(request: Request) {
 
     const answer = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
-      timeoutMs: 45000,
-      maxTokens: shortenExistingSummary ? 800 : regeneratingSummary ? 1200 : 800
+      timeoutMs: 55000,
+      // A full regenerate can produce 5 sections with 5-8 bullets each -
+      // 1200 tokens was cutting a real long Khmer summary off mid-sentence
+      // partway through the "problems raised" section, silently dropping
+      // the entire "next steps" section that should have followed it.
+      // Khmer script needs noticeably more tokens per character than
+      // Latin script, so this needs real headroom, not just a bit more.
+      maxTokens: shortenExistingSummary ? 800 : regeneratingSummary ? 2500 : 800
     });
     let updatedSummary = false;
 
