@@ -45,6 +45,14 @@ select {
   @apply w-full rounded-xl border border-leaf/15 bg-white/85 px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
 }
 
+/* A transcript is read/reviewed as a block of running text, not filled in
+   like a short form field - the same text-sm (14px) that's fine for a
+   one-line input reads too small to comfortably read on a phone screen. */
+textarea.kh-input {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
 .kh-password-input {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -111,6 +119,10 @@ audio {
   .kh-card{border-radius:0.75rem}
   .kh-button{min-height:2.75rem;max-width:100%}
   .kh-input{min-height:2.75rem}
+  /* 16px is also the minimum iOS Safari won't auto-zoom the page in on
+     focus for - below that, tapping into the transcript box jumps the
+     whole page's zoom level, which is its own readability problem. */
+  textarea.kh-input{font-size:1rem}
   audio{max-width:100%}
 }
 @media(max-width:620px){.ai-workspace{padding:14px}.ai-workspace-header{display:block}.score-block{margin-top:14px}.notes-grid,.analytics-grid{grid-template-columns:1fr}.copilot-input{grid-template-columns:1fr}.copilot-input .primary{grid-column:1/-1}.timeline-row{grid-template-columns:58px 1fr}.timeline-row>b{display:none}.document-buttons{grid-template-columns:1fr}.workspace-input{padding:14px}}
