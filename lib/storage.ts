@@ -243,6 +243,28 @@ export function extractRealSpeakerNamesFromTranscript(transcript: string) {
   return names.slice(0, 100);
 }
 
+// Confirmed live (2026-09-04): the same mixed-audio recording, re-sent fresh
+// with no code change, correctly split into 3 speaker turns on 3 separate
+// attempts - but the run that got saved earlier had collapsed the entire
+// clip under a single "Speaker 1:" label. This is a different failure shape
+// than the already-handled empty-result case: the transcript is non-empty
+// and passes every existing quality check, so nothing previously caught it.
+// A long multi-person recording that comes back with only one distinct
+// speaker label for its whole length is a strong signal that diarization
+// silently failed on this particular attempt, not that the room really had
+// only one voice - worth one retry before accepting it.
+function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boolean) {
+  if (singleSpeaker) return false;
+  if (transcript.trim().length < 400) return false;
+  const labels = new Set<string>();
+  for (const line of transcript.split(/\r?\n/)) {
+    const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
+    if (match) labels.add(match[1].trim());
+    if (labels.size > 1) return false;
+  }
+  return labels.size <= 1;
+}
+
 function speakerNumberToIndex(value: string) {
   const normalized = value.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
   return Number(normalized) - 1;
@@ -724,7 +746,7 @@ export async function transcribeStoredTrackRecording(
     wholeAudioTimeoutMs > 10000
       ? await (async () => {
           const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
-          return transcribeAndCleanAudioBuffer(
+          let transcript = await transcribeAndCleanAudioBuffer(
             Buffer.from(wholeAudio),
             "audio/mp4",
             "complete-recording.m4a",
@@ -733,6 +755,27 @@ export async function transcribeStoredTrackRecording(
             speakerNames,
             options.singleSpeaker ?? true
           );
+          if (looksLikeCollapsedMultiSpeaker(transcript, options.singleSpeaker ?? true)) {
+            const retryTimeoutMs = deadline - Date.now() - CHUNK_FALLBACK_RESERVE_MS;
+            if (retryTimeoutMs > 10000) {
+              const retryTranscript = await transcribeAndCleanAudioBuffer(
+                Buffer.from(wholeAudio),
+                "audio/mp4",
+                "complete-recording.m4a",
+                languageMode,
+                Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, retryTimeoutMs),
+                speakerNames,
+                options.singleSpeaker ?? true
+              ).catch(() => "");
+              if (
+                hasUsableTranscript(retryTranscript) &&
+                !looksLikeCollapsedMultiSpeaker(retryTranscript, options.singleSpeaker ?? true)
+              ) {
+                transcript = retryTranscript;
+              }
+            }
+          }
+          return transcript;
         })().catch(() => "")
       : "";
 
