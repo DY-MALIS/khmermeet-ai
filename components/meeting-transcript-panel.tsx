@@ -1,5 +1,6 @@
 "use client";
 
+import { Download } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionButton } from "@/components/action-button";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
@@ -7,6 +8,7 @@ import { updateTranscript } from "@/lib/actions";
 
 type MeetingTranscriptPanelProps = {
   meetingId: string;
+  title?: string;
   audioUrl?: string | null;
   initialTranscript: string;
   rawTranscript?: string | null;
@@ -15,8 +17,20 @@ type MeetingTranscriptPanelProps = {
   autoStartTranscription?: boolean;
 };
 
+function downloadTranscriptText(text: string, title: string) {
+  const safeTitle = title.replace(/[^\w-]+/g, "-") || "transcript";
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${safeTitle}-transcript.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function MeetingTranscriptPanel({
   meetingId,
+  title = "meeting",
   audioUrl,
   initialTranscript,
   rawTranscript,
@@ -115,7 +129,17 @@ export function MeetingTranscriptPanel({
           onChange={(event) => setTranscript(event.target.value)}
           placeholder="Paste or edit the real meeting transcript here..."
         />
-        <ActionButton>Save transcript</ActionButton>
+        <div className="flex flex-wrap gap-2">
+          <ActionButton>Save transcript</ActionButton>
+          <button
+            type="button"
+            className="kh-button-secondary"
+            disabled={!transcript.trim()}
+            onClick={() => downloadTranscriptText(transcript, title)}
+          >
+            <Download className="h-4 w-4" /> Download transcript
+          </button>
+        </div>
       </form>
     </section>
   );

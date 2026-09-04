@@ -148,6 +148,7 @@ export default async function MeetingDetailPage({
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <MeetingTranscriptPanel
           meetingId={meeting.id}
+          title={meeting.title}
           audioUrl={meeting.audioUrl}
           initialTranscript={transcriptText}
           rawTranscript={labeledTranscript}
