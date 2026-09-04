@@ -243,6 +243,24 @@ export function extractRealSpeakerNamesFromTranscript(transcript: string) {
   return names.slice(0, 100);
 }
 
+// Replaces "Speaker N:" at the start of a line with the real detected name
+// for that exact N, leaving any label not present in `detected` untouched -
+// a deliberately partial substitution (see detectSelfIntroducedSpeakerNames)
+// so a speaker who never introduced themselves keeps their generic label
+// instead of being forced onto a name that was never theirs.
+function substituteDetectedSpeakerLabels(transcript: string, detected: Record<number, string>) {
+  return transcript
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = line.match(/^(\s*)Speaker\s+(\d+)(\s*[:：]\s*)(.*)$/i);
+      if (!match) return line;
+      const [, leadingWs, number, separator, rest] = match;
+      const name = detected[Number(number)];
+      return name ? `${leadingWs}${name}${separator}${rest}` : line;
+    })
+    .join("\n");
+}
+
 // Confirmed live (2026-09-04): the same mixed-audio recording, re-sent fresh
 // with no code change, correctly split into 3 speaker turns on 3 separate
 // attempts - but the run that got saved earlier had collapsed the entire
@@ -955,35 +973,28 @@ export async function refineSavedTranscript(
   timeoutMs = 55000
 ) {
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  const cleanedTranscript = cleanTranscriptionText(transcript);
+  let cleanedTranscript = cleanTranscriptionText(transcript);
   if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
 
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  let normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
+  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
   // No participant names were given up front - see if anyone clearly said
-  // their own name (see detectSelfIntroducedSpeakerNames for why this is a
-  // separate, narrow, all-or-nothing detection step rather than folded into
-  // the main refine prompt). A skipped/failed/timed-out detection just
-  // leaves the transcript on the existing generic-label behavior, never
-  // worse than before.
+  // their own name. Substituted directly into the transcript text below
+  // rather than routed through the positional "known speaker names" hint
+  // mechanism used for typed-in/LiveKit-join names - detection is commonly
+  // partial (e.g. a facilitator who only asks questions never states their
+  // own name), and that positional mechanism has no way to represent
+  // "leave this one generic". Direct substitution handles a partial map
+  // safely: an unintroduced speaker just keeps their generic "Speaker N:"
+  // label instead of being forced onto a name that was never theirs.
   if (!normalizedSpeakerNames.length) {
-    // Note: detectSelfIntroducedSpeakerNames deliberately abstains (returns
-    // []) whenever even one generic "Speaker N" label in the transcript
-    // never gets a confident name - see its own comment for why (the
-    // downstream mechanism is positional and can't represent "leave this
-    // one generic"). That abstention is deterministic, not a transient
-    // failure: if only 5 of 7 speakers ever introduce themselves, this will
-    // return [] every single time, retry or not. This retry only helps the
-    // separate, genuine case of a transient API/parse failure on an
-    // otherwise-fully-introduced transcript - it does not, and cannot,
-    // recover a partial introduction.
     const looksLikeSelfIntroduction = /ខ្ញុំ\s*(?:ឈ្មោះ|ជា)|my name is|i\s*'?am\b|i'm\b/i.test(cleanedTranscript);
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
       if (detectionBudget < 5000) break;
-      const detected = await detectSelfIntroducedSpeakerNames(cleanedTranscript, detectionBudget).catch(() => []);
-      if (detected.length) {
-        normalizedSpeakerNames = normalizeSpeakerNames(detected);
+      const detected = await detectSelfIntroducedSpeakerNames(cleanedTranscript, detectionBudget).catch(() => ({}));
+      if (Object.keys(detected).length) {
+        cleanedTranscript = substituteDetectedSpeakerLabels(cleanedTranscript, detected);
         break;
       }
       if (attempt === 1 && !looksLikeSelfIntroduction) break;

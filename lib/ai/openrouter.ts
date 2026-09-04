@@ -478,7 +478,14 @@ export async function refineOpenRouterTranscript(
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language. Khmer phrases in the raw transcript must remain Khmer script, and English phrases must remain English. Never translate Khmer speech into English or English speech into Khmer in Khmer + English mode.";
   const speakerInstruction = speakerNames.length
     ? `Known speaker names: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert generic numbered labels only when the mapping is clear from the raw transcript. If a label is unknown or uncertain, keep Unknown Speaker: instead of guessing a real name. Every spoken turn should start with a speaker label, but uncertain speakers must not be forced onto a known participant name. If there is only one known speaker, prefix each spoken line with that speaker name.`
-    : "Preserve Speaker 1, Speaker 2 labels if present. Keep self-introduced names inside the spoken sentence, but do not turn those names into speaker labels. Do not invent real person names.";
+    : // Some lines may already start with a real name instead of "Speaker N:"
+      // (a separate detection step upstream confidently matched only some
+      // speakers to a self-introduced name, and left the rest generic on
+      // purpose - a partial result, not a mistake). Preserve those already-
+      // substituted labels exactly; do not revert them back to a generic
+      // label, and do not extend that substitution to any other label
+      // yourself.
+      "Preserve Speaker 1, Speaker 2 labels if present. If a spoken turn already starts with a real name instead of a generic label (e.g. \"អារ៉ាស់:\" instead of \"Speaker 3:\"), that name is confirmed correct - keep it exactly as-is, do not change it back to a generic label or to a different name. Keep self-introduced names inside the spoken sentence, but do not turn a still-generic Speaker N: label into a speaker name yourself. Do not invent real person names.";
 
   const prompt = [
     "You are a careful meeting transcript proofreader.",
@@ -534,33 +541,43 @@ export async function refineOpenRouterTranscript(
 // AND consistently relabel a whole transcript in one shot produced a
 // confirmed-live wrong-attribution (a line was relabeled with a name that
 // belonged to a *different* speaker) - worse than the generic "Speaker 1"
-// label it replaced. Isolating extraction into its own low-stakes call and
-// feeding the result through the existing, already-relied-upon "known
-// speaker names, assign by first-seen order" mechanism (refineOpenRouterTranscript's
-// speakerNames branch, transcriptionChatPrompt's knownSpeakerInstruction)
-// means a bad detection only falls back to the same generic labels that
-// already ship today, never a confident wrong name.
+// label it replaced.
+//
+// Returns a sparse label -> name map (e.g. {3: "អារ៉ាស់"}), not one entry
+// per generic label seen. Used to originally require every single label in
+// the transcript to have a confident name before returning anything, on the
+// theory that a partial map couldn't be represented by the "known speaker
+// names, assign by first-seen order" positional mechanism elsewhere in this
+// file. Confirmed live that's too conservative in practice: a meeting
+// facilitator who never states their own name (common - they're asking
+// *other* people to introduce themselves) silently discarded five other
+// speakers' correctly self-introduced names along with it, every single
+// time, deterministically. The caller now substitutes each confident label
+// directly into the transcript text instead of routing through that
+// positional array, so a genuinely partial map is safe: an unintroduced
+// speaker just keeps their generic "Speaker N:" label rather than getting
+// forced onto a name that was never theirs.
 export async function detectSelfIntroducedSpeakerNames(
   transcript: string,
   timeoutMs = 20000
-): Promise<string[]> {
-  if (!hasOpenRouterKey()) return [];
+): Promise<Record<number, string>> {
+  if (!hasOpenRouterKey()) return {};
   const clean = transcript.trim();
-  if (!clean) return [];
+  if (!clean) return {};
 
   const labelMatches = [...clean.matchAll(/^\s*Speaker\s+(\d+)\s*:/gim)];
   const labelNumbers = [...new Set(labelMatches.map((match) => Number(match[1])))].sort((a, b) => a - b);
   // Nothing to relabel - either already has real names, or no generic
   // labels at all (e.g. a single continuous voice with no speaker prefix).
-  if (!labelNumbers.length) return [];
+  if (!labelNumbers.length) return {};
 
   const prompt = [
     "You are given a raw meeting transcript that uses generic speaker labels: Speaker 1, Speaker 2, etc.",
     "For each generic label, check whether that exact speaker clearly states their own name as a self-introduction somewhere in their lines - for example Khmer phrases like \"ខ្ញុំឈ្មោះ...\", \"ខ្ញុំជា...\", or English phrases like \"my name is...\", \"I am...\", \"I'm...\", \"this is...\".",
     "Only report a name when it is explicitly and unambiguously self-introduced by that speaker. Never guess a name from role, topic, tone, or how someone is addressed by another speaker.",
-    "If a label's self-introduction is missing, unclear, contradictory (introduces more than one different name), or you are not confident, omit that label entirely rather than guessing.",
+    "If a label's self-introduction is missing, unclear, contradictory (introduces more than one different name), or you are not confident, omit that label entirely rather than guessing - it is completely normal and expected for some labels (e.g. a facilitator who only asks questions) to have no self-introduction at all.",
     `The generic labels present in this transcript are: ${labelNumbers.map((n) => `Speaker ${n}`).join(", ")}.`,
-    "Return only a JSON object whose keys are exactly those generic labels (only the ones you are confident about) and whose values are the introduced name, for example {\"Speaker 1\": \"ដារ៉ា\"}. Return {} if none are confident.",
+    "Return only a JSON object whose keys are exactly those generic labels (only the ones you are confident about - omit any label with no self-introduction) and whose values are the introduced name, for example {\"Speaker 1\": \"ដារ៉ា\"}. Return {} if none are confident.",
     "",
     "Transcript:",
     clean
@@ -575,25 +592,19 @@ export async function detectSelfIntroducedSpeakerNames(
       maxTokens: 500
     });
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const detected = new Map<number, string>();
+    const detected: Record<number, string> = {};
     for (const [label, name] of Object.entries(parsed)) {
       const match = label.trim().match(/^Speaker\s+(\d+)$/i);
       if (!match || typeof name !== "string") continue;
+      const labelNumber = Number(match[1]);
+      if (!labelNumbers.includes(labelNumber)) continue;
       const trimmedName = name.trim();
       if (!trimmedName || trimmedName.length > 60) continue;
-      detected.set(Number(match[1]), trimmedName);
+      detected[labelNumber] = trimmedName;
     }
-    // Only usable if EVERY generic label seen in the transcript has a
-    // confident name - the downstream "known speaker names, assign by
-    // order" mechanism is positional (Speaker 1 = names[0], Speaker 2 =
-    // names[1], ...) and has no way to represent "this one stays generic."
-    // A partial map would force an unintroduced speaker's real turns onto
-    // someone else's name, which is the exact wrong-attribution failure
-    // mode this function exists to avoid.
-    if (detected.size !== labelNumbers.length) return [];
-    return labelNumbers.map((n) => detected.get(n)!);
+    return detected;
   } catch {
-    return [];
+    return {};
   }
 }
 
