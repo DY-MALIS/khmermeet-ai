@@ -265,6 +265,25 @@ function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boole
   return labels.size <= 1;
 }
 
+// Confirmed live (2026-09-04): a real 148.9-second mobile recording came
+// back with a transcript of only 35 characters ("...now let's introduce
+// ourselves, our name, uh...") - cut off right as the first speaker was
+// about to say their name, with over two minutes of real, audible speech
+// afterward. Re-sending the exact same compressed audio directly produced
+// a full 2100+ character transcript capturing every speaker's
+// self-introduction. This is a different failure shape than the collapsed-
+// speaker case above (that one has plenty of text, just one label) - here
+// the model just stops generating far too early. A transcript that's
+// wildly short relative to how long the audio actually is means the
+// attempt likely failed partway through, not that the recording was quiet
+// or sparse - real speech reliably produces much more than ~2
+// characters/second even accounting for pauses.
+function looksSeverelyTruncated(transcript: string, durationSeconds: number | null) {
+  if (!durationSeconds || durationSeconds < 30) return false;
+  const length = transcript.trim().length;
+  return length < Math.min(300, durationSeconds * 2);
+}
+
 function speakerNumberToIndex(value: string) {
   const normalized = value.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
   return Number(normalized) - 1;
@@ -745,7 +764,11 @@ export async function transcribeStoredTrackRecording(
   const wholeTranscript =
     wholeAudioTimeoutMs > 10000
       ? await (async () => {
-          const wholeAudio = await compressWholeAudioForTranscription(buffer, ext, openRouterAudioLimit);
+          const { buffer: wholeAudio, durationSeconds } = await compressWholeAudioForTranscription(
+            buffer,
+            ext,
+            openRouterAudioLimit
+          );
           let transcript = await transcribeAndCleanAudioBuffer(
             Buffer.from(wholeAudio),
             "audio/mp4",
@@ -755,24 +778,36 @@ export async function transcribeStoredTrackRecording(
             speakerNames,
             options.singleSpeaker ?? true
           );
-          if (looksLikeCollapsedMultiSpeaker(transcript, options.singleSpeaker ?? true)) {
+          const looksBroken = (candidate: string) =>
+            looksLikeCollapsedMultiSpeaker(candidate, options.singleSpeaker ?? true) ||
+            looksSeverelyTruncated(candidate, durationSeconds);
+          // Confirmed live: one retry isn't always enough - a real hard
+          // recording truncated on 2 attempts in a row before a 3rd
+          // succeeded. A near-empty transcript silently accepted is worse
+          // than one extra request, so keep trying up to this many times
+          // total before giving up and accepting whatever came back.
+          const maxWholeAudioAttempts = 3;
+          for (let attempt = 2; attempt <= maxWholeAudioAttempts && looksBroken(transcript); attempt += 1) {
             const retryTimeoutMs = deadline - Date.now() - CHUNK_FALLBACK_RESERVE_MS;
-            if (retryTimeoutMs > 10000) {
-              const retryTranscript = await transcribeAndCleanAudioBuffer(
-                Buffer.from(wholeAudio),
-                "audio/mp4",
-                "complete-recording.m4a",
-                languageMode,
-                Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, retryTimeoutMs),
-                speakerNames,
-                options.singleSpeaker ?? true
-              ).catch(() => "");
-              if (
-                hasUsableTranscript(retryTranscript) &&
-                !looksLikeCollapsedMultiSpeaker(retryTranscript, options.singleSpeaker ?? true)
-              ) {
-                transcript = retryTranscript;
-              }
+            if (retryTimeoutMs <= 10000) break;
+            const retryTranscript = await transcribeAndCleanAudioBuffer(
+              Buffer.from(wholeAudio),
+              "audio/mp4",
+              "complete-recording.m4a",
+              languageMode,
+              Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, retryTimeoutMs),
+              speakerNames,
+              options.singleSpeaker ?? true
+            ).catch(() => "");
+            if (hasUsableTranscript(retryTranscript) && !looksBroken(retryTranscript)) {
+              transcript = retryTranscript;
+              break;
+            }
+            // Keep the least-broken candidate even if every attempt stays
+            // imperfect, so a partial retry can't discard useful text a
+            // shorter/worse later attempt failed to match.
+            if (hasUsableTranscript(retryTranscript) && retryTranscript.length > transcript.length) {
+              transcript = retryTranscript;
             }
           }
           return transcript;

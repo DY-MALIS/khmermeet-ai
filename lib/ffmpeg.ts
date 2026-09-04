@@ -231,9 +231,9 @@ export async function compressWholeAudioForTranscription(
   buffer: Buffer,
   ext: string,
   maxBytes: number
-): Promise<Buffer> {
+): Promise<{ buffer: Buffer; durationSeconds: number | null }> {
   if (!ffmpegPath) {
-    if (buffer.length <= maxBytes) return buffer;
+    if (buffer.length <= maxBytes) return { buffer, durationSeconds: null };
     throw new Error("ffmpeg binary not found. The recording is too large to prepare for transcription.");
   }
 
@@ -255,7 +255,7 @@ export async function compressWholeAudioForTranscription(
       : 24000;
     const bitrate = Math.max(16000, Math.min(48000, sizeBasedBitrate));
 
-    await execFileAsync(
+    const { stderr: encodeStderr } = await execFileAsync(
       ffmpegPath,
       [
         "-y",
@@ -278,7 +278,21 @@ export async function compressWholeAudioForTranscription(
     if (compressed.length > maxBytes) {
       throw new Error("This recording is too long to transcribe as one complete file within the provider's audio limit.");
     }
-    return compressed;
+    // The container-header probe above returns null for Chrome MediaRecorder
+    // webm files (a common, not rare, case - no Duration in the header even
+    // though the stream decodes fine). This same encode pass just fully
+    // decoded the whole input regardless, so its own progress output
+    // ("time=HH:MM:SS.ms", the last one printed) gives the real duration
+    // for free, the same technique findSilenceAdjustedCutTimes already
+    // relies on - a caller checking "is this transcript far too short for
+    // how long the audio actually is" needs a real number here, not null.
+    let resolvedDurationSeconds = durationSeconds;
+    if (resolvedDurationSeconds === null) {
+      const timeMatches = [...encodeStderr.matchAll(/time=(\d+):(\d+):(\d+\.\d+)/g)];
+      const last = timeMatches[timeMatches.length - 1];
+      if (last) resolvedDurationSeconds = Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]);
+    }
+    return { buffer: compressed, durationSeconds: resolvedDurationSeconds };
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
