@@ -15,7 +15,7 @@ type OpenRouterErrorContext = {
   providerStatus?: string;
 };
 
-const DEFAULT_TEXT_MODEL = "openai/gpt-4o-mini";
+const DEFAULT_TEXT_MODEL = "openai/gpt-5.6-luna";
 const DEFAULT_TRANSCRIPTION_MODEL_EN = "google/chirp-3";
 const DEFAULT_TRANSCRIPTION_MODEL_KM = "google/chirp-3";
 

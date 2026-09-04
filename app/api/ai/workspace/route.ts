@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         "X-Title": "KhmerMeet AI",
       },
       body: JSON.stringify({
-        model: process.env.OPEN_ROUTER_TEXT_MODEL || "openai/gpt-4o-mini",
+        model: process.env.OPEN_ROUTER_TEXT_MODEL || "openai/gpt-5.6-luna",
         response_format: { type: "json_object" },
         messages: [
           {

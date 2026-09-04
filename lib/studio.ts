@@ -41,7 +41,7 @@ export async function processStudioText(input: ProcessStudioInput) {
       "X-Title": "KhmerMeet AI Scribe Studio"
     },
     body: JSON.stringify({
-      model: process.env.OPEN_ROUTER_TEXT_MODEL ?? "openai/gpt-4o-mini",
+      model: process.env.OPEN_ROUTER_TEXT_MODEL ?? "openai/gpt-5.6-luna",
       temperature: 0.2,
       messages: [
         {
