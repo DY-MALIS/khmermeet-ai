@@ -967,10 +967,26 @@ export async function refineSavedTranscript(
   // leaves the transcript on the existing generic-label behavior, never
   // worse than before.
   if (!normalizedSpeakerNames.length) {
-    const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
-    if (detectionBudget >= 5000) {
+    // Note: detectSelfIntroducedSpeakerNames deliberately abstains (returns
+    // []) whenever even one generic "Speaker N" label in the transcript
+    // never gets a confident name - see its own comment for why (the
+    // downstream mechanism is positional and can't represent "leave this
+    // one generic"). That abstention is deterministic, not a transient
+    // failure: if only 5 of 7 speakers ever introduce themselves, this will
+    // return [] every single time, retry or not. This retry only helps the
+    // separate, genuine case of a transient API/parse failure on an
+    // otherwise-fully-introduced transcript - it does not, and cannot,
+    // recover a partial introduction.
+    const looksLikeSelfIntroduction = /ខ្ញុំ\s*(?:ឈ្មោះ|ជា)|my name is|i\s*'?am\b|i'm\b/i.test(cleanedTranscript);
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
+      if (detectionBudget < 5000) break;
       const detected = await detectSelfIntroducedSpeakerNames(cleanedTranscript, detectionBudget).catch(() => []);
-      if (detected.length) normalizedSpeakerNames = normalizeSpeakerNames(detected);
+      if (detected.length) {
+        normalizedSpeakerNames = normalizeSpeakerNames(detected);
+        break;
+      }
+      if (attempt === 1 && !looksLikeSelfIntroduction) break;
     }
   }
 
