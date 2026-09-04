@@ -97,8 +97,6 @@ export function RecordingPanel() {
     updateElapsed();
     const timer = setInterval(updateElapsed, 250);
     return () => clearInterval(timer);
-    // `stop` operates on refs and the interval must only follow recording state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
   useEffect(() => {
@@ -369,12 +367,25 @@ export function RecordingPanel() {
       void transcribeCompleteRecording(data.meetingId);
     } catch (error) {
       setError(error instanceof Error ? error.message : "មិនអាចរក្សាទុកប្រជុំបានទេ។ សូមសាកល្បងម្តងទៀត។");
+      // Saving failed before transcription ever started - transcribeCompleteRecording
+      // (which normally releases the wake lock once it finishes) never runs.
+      void releaseRecordingWakeLock();
     } finally {
       setSavingMeeting(false);
     }
   }
 
-  async function transcribeCompleteRecording(meetingId: string) {
+  // A fetch() that dies because the OS suspended the tab (screen locked,
+  // app backgrounded) throws a TypeError with a terse, technical message -
+  // "Load failed" on mobile Safari, "Failed to fetch" on Chrome - that
+  // means nothing to a non-technical user and doesn't explain what to do.
+  function isNetworkDropError(error: unknown) {
+    if (!(error instanceof TypeError)) return false;
+    const message = error.message.toLowerCase();
+    return message.includes("load failed") || message.includes("failed to fetch") || message.includes("network");
+  }
+
+  async function transcribeCompleteRecording(meetingId: string, isRetry = false) {
     setTranscriptionProgress("កំពុងកែលម្អគុណភាពសំឡេង និងបំលែងឯកសារពេញជាអក្សរ...");
     try {
       const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
@@ -387,10 +398,25 @@ export function RecordingPanel() {
         throw new Error(data.error ?? "រកមិនឃើញសំឡេងនិយាយច្បាស់លាស់ក្នុងការថតនេះទេ។");
       }
       setTranscriptionProgress("បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។");
+      void releaseRecordingWakeLock();
     } catch (error) {
+      if (isNetworkDropError(error) && !isRetry) {
+        // One automatic retry, keeping the wake lock held rather than
+        // releasing and re-requesting it - a brief connection blip
+        // recovers on its own; a locked screen won't, but the second
+        // attempt still gives the pipeline a chance if the user unlocked
+        // in the meantime. Deliberately not awaited here so this call's
+        // own stack unwinds immediately - only the retry's outcome should
+        // decide when the wake lock is released.
+        void transcribeCompleteRecording(meetingId, true);
+        return;
+      }
       setTranscriptionProgress(
-        `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${error instanceof Error ? error.message : "សូមសាកល្បងម្តងទៀត។"}`
+        isNetworkDropError(error)
+          ? "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែការតភ្ជាប់ដាច់ ប្រហែលមកពីអេក្រង់ទូរស័ព្ទបានចាក់សោ ឬប្តូរទៅកម្មវិធីផ្សេងពេលកំពុងបំលែង។ សូមទុកអេក្រង់បើក និងស្ថិតនៅលើទំព័រនេះ រួចចុច \"Re-transcribe audio\" ខាងក្រោមដើម្បីសាកម្តងទៀត។"
+          : `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${error instanceof Error ? error.message : "សូមសាកល្បងម្តងទៀត។"}`
       );
+      void releaseRecordingWakeLock();
     }
   }
 
@@ -411,7 +437,15 @@ export function RecordingPanel() {
   }
 
   function stop() {
-    void releaseRecordingWakeLock();
+    // Keep the wake lock held (do NOT release it here) - stopping the
+    // recording immediately kicks off upload -> save -> transcribe, which
+    // can run for minutes. A user is more likely to lock their phone right
+    // after pressing stop (they're done watching the timer), and once the
+    // screen sleeps, mobile Safari/Chrome suspend the in-flight fetch and
+    // the transcription request fails with a generic "Load failed" - not
+    // an app bug, but preventable by keeping the screen awake through the
+    // whole pipeline. Released once transcribeCompleteRecording finishes
+    // (success or failure) or if saving the meeting itself fails first.
     accumulatedMsRef.current += startedAtRef.current ? Date.now() - startedAtRef.current : 0;
     startedAtRef.current = 0;
     setSeconds(clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000)));
