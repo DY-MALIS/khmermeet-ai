@@ -11,7 +11,10 @@ model User {
   id           String    @id @default(cuid())
   name         String
   email        String    @unique
-  passwordHash String
+  // Optional: a user who signs up/in only via Google never sets a
+  // password. Credentials login must guard against a null hash instead of
+  // assuming every account has one.
+  passwordHash String?
   createdAt    DateTime  @default(now())
   meetings     Meeting[]
 }

@@ -1,4 +1,5 @@
 import { RegisterForm } from "@/components/auth-form";
+import { isGoogleLoginEnabled } from "@/lib/auth";
 
 export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const params = await searchParams;
@@ -10,7 +11,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           <p className="text-2xl font-bold text-ink">Create account</p>
           <p className="mt-2 text-sm text-slate-500">Start using KhmerMeet AI for your team.</p>
         </div>
-        <RegisterForm errorCode={params.error ?? null} />
+        <RegisterForm errorCode={params.error ?? null} googleEnabled={isGoogleLoginEnabled()} />
       </section>
     </main>
   );

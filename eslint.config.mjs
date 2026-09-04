@@ -2,10 +2,10 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
+  { ignores: [".next/**", "node_modules/**", "uploads/**", "next-env.d.ts", "public/**"] },
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
-    ignores: [".next/**", "node_modules/**", "uploads/**", "next-env.d.ts"],
     rules: {
       "react-hooks/set-state-in-effect": "off"
     }

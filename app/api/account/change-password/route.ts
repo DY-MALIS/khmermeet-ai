@@ -20,9 +20,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Account not found." }, { status: 404 });
     }
 
-    const currentOk = await compare(currentPassword, record.passwordHash);
-    if (!currentOk) {
-      return NextResponse.json({ error: "The current password is incorrect." }, { status: 400 });
+    // An account created via Google sign-in has no password yet - there is
+    // nothing to verify the "current" password against, so this becomes
+    // "set a password for the first time" instead of "change" it.
+    if (record.passwordHash) {
+      const currentOk = await compare(currentPassword, record.passwordHash);
+      if (!currentOk) {
+        return NextResponse.json({ error: "The current password is incorrect." }, { status: 400 });
+      }
     }
 
     await prisma.user.update({

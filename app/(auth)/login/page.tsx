@@ -1,4 +1,5 @@
 import { LoginForm } from "@/components/auth-form";
+import { isGoogleLoginEnabled } from "@/lib/auth";
 
 export default async function LoginPage({
   searchParams
@@ -19,6 +20,7 @@ export default async function LoginPage({
           justReset={params.reset === "1"}
           errorCode={params.error ?? null}
           callbackUrl={params.from || "/dashboard"}
+          googleEnabled={isGoogleLoginEnabled()}
         />
       </section>
     </main>
