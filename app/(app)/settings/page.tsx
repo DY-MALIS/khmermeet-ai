@@ -1,5 +1,6 @@
 import { PlugZap } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { SetPasswordForm } from "@/components/set-password-form";
 import { getServerUiText } from "@/lib/server-ui-text";
 import { requireUser } from "@/lib/session";
 
@@ -32,6 +33,13 @@ export default async function SettingsPage() {
           <div><p className="text-sm text-slate-500">{text.name}</p><p className="font-semibold">{user.name}</p></div>
           <div><p className="text-sm text-slate-500">{text.email}</p><p className="font-semibold">{user.email}</p></div>
         </div>
+      </section>
+      <section className="kh-card p-5">
+        <h2 className="mb-4 text-lg font-bold">Password</h2>
+        <p className="mb-4 text-sm text-slate-500">
+          កំណត់ password សម្រាប់គណនីនេះ ដើម្បីអាច Sign in ដោយ email + password បន្ថែមលើ Google (មិនចាំបាច់ចេញទៅមើល email ទេ ព្រោះអ្នកបាន login ស្រាប់ហើយ)។
+        </p>
+        <SetPasswordForm />
       </section>
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
