@@ -146,13 +146,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // still gets a chance to fill in their real name if they introduce
     // themselves in the audio.
     const resolveSegmentLabel = createSegmentSpeakerLabelResolver();
+    // Set when a long call's mixed recording ran out of budget partway
+    // through its chunks - the transcript is real but missing the tail, so
+    // the response says so rather than presenting it as the whole call.
+    let incompleteLongRecording = false;
     const rawTranscript =
       canTranscribeMixedAudio && meeting.audioUrl
         ? await transcribeStoredTrackRecording(
             meeting.audioUrl,
             normalizeTranscriptionLanguageMode(meeting.language),
             Math.min(180000, mixedAudioBudget),
-            { speakerNames, singleSpeaker: false }
+            {
+              speakerNames,
+              singleSpeaker: false,
+              onIncomplete: () => {
+                incompleteLongRecording = true;
+              }
+            }
           ).catch(() =>
             segments
               .filter((segment) => segment.text.trim())
@@ -191,7 +201,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     revalidatePath("/dashboard");
     revalidatePath(`/meetings/${id}`);
 
-    return NextResponse.json({ transcript, merged: true });
+    return NextResponse.json({
+      transcript,
+      merged: true,
+      ...(incompleteLongRecording
+        ? {
+            partial: true,
+            message:
+              "This call is long enough that transcription ran out of time before reaching the end, so the last part is missing. The audio is saved in full - run the transcription again to continue."
+          }
+        : {})
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not merge transcript segments." },

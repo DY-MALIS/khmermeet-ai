@@ -393,11 +393,18 @@ export function RecordingPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ languageMode: transcriptionLanguage })
       });
-      const data = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+      const data = await readJsonResponse<{ transcript?: string; error?: string; partial?: boolean }>(response);
       if (!response.ok || !data.transcript?.trim()) {
         throw new Error(data.error ?? "រកមិនឃើញសំឡេងនិយាយច្បាស់លាស់ក្នុងការថតនេះទេ។");
       }
-      setTranscriptionProgress("បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។");
+      // A very long recording can run out of transcription time partway
+      // through - the saved text is real but stops before the end of the
+      // meeting, so say so rather than reporting a clean finish.
+      setTranscriptionProgress(
+        data.partial
+          ? "ការថតវែងពេក ដូច្នេះការបំលែងជាអក្សរមិនទាន់ដល់ចប់ទេ — ផ្នែកចុងក្រោយនៃការប្រជុំនៅខ្វះ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ សូមបើកប្រជុំ រួចចុច \"Re-transcribe audio\" ដើម្បីបន្ត។"
+          : "បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។"
+      );
       void releaseRecordingWakeLock();
     } catch (error) {
       if (isNetworkDropError(error) && !isRetry) {

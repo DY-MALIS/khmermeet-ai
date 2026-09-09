@@ -74,6 +74,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       !chronologicalSpeakerSegments.length &&
       (!participantAudioSegments.length || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
+    // Set when a long recording ran out of transcription budget partway
+    // through its chunks - the transcript below is real but missing the
+    // tail, so the response has to say so instead of presenting it as the
+    // complete meeting.
+    let incompleteLongRecording = false;
     let transcriptSpeakerNames = speakerNames;
     // Resolves each segment's label once here at assembly time: the real
     // registered name, or - for a participant who joined without typing one
@@ -109,7 +114,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       rawTranscript = await withinDeadline(
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
-          singleSpeaker: false
+          singleSpeaker: false,
+          onIncomplete: () => {
+            incompleteLongRecording = true;
+          }
         }),
         workDeadline - REFINE_RESERVE_MS
       );
@@ -169,7 +177,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       rawTranscript = await withinDeadline(
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
-          singleSpeaker: false
+          singleSpeaker: false,
+          onIncomplete: () => {
+            incompleteLongRecording = true;
+          }
         }),
         workDeadline - REFINE_RESERVE_MS
       );
@@ -228,6 +239,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         partial: true,
         message:
           "Saved every transcript segment captured so far. Some speaker audio may still need another pass; click Re-transcribe audio again to continue from the saved recording."
+      });
+    }
+
+    if (incompleteLongRecording) {
+      return NextResponse.json({
+        transcript,
+        partial: true,
+        message:
+          "This recording is long enough that transcription ran out of time before reaching the end, so the last part of the meeting is missing. The audio is saved in full - click Re-transcribe audio to continue."
       });
     }
 

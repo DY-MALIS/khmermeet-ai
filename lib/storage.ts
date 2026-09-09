@@ -802,7 +802,12 @@ export async function transcribeStoredTrackRecording(
   audioUrl: string,
   languageMode: TranscriptionLanguageMode,
   timeoutMs = 120000,
-  options: { speakerNames?: string[]; singleSpeaker?: boolean } = {}
+  // onIncomplete fires when the time budget ran out before every chunk of a
+  // long recording was transcribed. The text returned in that case is a real
+  // transcript of the parts that finished, just missing the tail - callers
+  // pass this so they can tell the user rather than presenting a silently
+  // truncated transcript as if it were the whole meeting.
+  options: { speakerNames?: string[]; singleSpeaker?: boolean; onIncomplete?: () => void } = {}
 ) {
   const file = await loadStoredAudioAsFile(audioUrl);
   // This is always a whole-call recording (minutes to hours), never a
@@ -832,10 +837,17 @@ export async function transcribeStoredTrackRecording(
   const wholeTranscript =
     wholeAudioTimeoutMs > 10000
       ? await (async () => {
+          // Bound the encode to a share of what's left rather than its own
+          // fixed 2-minute ceiling: on a long recording this step can burn
+          // the entire budget before the chunked fallback below ever gets
+          // to run, which is how a long meeting ends up with a silently
+          // truncated transcript.
+          const compressTimeoutMs = Math.max(20000, Math.min(120000, Math.floor((deadline - Date.now()) * 0.35)));
           const { buffer: wholeAudio, durationSeconds } = await compressWholeAudioForTranscription(
             buffer,
             ext,
-            openRouterAudioLimit
+            openRouterAudioLimit,
+            compressTimeoutMs
           );
           let transcript = await transcribeAndCleanAudioBuffer(
             Buffer.from(wholeAudio),
@@ -964,7 +976,13 @@ export async function transcribeStoredTrackRecording(
   await Promise.all(Array.from({ length: Math.min(STORED_TRANSCRIPTION_CONCURRENCY, chunks.length) }, worker));
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
   if (completed.some((done) => !done)) {
-    return chooseMoreCompleteTranscript(cleanTranscriptionText(wholeTranscript), chunkTranscript, languageMode);
+    const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
+    const best = chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript, languageMode);
+    // Only really incomplete if the chunked (partial) run is what we're
+    // returning - when the whole-audio attempt succeeded and won, it covers
+    // the entire recording regardless of how many chunks finished.
+    if (best !== wholeAudioTranscript) options.onIncomplete?.();
+    return best;
   }
 
   return chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);

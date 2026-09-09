@@ -227,10 +227,16 @@ export async function splitAudioIntoChunks(
 // cutting or removing any time range. This keeps sentence and speaker-turn
 // context intact while fitting providers that cap a single audio request by
 // file size.
+// Lowest bitrate the encode below will ever drop to. Anything longer than
+// maxBytes at this bitrate cannot fit as one file no matter what, which is
+// what makes the pre-check in the body worth doing.
+const MIN_WHOLE_AUDIO_BITRATE = 16000;
+
 export async function compressWholeAudioForTranscription(
   buffer: Buffer,
   ext: string,
-  maxBytes: number
+  maxBytes: number,
+  timeoutMs = 120000
 ): Promise<{ buffer: Buffer; durationSeconds: number | null }> {
   if (!ffmpegPath) {
     if (buffer.length <= maxBytes) return { buffer, durationSeconds: null };
@@ -250,10 +256,21 @@ export async function compressWholeAudioForTranscription(
     // retaining the complete timeline in one file.
     // Duration may be absent from Chrome's WebM header. In that case use a
     // conservative speech bitrate; FFmpeg can still decode the full stream.
+    // A recording past this length cannot fit in one request even at the
+    // floor bitrate, so encoding it first only to reject the result wastes
+    // the caller's whole time budget (a real risk on a multi-hour meeting:
+    // the encode has to decode every second of audio before it can fail).
+    // Bail out before that work instead, so the chunked path downstream
+    // gets the time. Only possible when the duration is actually known -
+    // Chrome WebM often has no header duration, and that case still falls
+    // through to the encode as before.
+    if (durationSeconds !== null && durationSeconds * MIN_WHOLE_AUDIO_BITRATE > maxBytes * 8 * 0.9) {
+      throw new Error("This recording is too long to transcribe as one complete file within the provider's audio limit.");
+    }
     const sizeBasedBitrate = durationSeconds
       ? Math.floor((maxBytes * 8 * 0.85) / Math.max(1, durationSeconds))
       : 24000;
-    const bitrate = Math.max(16000, Math.min(48000, sizeBasedBitrate));
+    const bitrate = Math.max(MIN_WHOLE_AUDIO_BITRATE, Math.min(48000, sizeBasedBitrate));
 
     const { stderr: encodeStderr } = await execFileAsync(
       ffmpegPath,
@@ -270,7 +287,7 @@ export async function compressWholeAudioForTranscription(
         "-movflags", "+faststart",
         outputPath
       ],
-      { timeout: 120000, maxBuffer: 2 * 1024 * 1024 }
+      { timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024 }
     );
 
     const compressed = await readFile(outputPath);

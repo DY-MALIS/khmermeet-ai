@@ -1753,12 +1753,16 @@ function LiveKitMeetingAgent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ duration })
       });
-      const mergeJson = await readJsonResponse<{ merged?: boolean; error?: string }>(mergeResponse);
+      const mergeJson = await readJsonResponse<{ merged?: boolean; error?: string; partial?: boolean }>(mergeResponse);
       if (!mergeResponse.ok) throw new Error(mergeJson.error ?? "Could not merge the recorded transcript.");
 
       if (mergeJson.merged) {
         await fetch(`/api/meetings/${meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-        setNotice("ការថតត្រូវបានរក្សាទុក ហើយ transcript/summary រួចរាល់។ អ្នកអាចបន្ត call ឬថតជុំថ្មីបាន។");
+        setNotice(
+          mergeJson.partial
+            ? "ការខលវែងពេក ដូច្នេះការបំលែងជាអក្សរមិនទាន់ដល់ចប់ទេ — ផ្នែកចុងក្រោយនៅខ្វះ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ សូមបើកប្រជុំ រួចបំលែងម្តងទៀតដើម្បីបន្ត។"
+            : "ការថតត្រូវបានរក្សាទុក ហើយ transcript/summary រួចរាល់។ អ្នកអាចបន្ត call ឬថតជុំថ្មីបាន។"
+        );
       } else {
         setNotice("បានរក្សាទុក audio រួច។ Transcript មិនទាន់រកឃើញសំឡេងច្បាស់ទេ ប៉ុន្តែ call និងការថតជុំថ្មីនៅដំណើរការ។");
       }
@@ -1809,12 +1813,16 @@ function LiveKitMeetingAgent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ duration })
       });
-      const mergeJson = await readJsonResponse<{ merged?: boolean; error?: string }>(mergeResponse);
+      const mergeJson = await readJsonResponse<{ merged?: boolean; error?: string; partial?: boolean }>(mergeResponse);
       if (!mergeResponse.ok) throw new Error(mergeJson.error ?? "Could not merge the recorded transcript.");
 
       if (mergeJson.merged) {
         await fetch(`/api/meetings/${recording.meetingId}/finalize-summary`, { method: "POST" }).catch(() => undefined);
-        setNotice("ការថត server រួចរាល់ ហើយ transcript ត្រូវបានបញ្ចូលតាមឈ្មោះអ្នកនិយាយ។");
+        setNotice(
+          mergeJson.partial
+            ? "ការខលវែងពេក ដូច្នេះការបំលែងជាអក្សរមិនទាន់ដល់ចប់ទេ — ផ្នែកចុងក្រោយនៅខ្វះ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ សូមបើកប្រជុំ រួចបំលែងម្តងទៀតដើម្បីបន្ត។"
+            : "ការថត server រួចរាល់ ហើយ transcript ត្រូវបានបញ្ចូលតាមឈ្មោះអ្នកនិយាយ។"
+        );
       } else {
         setNotice("បានរក្សាទុក server audio រួច ប៉ុន្តែ transcript មិនទាន់មានសំឡេងច្បាស់ពី participant tracks ទេ។");
       }
