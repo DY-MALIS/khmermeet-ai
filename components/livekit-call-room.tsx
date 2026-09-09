@@ -71,13 +71,13 @@ function readInviteToken() {
 // Prefers, in order: a name this browser already saved (an explicit choice
 // this person made before, which should stick), then the signed-in
 // account's real name (passed down from the server session - only available
-// for a logged-in host, not a no-account guest), then the last-resort
-// "Local User" placeholder. That placeholder is never treated as a real name
-// downstream (see isPlaceholderParticipantName in lib/storage.ts) - it just
-// keeps this input non-empty so the join flow doesn't need a hard block.
+// for a logged-in host, not a no-account guest), then genuinely empty - a
+// no-account guest sees an empty field with a placeholder hint, not a
+// pre-filled "Local User" that looks like a real (if odd) name and hides
+// the fact that joinRoom() below now blocks on it.
 function readSavedParticipantName(accountName?: string) {
-  if (typeof window === "undefined") return accountName || "Local User";
-  return localStorage.getItem("khmermeet-participant-name")?.trim() || accountName || "Local User";
+  if (typeof window === "undefined") return accountName || "";
+  return localStorage.getItem("khmermeet-participant-name")?.trim() || accountName || "";
 }
 
 function syncMeetingParams({ setRoom, setTitle, setIsInviteGuest }: MeetingParamSetters) {
@@ -162,9 +162,19 @@ function cleanParticipantIdentity(identity: string) {
     .trim() || "អ្នកចូលរួម";
 }
 
+// Mirrors isPlaceholderParticipantName in lib/storage.ts (not imported
+// directly - that module pulls in server-only code like ffmpeg/Prisma,
+// too heavy for a client bundle). Used here to block joining on the
+// anonymous-join placeholder itself, so it stops reaching the backend at
+// all instead of only being cleaned up downstream in the transcript.
+function isPlaceholderName(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  return !trimmed || trimmed === "local user" || trimmed === "khmermeet user";
+}
+
 export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) {
   const [room, setRoom] = useState("MEETING");
-  const [name, setName] = useState(defaultName || "Local User");
+  const [name, setName] = useState(defaultName || "");
   const [title, setTitle] = useState("");
   const [isInviteGuest, setIsInviteGuest] = useState(false);
   const [paramsReady, setParamsReady] = useState(false);
@@ -175,6 +185,7 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [nameMissing, setNameMissing] = useState(false);
   const manualLeaveRef = useRef(false);
 
   useEffect(() => {
@@ -239,6 +250,12 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
 
   async function joinRoom() {
     if (!paramsReady) return;
+    if (isPlaceholderName(name)) {
+      setNameMissing(true);
+      setError("សូមវាយបញ្ចូលឈ្មោះរបស់អ្នកជាមុនសិន មុននឹងចូលរួម call។");
+      return;
+    }
+    setNameMissing(false);
     setJoining(true);
     setError("");
     setNotice("");
@@ -248,7 +265,7 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
       setRoom(roomToJoin);
       localStorage.setItem("khmermeet-meeting-room", roomToJoin);
       if (titleToSave) localStorage.setItem("khmermeet-meeting-title", titleToSave);
-      const participantName = name.trim() || readSavedParticipantName();
+      const participantName = name.trim();
       localStorage.setItem("khmermeet-participant-name", participantName);
       const media = await checkMediaDeviceSupport(cameraOn, microphoneOn);
       const nextCameraOn = cameraOn && media.hasCamera;
@@ -399,7 +416,16 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
           )}
           <label className="space-y-1">
             <span className="text-sm font-semibold text-slate-600">ឈ្មោះអ្នកចូលរួម</span>
-            <input className="kh-input" value={name} onChange={(event) => setName(event.target.value)} />
+            <input
+              className={`kh-input ${nameMissing ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (nameMissing && !isPlaceholderName(event.target.value)) setNameMissing(false);
+              }}
+              placeholder="វាយបញ្ចូលឈ្មោះរបស់អ្នក"
+            />
+            {nameMissing ? <p className="text-xs font-semibold text-red-600">សូមបំពេញឈ្មោះខ្លួនឯងជាមុនសិន។</p> : null}
           </label>
           {isInviteGuest ? (
             <div className="space-y-1">
