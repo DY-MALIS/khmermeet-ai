@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +65,7 @@ function normalizeSpeakerNames(value: unknown) {
     ...new Set(
       rawNames
         .map((name) => (typeof name === "string" ? name.trim() : ""))
-        .filter(Boolean)
+        .filter((name) => name && !isPlaceholderParticipantName(name))
     )
   ].slice(0, 100);
 }

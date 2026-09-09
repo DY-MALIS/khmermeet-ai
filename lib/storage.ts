@@ -208,6 +208,39 @@ function looksLikeLeakedSpeakerLabel(label: string) {
   return /[()]/.test(label) || /\bLet'?s\b/i.test(label) || label.length > 40;
 }
 
+// A call participant who never typed their own name joins with a literal
+// placeholder display name - "Local User" client-side (readSavedParticipantName
+// in livekit-call-room.tsx) or "KhmerMeet User" server-side (cleanDisplayName
+// in livekit-token/route.ts). Treating that placeholder as a genuine known
+// name would permanently block the self-introduction fallback below (it only
+// runs when no real name is known for a speaker) and would show up as
+// someone's "name" in the transcript, summary, and any translation forever.
+const placeholderParticipantNames = new Set(["local user", "khmermeet user"]);
+
+export function isPlaceholderParticipantName(name: string | null | undefined) {
+  return placeholderParticipantNames.has((name ?? "").trim().toLowerCase());
+}
+
+// Resolves the label a segment should be transcribed/assembled under: the
+// registered display name, unless it's just the anonymous-join placeholder,
+// in which case a generic "Speaker N" is assigned instead - stable per
+// distinct speakerIdentity within one call to the returned function, so two
+// different unnamed participants in the same meeting don't collapse into the
+// same label, and so the "Speaker N:" shape stays available for
+// detectSelfIntroducedSpeakerNames to correct later if that person actually
+// introduces themselves in the audio.
+export function createSegmentSpeakerLabelResolver() {
+  const genericLabels = new Map<string, string>();
+  return (speakerName: string | null | undefined, speakerIdentity: string) => {
+    const name = (speakerName ?? "").trim();
+    if (name && !isPlaceholderParticipantName(name)) return name;
+    if (!genericLabels.has(speakerIdentity)) {
+      genericLabels.set(speakerIdentity, `Speaker ${genericLabels.size + 1}`);
+    }
+    return genericLabels.get(speakerIdentity) as string;
+  };
+}
+
 // Confirmed live: a meeting whose speakerNames already picked up a leaked
 // label before this filter existed keeps it forever otherwise - the save
 // path only ever unions newly extracted names into the existing saved list
@@ -221,7 +254,10 @@ function looksLikeLeakedSpeakerLabel(label: string) {
 // so a name that would be rejected today doesn't get to persist just
 // because it slipped in before the rejection existed.
 export function sanitizeKnownSpeakerNames(names: string[]) {
-  return names.filter((name) => name.trim() && !looksLikeLeakedSpeakerLabel(name.trim()));
+  return names.filter((name) => {
+    const trimmed = name.trim();
+    return trimmed && !looksLikeLeakedSpeakerLabel(trimmed) && !isPlaceholderParticipantName(trimmed);
+  });
 }
 
 // Reads back whichever real speaker names actually ended up in a finished
@@ -236,7 +272,14 @@ export function extractRealSpeakerNamesFromTranscript(transcript: string) {
   for (const line of transcript.split(/\r?\n/)) {
     const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
     const label = match?.[1]?.trim();
-    if (!label || genericSpeakerLabelPattern.test(label) || looksLikeLeakedSpeakerLabel(label) || seen.has(label)) continue;
+    if (
+      !label ||
+      genericSpeakerLabelPattern.test(label) ||
+      looksLikeLeakedSpeakerLabel(label) ||
+      isPlaceholderParticipantName(label) ||
+      seen.has(label)
+    )
+      continue;
     seen.add(label);
     names.push(label);
   }
@@ -978,16 +1021,25 @@ export async function refineSavedTranscript(
 
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
-  // No participant names were given up front - see if anyone clearly said
-  // their own name. Substituted directly into the transcript text below
-  // rather than routed through the positional "known speaker names" hint
-  // mechanism used for typed-in/LiveKit-join names - detection is commonly
-  // partial (e.g. a facilitator who only asks questions never states their
-  // own name), and that positional mechanism has no way to represent
-  // "leave this one generic". Direct substitution handles a partial map
-  // safely: an unintroduced speaker just keeps their generic "Speaker N:"
-  // label instead of being forced onto a name that was never theirs.
-  if (!normalizedSpeakerNames.length) {
+  // Trigger on any remaining generic "Speaker N:" label, not just "no names
+  // known at all" - a call where every other participant already has a real
+  // registered name but one joined without typing theirs (see
+  // createSegmentSpeakerLabelResolver) still leaves that one speaker on a
+  // generic label needing this fallback, even though normalizedSpeakerNames
+  // is non-empty overall. detectSelfIntroducedSpeakerNames only ever touches
+  // labels matching this exact shape, so this is a cheap, safe pre-check -
+  // it also means calling it below never wastes an AI call on a transcript
+  // that has nothing left to relabel.
+  // Substituted directly into the transcript text below rather than routed
+  // through the positional "known speaker names" hint mechanism used for
+  // typed-in/LiveKit-join names - detection is commonly partial (e.g. a
+  // facilitator who only asks questions never states their own name), and
+  // that positional mechanism has no way to represent "leave this one
+  // generic". Direct substitution handles a partial map safely: an
+  // unintroduced speaker just keeps their generic "Speaker N:" label
+  // instead of being forced onto a name that was never theirs.
+  const hasGenericSpeakerLabel = /^\s*Speaker\s+\d+\s*:/im.test(cleanedTranscript);
+  if (hasGenericSpeakerLabel) {
     const looksLikeSelfIntroduction = /ខ្ញុំ\s*(?:ឈ្មោះ|ជា)|my name is|i\s*'?am\b|i'm\b/i.test(cleanedTranscript);
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
@@ -1043,7 +1095,7 @@ export async function transcribeAudioChunks(
 function normalizeSpeakerNames(speakerNames: string[]) {
   return speakerNames
     .map((name) => name.trim())
-    .filter(Boolean)
+    .filter((name) => name && !isPlaceholderParticipantName(name))
     .slice(0, 100);
 }
 

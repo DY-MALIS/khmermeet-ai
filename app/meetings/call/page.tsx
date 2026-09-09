@@ -22,11 +22,9 @@ export default async function MeetingCallPage({
   // would otherwise redirect every unauthenticated visitor unconditionally,
   // even one proxy.ts's own edge bypass already decided to let through.
   const hasInviteParams = Boolean(params.room && params.invite);
-  if (!hasInviteParams) {
-    const user = await getOptionalUser();
-    if (!user) {
-      redirect("/login?callbackUrl=/meetings/call");
-    }
+  const user = await getOptionalUser();
+  if (!hasInviteParams && !user) {
+    redirect("/login?callbackUrl=/meetings/call");
   }
 
   const { text } = await getServerUiText();
@@ -39,7 +37,7 @@ export default async function MeetingCallPage({
           <h1 className="break-words text-2xl font-bold text-ink sm:text-3xl">{text.videoCallRoom}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-base">{text.liveKitCallDescription}</p>
         </div>
-        <VideoCallClient />
+        <VideoCallClient defaultName={user?.name || undefined} />
       </div>
     </div>
   );

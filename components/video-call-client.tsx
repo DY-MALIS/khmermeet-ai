@@ -83,10 +83,10 @@ class VideoCallErrorBoundary extends Component<
   }
 }
 
-export function VideoCallClient() {
+export function VideoCallClient({ defaultName }: { defaultName?: string }) {
   return (
     <VideoCallErrorBoundary>
-      <LiveKitCallRoom />
+      <LiveKitCallRoom defaultName={defaultName} />
     </VideoCallErrorBoundary>
   );
 }

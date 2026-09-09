@@ -68,9 +68,16 @@ function readInviteToken() {
   return new URLSearchParams(window.location.search).get("invite")?.trim() ?? "";
 }
 
-function readSavedParticipantName() {
-  if (typeof window === "undefined") return "Local User";
-  return localStorage.getItem("khmermeet-participant-name")?.trim() || "Local User";
+// Prefers, in order: a name this browser already saved (an explicit choice
+// this person made before, which should stick), then the signed-in
+// account's real name (passed down from the server session - only available
+// for a logged-in host, not a no-account guest), then the last-resort
+// "Local User" placeholder. That placeholder is never treated as a real name
+// downstream (see isPlaceholderParticipantName in lib/storage.ts) - it just
+// keeps this input non-empty so the join flow doesn't need a hard block.
+function readSavedParticipantName(accountName?: string) {
+  if (typeof window === "undefined") return accountName || "Local User";
+  return localStorage.getItem("khmermeet-participant-name")?.trim() || accountName || "Local User";
 }
 
 function syncMeetingParams({ setRoom, setTitle, setIsInviteGuest }: MeetingParamSetters) {
@@ -155,9 +162,9 @@ function cleanParticipantIdentity(identity: string) {
     .trim() || "អ្នកចូលរួម";
 }
 
-export function LiveKitCallRoom() {
+export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) {
   const [room, setRoom] = useState("MEETING");
-  const [name, setName] = useState("Local User");
+  const [name, setName] = useState(defaultName || "Local User");
   const [title, setTitle] = useState("");
   const [isInviteGuest, setIsInviteGuest] = useState(false);
   const [paramsReady, setParamsReady] = useState(false);
@@ -172,8 +179,12 @@ export function LiveKitCallRoom() {
 
   useEffect(() => {
     syncMeetingParams({ setRoom, setTitle, setIsInviteGuest });
-    setName(readSavedParticipantName());
+    setName(readSavedParticipantName(defaultName));
     setParamsReady(true);
+    // Only ever needs the account name once, on mount - it can't change
+    // mid-session, and re-running this would stomp a name the person just
+    // typed into the field.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

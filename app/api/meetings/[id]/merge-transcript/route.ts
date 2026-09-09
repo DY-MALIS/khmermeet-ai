@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { extractRealSpeakerNamesFromTranscript, forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, refineSavedTranscript, transcribeStoredTrackRecording } from "@/lib/storage";
+import {
+  createSegmentSpeakerLabelResolver,
+  extractRealSpeakerNamesFromTranscript,
+  forceSingleSpeakerLabel,
+  isPlaceholderParticipantName,
+  normalizeTranscriptionLanguageMode,
+  refineSavedTranscript,
+  transcribeStoredTrackRecording
+} from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
@@ -31,14 +39,16 @@ async function catchUpPendingSegments(
       try {
         const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
         const speakerName = segment.speakerName || segment.speakerIdentity;
-        const transcript = forceSingleSpeakerLabel(
-          await transcribeStoredTrackRecording(
-            segment.audioUrl,
-            languageMode,
-            Math.max(15000, Math.min(150000, deadline - Date.now())),
-            { speakerNames: [speakerName], singleSpeaker: true }
-          ),
-          speakerName
+        // Stored as plain text, without a "Name:" prefix baked in - the final
+        // assembly below applies the speaker label once, using a
+        // placeholder-aware resolver (a participant who joined without
+        // typing a name has only the anonymous-join placeholder here, which
+        // must not be stamped in as if it were their real name).
+        const transcript = await transcribeStoredTrackRecording(
+          segment.audioUrl,
+          languageMode,
+          Math.max(15000, Math.min(150000, deadline - Date.now())),
+          { speakerNames: [speakerName], singleSpeaker: true }
         );
         if (hasUsableTranscript(transcript)) {
           const trimmed = transcript.trim();
@@ -109,7 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ...new Set(
         [...(meeting.speakerNames ?? []), ...segments.map((segment) => segment.speakerName || segment.speakerIdentity)]
           .map((name) => name.trim())
-          .filter(Boolean)
+          .filter((name) => name && !isPlaceholderParticipantName(name))
       )
     ];
     const usableSegmentCount = segments.filter((segment) => segment.text.trim()).length;
@@ -129,6 +139,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const mixedAudioBudget = workDeadline - Date.now() - REFINE_RESERVE_MS;
     const canTranscribeMixedAudio = shouldUseMixedAudio && meeting.audioUrl && mixedAudioBudget >= 15000;
+    // Resolves each segment's label once, here at final assembly: the real
+    // registered name, or - for a participant who joined without typing one
+    // - a generic "Speaker N" stable for that identity, so
+    // detectSelfIntroducedSpeakerNames (inside refineSavedTranscript below)
+    // still gets a chance to fill in their real name if they introduce
+    // themselves in the audio.
+    const resolveSegmentLabel = createSegmentSpeakerLabelResolver();
     const rawTranscript =
       canTranscribeMixedAudio && meeting.audioUrl
         ? await transcribeStoredTrackRecording(
@@ -139,12 +156,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ).catch(() =>
             segments
               .filter((segment) => segment.text.trim())
-              .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+              .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
               .join("\n")
           )
         : segments
             .filter((segment) => segment.text.trim())
-            .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+            .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
             .join("\n");
     let transcript = rawTranscript;
     if (hasUsableTranscript(rawTranscript)) {

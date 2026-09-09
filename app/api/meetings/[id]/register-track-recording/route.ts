@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { clampMeetingDurationMs } from "@/lib/meeting-duration";
 import { getOptionalUser, isAdminEmail } from "@/lib/session";
 import { verifyInviteToken } from "@/lib/livekit-invite";
@@ -48,7 +48,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
     const displayName = speakerName || speakerIdentity;
-    const speakerNames = Array.from(new Set([...(meeting.speakerNames ?? []), displayName].map((name) => name.trim()).filter(Boolean)));
+    // meeting.speakerNames is the "known real names" roster (used as a
+    // transcription hint and to gate the self-introduction fallback) - a
+    // participant who joined without typing their own name has only the
+    // anonymous-join placeholder here ("Local User"/"KhmerMeet User"), which
+    // must not be recorded as if it were their real name. The segment's own
+    // speakerName column below still keeps the raw value; final transcript
+    // assembly resolves it to a generic label instead (see
+    // createSegmentSpeakerLabelResolver).
+    const speakerNames = Array.from(
+      new Set(
+        [...(meeting.speakerNames ?? []), displayName]
+          .map((name) => name.trim())
+          .filter((name) => name && !isPlaceholderParticipantName(name))
+      )
+    );
 
     // Idempotent: a retry from the same participant replaces their prior
     // (possibly partial/failed) registration instead of creating a

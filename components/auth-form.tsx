@@ -22,7 +22,7 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-leaf/30 hover:shadow-lg hover:shadow-leaf/10 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         onClick={async () => {
           setPending(true);

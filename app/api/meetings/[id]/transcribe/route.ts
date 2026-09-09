@@ -3,8 +3,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import {
+  createSegmentSpeakerLabelResolver,
   extractRealSpeakerNamesFromTranscript,
   forceSingleSpeakerLabel,
+  isPlaceholderParticipantName,
   loadStoredAudioAsFile,
   normalizeTranscriptionLanguageMode,
   refineSavedTranscript,
@@ -73,14 +75,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       (!participantAudioSegments.length || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
     let transcriptSpeakerNames = speakerNames;
+    // Resolves each segment's label once here at assembly time: the real
+    // registered name, or - for a participant who joined without typing one
+    // - a generic "Speaker N" stable for that identity, so
+    // detectSelfIntroducedSpeakerNames (inside refineSavedTranscript below)
+    // still gets a chance to fill in their real name if they introduce
+    // themselves in the audio. See createSegmentSpeakerLabelResolver.
+    const resolveSegmentLabel = createSegmentSpeakerLabelResolver();
 
     if (chronologicalSpeakerSegments.length) {
       rawTranscript = chronologicalSpeakerSegments
         .sort((a, b) => a.startMs - b.startMs || a.segmentIndex - b.segmentIndex)
-        .map((segment) => forceSingleSpeakerLabel(segment.text, segment.speakerName || segment.speakerIdentity))
+        .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
         .join("\n");
       transcriptSpeakerNames = [
-        ...new Set(chronologicalSpeakerSegments.map((segment) => segment.speakerName || segment.speakerIdentity))
+        ...new Set(
+          chronologicalSpeakerSegments
+            .map((segment) => segment.speakerName || segment.speakerIdentity)
+            .filter((name) => !isPlaceholderParticipantName(name))
+        )
       ];
     } else if (shouldUseMixedAudio && meeting.audioUrl) {
       const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
@@ -103,7 +116,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } else if (participantAudioSegments.length) {
       const parts = [];
       for (const segment of participantAudioSegments) {
-        const speakerName = segment.speakerName || segment.speakerIdentity;
+        const speakerHint = segment.speakerName || segment.speakerIdentity;
         let text = segment.text.trim();
         const attemptTimeoutMs = transcriptionBudget(workDeadline);
         if (!text && attemptTimeoutMs >= MINIMUM_ATTEMPT_MS) {
@@ -112,15 +125,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
               segment.audioUrl as string,
               languageMode,
               attemptTimeoutMs,
-              { speakerNames: [speakerName], singleSpeaker: true }
+              { speakerNames: [speakerHint], singleSpeaker: true }
             ),
             workDeadline - REFINE_RESERVE_MS
           ).catch(() => "");
+          // Stored as plain text, without a "Name:" prefix baked in - it is
+          // applied once below via resolveSegmentLabel, which falls back to
+          // a generic label instead of a placeholder display name.
           if (hasUsableTranscript(text)) {
-            text = forceSingleSpeakerLabel(text, speakerName).trim();
+            text = text.trim();
             await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text } }).catch(() => undefined);
           }
         }
+        const speakerName = resolveSegmentLabel(segment.speakerName, segment.speakerIdentity);
         parts.push({
           startMs: segment.startMs,
           text: text.trim() ? forceSingleSpeakerLabel(text, speakerName) : ""
@@ -131,7 +148,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .sort((a, b) => a.startMs - b.startMs)
         .map((part) => part.text)
         .join("\n");
-      transcriptSpeakerNames = [...new Set(participantAudioSegments.map((segment) => segment.speakerName || segment.speakerIdentity))];
+      transcriptSpeakerNames = [
+        ...new Set(
+          participantAudioSegments
+            .map((segment) => segment.speakerName || segment.speakerIdentity)
+            .filter((name) => !isPlaceholderParticipantName(name))
+        )
+      ];
     } else if (meeting.audioUrl) {
       const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
       if (audioFile.size < 1500) {

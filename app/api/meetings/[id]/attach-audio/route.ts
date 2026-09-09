@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 
@@ -64,7 +64,7 @@ function normalizeSpeakerNames(value: unknown) {
     ...new Set(
       rawNames
         .map((name) => (typeof name === "string" ? name.trim() : ""))
-        .filter(Boolean)
+        .filter((name) => name && !isPlaceholderParticipantName(name))
     )
   ].slice(0, 100);
 }

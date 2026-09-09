@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, requireUser } from "@/lib/session";
-import { forceSingleSpeakerLabel, normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
+import { normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
@@ -51,14 +51,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "No stored audio for this segment." }, { status: 404 });
     }
 
+    // Stored as plain text, without a "Name:" prefix baked in - the final
+    // assembly step (merge-transcript) applies the speaker label once, using
+    // a placeholder-aware resolver. Labeling here too would double-stamp a
+    // name once assembly re-labels it, and if this participant joined
+    // without typing a name, the raw display name is just the anonymous-join
+    // placeholder ("Local User"/"KhmerMeet User") - baking that in as if it
+    // were their real name would be permanent and unfixable later.
     const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
-    const transcript = forceSingleSpeakerLabel(
-      await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000, {
-        speakerNames: [segment.speakerName || segment.speakerIdentity],
-        singleSpeaker: true
-      }),
-      segment.speakerName || segment.speakerIdentity
-    );
+    const transcript = await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000, {
+      speakerNames: [segment.speakerName || segment.speakerIdentity],
+      singleSpeaker: true
+    });
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json({ transcript: "", skipped: true, index });
