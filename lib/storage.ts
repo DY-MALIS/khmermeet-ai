@@ -217,8 +217,15 @@ function looksLikeLeakedSpeakerLabel(label: string) {
 // someone's "name" in the transcript, summary, and any translation forever.
 const placeholderParticipantNames = new Set(["local user", "khmermeet user"]);
 
+// Blank counts as a placeholder too: an empty/whitespace name is just as
+// unusable as "Local User" for labeling or as a transcription hint. Most
+// callers already guard emptiness separately, but not all (see
+// transcribe/route.ts), and the client-side mirror of this check in
+// livekit-call-room.tsx treats blank the same way - keeping the two
+// contracts identical avoids a subtle split in behavior later.
 export function isPlaceholderParticipantName(name: string | null | undefined) {
-  return placeholderParticipantNames.has((name ?? "").trim().toLowerCase());
+  const trimmed = (name ?? "").trim().toLowerCase();
+  return !trimmed || placeholderParticipantNames.has(trimmed);
 }
 
 // Resolves the label a segment should be transcribed/assembled under: the
