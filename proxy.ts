@@ -27,8 +27,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const { response, user } = await refreshSupabaseSession(request);
-  if (user) return response;
+  const { response, user, keepExistingSession } = await refreshSupabaseSession(request);
+  // keepExistingSession means the auth server could not be reached or rate
+  // limited us, not that this person is signed out - see the note in
+  // lib/supabase/middleware.ts. Signing someone out over a blip is the worse
+  // failure, and the page they land on re-checks the session properly anyway.
+  if (user || keepExistingSession) return response;
 
   // API routes are called via fetch() from client components expecting JSON -
   // redirecting them to an HTML login page would break every caller's
