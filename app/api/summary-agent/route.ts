@@ -132,19 +132,32 @@ export async function POST(request: Request) {
         : "Return a concise, useful answer for the user's command."
     ].join("\n");
 
+    // Khmer costs roughly one token per character, far more than Latin text,
+    // so budget from the length of what is actually being worked on instead
+    // of a flat number. The old flat values were still too small: a real
+    // 3-minute meeting here already produced a 2705-character summary, which
+    // needs more than the 2500 a regenerate used to get, and the answer was
+    // cut off mid-sentence with nothing saying so.
+    const sourceLength = shortenExistingSummary
+      ? meeting.summary?.length ?? 0
+      : regeneratingSummary
+        ? Math.min(transcript.length, 6000)
+        : meeting.summary?.length ?? 0;
+
+    let truncated = false;
     const answer = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
       timeoutMs: 55000,
-      // A full regenerate can produce 5 sections with 5-8 bullets each -
-      // 1200 tokens was cutting a real long Khmer summary off mid-sentence
-      // partway through the "problems raised" section, silently dropping
-      // the entire "next steps" section that should have followed it.
-      // Khmer script needs noticeably more tokens per character than
-      // Latin script, so this needs real headroom, not just a bit more.
-      maxTokens: shortenExistingSummary ? 800 : regeneratingSummary ? 2500 : 800
+      maxTokens: Math.min(16000, Math.max(1500, sourceLength + 1200)),
+      onTruncated: () => {
+        truncated = true;
+      }
     });
     let updatedSummary = false;
 
+    // A cut-off answer is still saved - it is real content, and discarding it
+    // would lose work - but the reply says so, because a summary that stops
+    // mid-sentence looks finished to someone reading it for the first time.
     if (regeneratingSummary && answer.trim()) {
       await prisma.meeting.update({
         where: { id: meeting.id },
@@ -155,7 +168,17 @@ export async function POST(request: Request) {
       updatedSummary = true;
     }
 
-    return NextResponse.json({ answer, updatedSummary });
+    return NextResponse.json({
+      answer,
+      updatedSummary,
+      ...(truncated
+        ? {
+            partial: true,
+            message:
+              "This answer stopped before it was finished. Please try again, or ask for a shorter version."
+          }
+        : {})
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Summary Agent failed." },

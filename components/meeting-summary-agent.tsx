@@ -12,6 +12,10 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
   const text = useUiText();
   const [command, setCommand] = useState("");
   const [answer, setAnswer] = useState("");
+  // Set when the model stopped before finishing - the answer below is real
+  // but incomplete, and a summary that stops mid-sentence reads as finished
+  // to anyone finding it later.
+  const [partialNotice, setPartialNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -22,15 +26,24 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
     setLoading(true);
     setError("");
     setAnswer("");
+    setPartialNotice("");
     try {
       const response = await fetch("/api/summary-agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ meetingId, command: cleanCommand })
       });
-      const data = await readJsonResponse<{ answer?: string; updatedSummary?: boolean; error?: string }>(response);
+      const data = await readJsonResponse<{
+        answer?: string;
+        updatedSummary?: boolean;
+        error?: string;
+        partial?: boolean;
+      }>(response);
       if (!response.ok) throw new Error(data.error ?? "Summary Agent failed.");
       setAnswer(data.answer ?? "");
+      if (data.partial) {
+        setPartialNotice("ចម្លើយនេះឈប់មុនពេលចប់។ សូមសាកម្តងទៀត ឬសុំជាទម្រង់ខ្លីជាងនេះ។");
+      }
       if (data.updatedSummary) router.refresh();
     } catch (error) {
       setError(error instanceof Error ? error.message : text.summaryAgentFailed);
@@ -94,6 +107,11 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
       {answer ? (
         <div className="mt-3 rounded-lg bg-white p-3">
           <p className="mb-2 text-xs font-bold uppercase text-leaf">{text.agentAnswer}</p>
+          {partialNotice ? (
+            <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-semibold text-amber-800">
+              {partialNotice}
+            </div>
+          ) : null}
           <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{answer}</div>
           <SummaryTranslator summary={answer} />
         </div>
