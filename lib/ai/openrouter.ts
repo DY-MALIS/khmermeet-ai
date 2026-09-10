@@ -500,6 +500,18 @@ export async function refineOpenRouterTranscript(
       : language === "en"
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language. Khmer phrases in the raw transcript must remain Khmer script, and English phrases must remain English. Never translate Khmer speech into English or English speech into Khmer in Khmer + English mode.";
+  // The preservation rules further down ("keep the speaker's wording", "do
+  // not add words that are not present") read as absolute, and confirmed
+  // live they beat the translate instruction above: in English-only mode the
+  // model returned Khmer input completely untouched on every attempt at
+  // temperature 0. A translating mode has to say explicitly that those rules
+  // govern meaning and detail, not the choice of language. Empty for
+  // km-en, where preserving the original language is the whole point and
+  // those rules are working correctly.
+  const translationPrecedence =
+    language === "km-en"
+      ? ""
+      : `Translation into ${language === "km" ? "Khmer" : "English"} is required in this mode and takes precedence over the wording rules below. Those rules govern meaning, detail, speaker turns, and ordering - they never permit leaving a phrase in the language it was spoken in. Every phrase must end up in ${language === "km" ? "Khmer" : "English"}, even though translating necessarily changes the words themselves.`;
   const speakerInstruction = speakerNames.length
     ? `Known speaker names: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert generic numbered labels only when the mapping is clear from the raw transcript. If a label is unknown or uncertain, keep Unknown Speaker: instead of guessing a real name. Every spoken turn should start with a speaker label, but uncertain speakers must not be forced onto a known participant name. If there is only one known speaker, prefix each spoken line with that speaker name.`
     : // Some lines may already start with a real name instead of "Speaker N:"
@@ -515,6 +527,7 @@ export async function refineOpenRouterTranscript(
     "You are a careful meeting transcript proofreader.",
     "Clean the raw speech-to-text output into a readable meeting transcript.",
     languageInstruction,
+    ...(translationPrecedence ? [translationPrecedence] : []),
     speakerInstruction,
     "Rules:",
     "- Do not summarize.",
