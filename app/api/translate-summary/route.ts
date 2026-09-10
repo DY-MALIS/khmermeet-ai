@@ -27,6 +27,20 @@ export async function POST(request: Request) {
     const customTarget = typeof body.customTarget === "string" ? body.customTarget.trim() : "";
     const target = customTarget || targetLabels[targetLanguage] || targetLanguage;
 
+    // Was summary.slice(0, 12000) applied silently further down: a longer
+    // summary lost its tail before translation even started, and the reply
+    // gave no hint that had happened. Say so instead of quietly translating
+    // part of the document.
+    const INPUT_CHAR_LIMIT = 12000;
+    if (summary.length > INPUT_CHAR_LIMIT) {
+      return NextResponse.json(
+        {
+          error: `This summary is ${summary.length} characters, longer than the ${INPUT_CHAR_LIMIT} this translator handles in one pass. Please shorten it first, or translate it in sections.`
+        },
+        { status: 413 }
+      );
+    }
+
     if (!summary) return NextResponse.json({ error: "Summary is required." }, { status: 400 });
     if (!target) return NextResponse.json({ error: "Target language is required." }, { status: 400 });
     if (!hasOpenRouterKey()) return NextResponse.json({ error: "OPEN_ROUTER_API_KEY is missing." }, { status: 500 });
@@ -44,13 +58,23 @@ export async function POST(request: Request) {
       `Target language: ${target}`,
       "",
       "Summary:",
-      summary.slice(0, 12000)
+      summary
     ].join("\n");
 
+    let truncated = false;
     const translated = await generateOpenRouterContent([{ text: prompt }], {
       temperature: 0.1,
       timeoutMs: Math.max(10000, Math.min(translateTimeoutMs, 50000)),
-      maxTokens: 2500
+      // Khmer script costs roughly one token per character - far more than
+      // Latin text - so a flat 2500 was already too small for summaries this
+      // app really produces (a 3-minute meeting has produced a 2705-character
+      // one), cutting translations off mid-sentence. Size the budget from the
+      // actual input, with headroom because a translation can be longer than
+      // its source.
+      maxTokens: Math.min(16000, Math.max(2500, summary.length * 2 + 1000)),
+      onTruncated: () => {
+        truncated = true;
+      }
     });
 
     if (!translated.trim()) {
@@ -60,7 +84,19 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ translated });
+    // Returned rather than swallowed: a translation that stops mid-sentence
+    // still looks like a finished document to someone who can't read the
+    // source language, which is exactly who uses this button.
+    return NextResponse.json({
+      translated,
+      ...(truncated
+        ? {
+            partial: true,
+            message:
+              "The translation was cut off before the end of the summary. Please try again, or translate it in shorter sections."
+          }
+        : {})
+    });
   } catch (error) {
     const message =
       error instanceof Error && error.message.toLowerCase().includes("timed out")

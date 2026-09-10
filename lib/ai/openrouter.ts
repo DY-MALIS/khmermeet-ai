@@ -130,7 +130,21 @@ export function hasOpenRouterKey() {
 
 export async function generateOpenRouterContent(
   parts: TextPart[],
-  options: { model?: string; json?: boolean; temperature?: number; timeoutMs?: number; maxTokens?: number } = {}
+  // onTruncated fires when the model stopped because it hit max_tokens
+  // rather than finishing its answer. Until this existed the response's
+  // finish_reason was thrown away, so a cut-off answer was indistinguishable
+  // from a complete one and every caller silently presented half a result -
+  // the same failure has now been hit twice (summary regenerate losing its
+  // last section, and translation losing the end of a summary), each time
+  // patched by guessing a bigger max_tokens instead of noticing the cut.
+  options: {
+    model?: string;
+    json?: boolean;
+    temperature?: number;
+    timeoutMs?: number;
+    maxTokens?: number;
+    onTruncated?: () => void;
+  } = {}
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, options.timeoutMs ?? 55000));
@@ -162,9 +176,19 @@ export async function generateOpenRouterContent(
   }
 
   const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+    choices?: Array<{
+      finish_reason?: string;
+      native_finish_reason?: string;
+      message?: { content?: string | Array<{ type?: string; text?: string }> };
+    }>;
   };
-  const content = payload.choices?.[0]?.message?.content;
+  const choice = payload.choices?.[0];
+  // OpenRouter also passes the upstream provider's own reason through, and
+  // providers spell this differently ("length", "max_tokens", "MAX_TOKENS"),
+  // so match loosely rather than on one exact string.
+  const finishReason = `${choice?.finish_reason ?? ""} ${choice?.native_finish_reason ?? ""}`.toLowerCase();
+  if (/length|max_tokens|max tokens/.test(finishReason)) options.onTruncated?.();
+  const content = choice?.message?.content;
   if (typeof content === "string") return content.trim();
   if (Array.isArray(content)) return content.map((part) => part.text ?? "").join("\n").trim();
   return "";

@@ -13,11 +13,16 @@ export function SummaryTranslator({ summary }: { summary: string }) {
   const [customTarget, setCustomTarget] = useState("");
   const [translated, setTranslated] = useState("");
   const [error, setError] = useState("");
+  // Set when the model stopped at its token ceiling: the text below is a
+  // real translation that just stops early, and its reader by definition
+  // cannot spot that by reading it.
+  const [partialWarning, setPartialWarning] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function translate() {
     setLoading(true);
     setError("");
+    setPartialWarning("");
     setTranslated("");
     try {
       const response = await fetch("/api/translate-summary", {
@@ -29,9 +34,10 @@ export function SummaryTranslator({ summary }: { summary: string }) {
           customTarget: targetLanguage === "custom" ? customTarget : ""
         })
       });
-      const data = await readJsonResponse<{ translated?: string; error?: string }>(response);
+      const data = await readJsonResponse<{ translated?: string; error?: string; partial?: boolean; message?: string }>(response);
       if (!response.ok) throw new Error(data.error ?? text.summaryTranslateFailed);
       setTranslated(data.translated?.trim() ?? "");
+      if (data.partial && data.message) setPartialWarning(data.message);
     } catch (error) {
       setError(error instanceof Error ? error.message : text.summaryTranslateFailed);
     } finally {
@@ -80,6 +86,9 @@ export function SummaryTranslator({ summary }: { summary: string }) {
         </button>
       </div>
       {error ? <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {partialWarning ? (
+        <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{partialWarning}</p>
+      ) : null}
       {translated ? (
         <div className="mt-3 rounded-lg bg-slate-50 p-4">
           <p className="mb-2 text-xs font-bold uppercase text-leaf">{text.translatedSummary}</p>
