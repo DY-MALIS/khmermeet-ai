@@ -16,17 +16,32 @@ export function cleanRoomName(value: unknown) {
   return room.replace(/[^A-Z0-9_-]/g, "").slice(0, 64);
 }
 
-function inviteSecret() {
-  return process.env.NEXTAUTH_SECRET || process.env.LIVEKIT_API_SECRET || "khmermeet-local-invite-secret";
+// Signing key for guest invite links. This used to prefer NEXTAUTH_SECRET,
+// a leftover from the auth system removed in ba5ab16 that only still works
+// because the variable happens to remain set in production - deleting that
+// dead variable would have silently invalidated every invite link already
+// out there, locking guests out of calls in progress. Signing now uses
+// LIVEKIT_API_SECRET, which is present anywhere calls work at all.
+function inviteSigningSecret() {
+  return process.env.LIVEKIT_API_SECRET || "khmermeet-local-invite-secret";
 }
 
-function signInvite(room: string, expiresAt: number) {
-  return createHmac("sha256", inviteSecret()).update(`${room}.${expiresAt}`).digest("base64url");
+// Keys a signature is still *accepted* under, so links minted before the
+// switch above keep working for their full lifetime and NEXTAUTH_SECRET can
+// be removed from the environment whenever without a breakage window.
+function acceptedInviteSecrets() {
+  return [inviteSigningSecret(), process.env.NEXTAUTH_SECRET].filter(
+    (secret): secret is string => Boolean(secret)
+  );
+}
+
+function signInviteWith(secret: string, room: string, expiresAt: number) {
+  return createHmac("sha256", secret).update(`${room}.${expiresAt}`).digest("base64url");
 }
 
 export function createInviteToken(room: string) {
   const expiresAt = Date.now() + INVITE_TOKEN_LIFETIME_MS;
-  return `${room}.${expiresAt}.${signInvite(room, expiresAt)}`;
+  return `${room}.${expiresAt}.${signInviteWith(inviteSigningSecret(), room, expiresAt)}`;
 }
 
 export function verifyInviteToken(roomValue: unknown, value: unknown) {
@@ -36,7 +51,12 @@ export function verifyInviteToken(roomValue: unknown, value: unknown) {
   const expiresAt = Number(expiresAtText);
   if (tokenRoom !== room || !Number.isFinite(expiresAt) || expiresAt < Date.now() || !signature) return false;
 
-  const expected = Buffer.from(signInvite(room, expiresAt));
   const actual = Buffer.from(signature);
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  // Every candidate is compared even after a match so the work done doesn't
+  // depend on which key matched.
+  return acceptedInviteSecrets().reduce((matched, secret) => {
+    const expected = Buffer.from(signInviteWith(secret, room, expiresAt));
+    const equal = expected.length === actual.length && timingSafeEqual(expected, actual);
+    return matched || equal;
+  }, false);
 }
