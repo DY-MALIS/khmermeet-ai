@@ -1,6 +1,7 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { clearSessionBackup } from "@/components/session-keeper";
 
 export function ShellStatusCard({ user }: { user: { name: string; email: string } }) {
   return (
@@ -10,6 +11,9 @@ export function ShellStatusCard({ user }: { user: { name: string; email: string 
       <button
         type="button"
         onClick={async () => {
+          // Cleared first: leaving it behind would let SessionKeeper restore
+          // the session on the very next page load.
+          clearSessionBackup();
           await createSupabaseBrowserClient().auth.signOut();
           window.location.href = "/login";
         }}
