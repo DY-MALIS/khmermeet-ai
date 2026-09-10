@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import { getOptionalUser } from "@/lib/session";
 import { cleanRoomName, createInviteToken, verifyInviteToken } from "@/lib/livekit-invite";
+import { MAX_MEETING_DURATION_SECONDS } from "@/lib/meeting-duration";
 
 export const dynamic = "force-dynamic";
 
@@ -42,10 +43,14 @@ export async function POST(request: Request) {
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
       name,
-      // Guests can join calls without email/login, so keep tokens short.
-      // Existing connected calls continue; reconnecting after expiry needs
-      // opening the invite again.
-      ttl: "2h"
+      // Must outlast the longest call this app supports (12h meeting cap):
+      // LiveKit's automatic reconnect reuses this exact token, so a shorter
+      // TTL meant one network drop past the 2h mark ended a long call for
+      // that participant permanently, with no way back in. The token only
+      // grants access to this one room, and anyone holding a valid invite
+      // can mint a fresh one on demand anyway, so its lifetime was never
+      // the thing actually gating access - the invite token is.
+      ttl: MAX_MEETING_DURATION_SECONDS + 60 * 60
     });
 
     token.addGrant({
