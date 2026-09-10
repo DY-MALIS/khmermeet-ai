@@ -309,6 +309,18 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   const knownSpeakerInstruction = speakerNames.length
     ? ` Known meeting participants: ${speakerNames.join(", ")}. Use a real participant name as the speaker label only when the audio or context makes that speaker identity clear. If you cannot confidently identify which participant is speaking, use Unknown Speaker: instead of guessing or assigning names by order. Do not force every audible voice onto the known-name list when the identity is uncertain.`
     : "";
+  // Confirmed live on a real 402s Khmer recording: in English-only mode the
+  // model returned the Khmer speech untranslated and started narrating its
+  // own process into the transcript ("Let's transcribe chronologically:",
+  // "(English translation/verbatim meaning)"). The verbatim/accuracy rules
+  // below are written to stop paraphrasing, and the model resolves the
+  // resulting conflict by refusing to translate at all. Translating modes
+  // need to say plainly which rule wins - and that the output is still just
+  // a transcript, not a comparison or a commentary.
+  const translationPrecedence =
+    language === "km-en"
+      ? ""
+      : `The selected output language is ${language === "km" ? "Khmer" : "English"} and translating into it is required. This outranks the verbatim rules below: those keep you from paraphrasing, dropping, or inventing content, but they never mean leaving speech in the language it was spoken in. Translate every spoken phrase into ${language === "km" ? "Khmer" : "English"}. Write the translated transcript only - never both languages side by side, never the original next to a translation, and never a note about what you are translating.`;
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
   const accuracyInstruction =
@@ -317,6 +329,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
   return [
     "You are a professional verbatim speech-to-text transcriber for a real meeting recording.",
     languageInstruction + knownSpeakerInstruction,
+    ...(translationPrecedence ? [translationPrecedence] : []),
     properNounRule,
     selfIntroductionInstruction,
     accuracyInstruction,
