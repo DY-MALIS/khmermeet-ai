@@ -186,6 +186,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
+    // The transcription model occasionally returns nothing usable for audio
+    // it handles perfectly well on the next attempt - reproduced against
+    // production, where a recording that had just failed for the owner
+    // transcribed fine seconds later with no change to the audio, the key,
+    // or the code. Rather than telling someone to go check their microphone
+    // over a momentary miss, try once more while there is still budget.
+    if (
+      !hasUsableTranscript(rawTranscript) &&
+      meeting.audioUrl &&
+      transcriptionBudget(workDeadline) >= MINIMUM_ATTEMPT_MS
+    ) {
+      rawTranscript = await withinDeadline(
+        transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
+          speakerNames,
+          singleSpeaker: false,
+          onIncomplete: () => {
+            incompleteLongRecording = true;
+          }
+        }),
+        workDeadline - REFINE_RESERVE_MS
+      ).catch(() => rawTranscript);
+    }
+
     const skippedPendingSegments =
       participantAudioSegments.length > 0 &&
       (participantAudioSegments.some((segment) => !segment.text.trim()) ||
@@ -196,14 +219,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       : rawTranscript;
 
     if (!hasUsableTranscript(transcript)) {
+      // Deliberately no longer leads with "check your microphone / credits":
+      // the audio is already saved and was recorded fine, and the common
+      // cause is the model simply returning nothing on this attempt - which
+      // the retry above has just failed to shake off. Confirmed against
+      // production that pressing the button again on the very same recording
+      // succeeds, so that is what to tell people first. The old wording sent
+      // the owner (and me) checking the microphone, the key and the credits
+      // for a recording where none of those were the problem.
       const durationHint =
         meeting.duration && meeting.duration < 10
-          ? " This recording is very short, so the AI may not have enough speech to transcribe."
+          ? " This recording is only a few seconds long, so there may not be enough speech in it."
           : "";
       return NextResponse.json(
         {
           error:
-            `No clear speech text was detected.${durationHint} Please check the audio volume, microphone, selected language, and OpenRouter credits/key, then try again.`
+            `The AI did not return any text for this recording this time.${durationHint} Your audio is saved - please press Re-transcribe audio again, as this usually works on the next attempt. If it keeps failing, check that the recording actually has audible speech.`
         },
         { status: 422 }
       );
