@@ -26,6 +26,20 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
 // legitimate far-field audio as silent.
 const silentInputThreshold = 0.0012;
 
+// A Bluetooth headset or speakerphone is just another audio input as far as
+// the browser is concerned, so recording from one already works - the real
+// problem was finding it in the list. enumerateDevices() returns blank
+// labels until microphone permission has been granted at least once, so
+// before that every entry reads "Microphone 1", "Microphone 2" and there is
+// no way to tell which is the Bluetooth one.
+const BLUETOOTH_LABEL_PATTERN = /bluetooth|hands[-\s]?free|headset|airpod|earbud|\bbt\b/i;
+
+function isBluetoothDevice(label: string) {
+  return BLUETOOTH_LABEL_PATTERN.test(label);
+}
+
+const SAVED_MICROPHONE_KEY = "khmermeet-microphone-id";
+
 function formatTime(seconds: number) {
   const safeSeconds = clampMeetingDurationSeconds(seconds);
   const h = Math.floor(safeSeconds / 3600);
@@ -56,6 +70,7 @@ export function RecordingPanel() {
   const [title, setTitle] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [findingDevices, setFindingDevices] = useState(false);
   const [activeMicLabel, setActiveMicLabel] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
@@ -80,11 +95,27 @@ export function RecordingPanel() {
     fetch("/api/health", { cache: "no-store" })
       .then((response) => setDbUnavailable(!response.ok))
       .catch(() => setDbUnavailable(true));
+    try {
+      const saved = window.localStorage.getItem(SAVED_MICROPHONE_KEY);
+      if (saved) setSelectedDeviceId(saved);
+    } catch {
+      // Storage blocked - fall back to the default microphone.
+    }
     void loadAudioDevices();
 
     return () => cleanupRecording();
     // cleanupRecording only touches refs and should run once on unmount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pairing a Bluetooth microphone (or switching it off) while this page is
+  // open should update the list straight away, instead of only on reload or
+  // when a recording starts.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
+    const onDeviceChange = () => void loadAudioDevices();
+    navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
   }, []);
 
   useEffect(() => {
@@ -121,7 +152,49 @@ export function RecordingPanel() {
   async function loadAudioDevices() {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
     const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-    setAudioDevices(devices.filter((device) => device.kind === "audioinput"));
+    const inputs = devices.filter((device) => device.kind === "audioinput");
+    setAudioDevices(inputs);
+    // A remembered microphone that is no longer connected (the Bluetooth
+    // headset is off, say) must fall back to the default rather than making
+    // start() fail on an exact deviceId that cannot be satisfied.
+    setSelectedDeviceId((current) =>
+      current && !inputs.some((device) => device.deviceId === current) ? "" : current
+    );
+  }
+
+  // Device labels are hidden until microphone permission has been granted
+  // once, which is why a Bluetooth headset shows up as an unhelpful
+  // "Microphone 2". Asking for the microphone and releasing it immediately
+  // unlocks the real names without starting a recording.
+  async function findMicrophones() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
+    setFindingDevices(true);
+    setError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      await loadAudioDevices();
+    } catch (deviceError) {
+      setError(describeMicError(deviceError));
+    } finally {
+      setFindingDevices(false);
+    }
+  }
+
+  // Only set when the chosen device is recognisably a Bluetooth one, so the
+  // quality note below appears for exactly the people it applies to.
+  const selectedDevice = audioDevices.find((device) => device.deviceId === selectedDeviceId);
+  const selectedBluetoothLabel =
+    selectedDevice?.label && isBluetoothDevice(selectedDevice.label) ? selectedDevice.label : "";
+
+  function rememberMicrophone(deviceId: string) {
+    setSelectedDeviceId(deviceId);
+    try {
+      if (deviceId) window.localStorage.setItem(SAVED_MICROPHONE_KEY, deviceId);
+      else window.localStorage.removeItem(SAVED_MICROPHONE_KEY);
+    } catch {
+      // Storage blocked - the choice just will not survive a reload.
+    }
   }
 
   function buildAudioConstraints(): MediaTrackConstraints {
@@ -529,20 +602,43 @@ export function RecordingPanel() {
       <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
         <label className="block space-y-1">
           <span className="text-sm font-semibold text-slate-600">Microphone</span>
-          <select
-            className="kh-input"
-            value={selectedDeviceId}
-            onChange={(event) => setSelectedDeviceId(event.target.value)}
-            disabled={state === "recording" || state === "paused" || uploading}
-          >
-            <option value="">Default microphone</option>
-            {audioDevices.map((device, index) => (
-              <option key={device.deviceId || index} value={device.deviceId}>
-                {device.label || `Microphone ${index + 1}`}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              className="kh-input min-w-0"
+              value={selectedDeviceId}
+              onChange={(event) => rememberMicrophone(event.target.value)}
+              disabled={state === "recording" || state === "paused" || uploading}
+            >
+              <option value="">Default microphone</option>
+              {audioDevices.map((device, index) => (
+                <option key={device.deviceId || index} value={device.deviceId}>
+                  {device.label
+                    ? `${isBluetoothDevice(device.label) ? "🎧 " : ""}${device.label}`
+                    : `Microphone ${index + 1}`}
+                </option>
+              ))}
+            </select>
+            <button
+              className="kh-button-secondary shrink-0 whitespace-nowrap px-3"
+              type="button"
+              onClick={() => void findMicrophones()}
+              disabled={findingDevices || state === "recording" || state === "paused" || uploading}
+              title="ស្វែងរកមីក្រូហ្វូន រួមទាំង Bluetooth"
+            >
+              {findingDevices ? "កំពុងរក..." : "🎧 រក Bluetooth"}
+            </button>
+          </div>
           {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
+          {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
+            <p className="text-xs text-amber-700">
+              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;រក Bluetooth&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
+            </p>
+          ) : null}
+          {selectedBluetoothLabel ? (
+            <p className="text-xs text-slate-500">
+              កំពុងប្រើ Bluetooth៖ {selectedBluetoothLabel}។ សូមចំណាំថា headset Bluetooth ភាគច្រើនថតសំឡេងគុណភាពទាបជាងមីក្រូហ្វូនកុំព្យូទ័រ (ព្រោះកម្រិតសំឡេងរបស់ Bluetooth មានកំណត់)។ សម្រាប់ប្រជុំក្នុងបន្ទប់ ឧបករណ៍ Bluetooth ប្រភេទ conference speakerphone ផ្តល់លទ្ធផលល្អជាងគេ។
+            </p>
+          ) : null}
           <p className="text-xs text-slate-500">
             ថតពី microphone ដែលបានជ្រើស។ សម្រាប់ចាប់គ្រប់មាត់ក្នុងបន្ទប់ សូមប្រើ conference/external mic ឬដាក់ mic កណ្តាលតុ។
           </p>
