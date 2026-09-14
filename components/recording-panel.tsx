@@ -680,6 +680,25 @@ export function RecordingPanel() {
               <p className="text-slate-500">
                 មៃឥតខ្សែ ដែលភ្ជាប់តាម receiver USB ជាធម្មតាមានឈ្មោះដូច &quot;USB Audio Device&quot; (សម្គាល់ដោយ 🎙️)។ បើមិនប្រាកដថាមួយណា សូមជ្រើសម្តងមួយៗ ហើយនិយាយសាក មើល Input level ខាងស្តាំ។
               </p>
+              {/* Browsers can only list the microphones the operating system
+                  exposes. A Bluetooth speaker has no microphone, and earbuds
+                  or headsets connected only for music (stereo profile) expose
+                  no microphone either until Windows switches them to
+                  hands-free - so when nothing wireless is in the list, point
+                  at the one place that decides it. */}
+              {!detectedMics.some((name) => name.startsWith("🎧") || name.startsWith("🎙️")) ? (
+                <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+                  <p className="font-semibold">មិនឃើញឈ្មោះ Bluetooth របស់អ្នកក្នុងបញ្ជីនេះមែនទេ?</p>
+                  <p>
+                    បញ្ជីនេះបង្ហាញតែមីក្រូហ្វូនដែល Windows អនុញ្ញាតឲ្យប្រើប៉ុណ្ណោះ។ សូមពិនិត្យ៖ <strong>Settings → System → Sound → Input</strong>។ បើឧបករណ៍ Bluetooth មិនមាននៅទីនោះ នោះកម្មវិធីណាក៏ប្រើវាជាមីក្រូហ្វូនមិនបានដែរ (រួមទាំង Zoom)។
+                  </p>
+                  <ul className="ml-4 list-disc">
+                    <li><strong>ឧបករណ៍បំពងសំឡេង (speaker)</strong> Bluetooth ភាគច្រើនគ្មានមីក្រូហ្វូនទេ។</li>
+                    <li><strong>កាស / headset</strong>៖ ក្នុង Settings → Bluetooth &amp; devices ត្រូវមានពាក្យ <strong>&quot;Connected voice&quot;</strong> ឬ <strong>&quot;Hands-Free&quot;</strong> មិនមែនត្រឹម &quot;Connected music&quot; ទេ។ បើមិនមាន សូមចុច Remove device រួចភ្ជាប់ឡើងវិញ។</li>
+                    <li><strong>មៃឥតខ្សែមាន receiver</strong>៖ ដោត receiver ចូលរន្ធ USB របស់កុំព្យូទ័រ ជំនួសឲ្យភ្ជាប់តាម Bluetooth។</li>
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : null}
           {detectedMics && detectedMics.length === 0 ? (
