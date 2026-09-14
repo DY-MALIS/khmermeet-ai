@@ -9,6 +9,7 @@ import { readJsonResponse } from "@/lib/read-json-response";
 import {
   describeAudioDevice,
   isBluetoothDevice,
+  isVirtualAliasDevice,
   listAudioInputs,
   readSavedMicrophoneId,
   saveMicrophoneId,
@@ -65,7 +66,9 @@ export function RecordingPanel() {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [findingDevices, setFindingDevices] = useState(false);
-  const [showBluetoothGuide, setShowBluetoothGuide] = useState(false);
+  // null until "show connected" has been pressed; then the real microphones
+  // found, so people can see their device listed instead of a guess.
+  const [detectedMics, setDetectedMics] = useState<string[] | null>(null);
   const [activeMicLabel, setActiveMicLabel] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
@@ -106,11 +109,13 @@ export function RecordingPanel() {
     if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
     const onDeviceChange = () =>
       void loadAudioDevices().then((inputs) => {
-        // Once the headset is paired in system settings it shows up here, and
-        // the "how to connect" guide has done its job.
-        if (inputs.some((device) => device.label && isBluetoothDevice(device.label))) {
-          setShowBluetoothGuide(false);
-        }
+        // Keep the "found microphones" list current as devices are plugged in,
+        // paired, or switched off, once it is on screen.
+        setDetectedMics((previous) =>
+          previous === null
+            ? null
+            : inputs.filter((device) => !isVirtualAliasDevice(device)).map((device, index) => describeAudioDevice(device, index))
+        );
       });
     navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
     return () => navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
@@ -170,11 +175,14 @@ export function RecordingPanel() {
     try {
       await unlockDeviceLabels();
       const inputs = await loadAudioDevices();
-      // A website cannot scan for or pair Bluetooth headsets - that has to
-      // happen in the computer's or phone's own Bluetooth settings. So when
-      // nothing Bluetooth is connected yet, say how to connect it rather than
-      // leaving the button looking broken.
-      setShowBluetoothGuide(!inputs.some((device) => device.label && isBluetoothDevice(device.label)));
+      // Show exactly what was found. This used to decide "no Bluetooth
+      // connected" from device names alone, which told people with a working
+      // wireless mic (typically a USB receiver named "USB Audio Device")
+      // that nothing was there. The pairing guide now only appears when no
+      // microphone exists at all.
+      setDetectedMics(
+        inputs.filter((device) => !isVirtualAliasDevice(device)).map((device, index) => describeAudioDevice(device, index))
+      );
     } catch (deviceError) {
       setError(describeMicError(deviceError));
     } finally {
@@ -661,9 +669,22 @@ export function RecordingPanel() {
               ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;បង្ហាញ Bluetooth ដែលភ្ជាប់&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
             </p>
           ) : null}
-          {showBluetoothGuide ? (
+          {detectedMics && detectedMics.length > 0 ? (
+            <div className="rounded-lg border border-leaf/30 bg-leaf/10 p-3 text-xs leading-6 text-ink">
+              <p className="font-semibold">រកឃើញមីក្រូហ្វូន {detectedMics.length} គ្រឿង — សូមជ្រើសក្នុងបញ្ជីខាងលើ៖</p>
+              <ul className="ml-4 list-disc">
+                {detectedMics.map((name, index) => (
+                  <li key={`${name}-${index}`}>{name}</li>
+                ))}
+              </ul>
+              <p className="text-slate-500">
+                មៃឥតខ្សែ ដែលភ្ជាប់តាម receiver USB ជាធម្មតាមានឈ្មោះដូច &quot;USB Audio Device&quot; (សម្គាល់ដោយ 🎙️)។ បើមិនប្រាកដថាមួយណា សូមជ្រើសម្តងមួយៗ ហើយនិយាយសាក មើល Input level ខាងស្តាំ។
+              </p>
+            </div>
+          ) : null}
+          {detectedMics && detectedMics.length === 0 ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
-              <p className="font-semibold">រកមិនឃើញឧបករណ៍ Bluetooth ដែលភ្ជាប់ទេ។</p>
+              <p className="font-semibold">រកមិនឃើញមីក្រូហ្វូនណាមួយទេ។</p>
               <p>
                 គេហទំព័រមិនអាចបើកផ្ទាំងភ្ជាប់ Bluetooth ដោយផ្ទាល់បានទេ (ជាច្បាប់សុវត្ថិភាពរបស់ browser គ្រប់ប្រភេទ)។ សូមភ្ជាប់ឧបករណ៍នៅក្នុង Settings ជាមុនសិន៖
               </p>

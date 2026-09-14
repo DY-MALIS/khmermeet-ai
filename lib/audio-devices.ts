@@ -21,12 +21,31 @@ export function isBluetoothDevice(label: string) {
   return BLUETOOTH_LABEL_PATTERN.test(label);
 }
 
+// Wireless lavalier kits (DJI Mic, Rode Wireless, Boya, Hollyland,
+// Saramonic...) are what people here usually mean by a "Bluetooth mic", but
+// most connect through a USB or 3.5mm receiver and report a name like
+// "USB Audio Device" - nothing Bluetooth about the label at all. Marked
+// separately so they are easy to spot, never used to decide whether a
+// microphone exists.
+const EXTERNAL_MIC_LABEL_PATTERN = /\busb\b|wireless|lavalier|\bdji\b|\brode\b|\bboya\b|hollyland|saramonic|comica|synco|maono|fifine|external|receiver/i;
+
+export function isExternalMic(label: string) {
+  return EXTERNAL_MIC_LABEL_PATTERN.test(label);
+}
+
+// Chrome on Windows lists "Default - X" and "Communications - X" as extra
+// entries pointing at a real device that is also listed on its own.
+export function isVirtualAliasDevice(device: MediaDeviceInfo) {
+  return device.deviceId === "default" || device.deviceId === "communications";
+}
+
 // Marks Bluetooth entries so they can be picked out of a list that otherwise
 // reads as a wall of hardware names, and falls back to a numbered name while
 // labels are still hidden.
 export function describeAudioDevice(device: MediaDeviceInfo, index: number) {
   if (!device.label) return `Microphone ${index + 1}`;
-  return `${isBluetoothDevice(device.label) ? "🎧 " : ""}${device.label}`;
+  const marker = isBluetoothDevice(device.label) ? "🎧 " : isExternalMic(device.label) ? "🎙️ " : "";
+  return `${marker}${device.label}`;
 }
 
 const SAVED_MICROPHONE_KEY = "khmermeet-microphone-id";
