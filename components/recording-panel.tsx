@@ -65,6 +65,7 @@ export function RecordingPanel() {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [findingDevices, setFindingDevices] = useState(false);
+  const [showBluetoothGuide, setShowBluetoothGuide] = useState(false);
   const [activeMicLabel, setActiveMicLabel] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
@@ -103,7 +104,14 @@ export function RecordingPanel() {
   // when a recording starts.
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
-    const onDeviceChange = () => void loadAudioDevices();
+    const onDeviceChange = () =>
+      void loadAudioDevices().then((inputs) => {
+        // Once the headset is paired in system settings it shows up here, and
+        // the "how to connect" guide has done its job.
+        if (inputs.some((device) => device.label && isBluetoothDevice(device.label))) {
+          setShowBluetoothGuide(false);
+        }
+      });
     navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
     return () => navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
   }, []);
@@ -148,6 +156,7 @@ export function RecordingPanel() {
     setSelectedDeviceId((current) =>
       current && !inputs.some((device) => device.deviceId === current) ? "" : current
     );
+    return inputs;
   }
 
   // Device labels are hidden until microphone permission has been granted
@@ -160,7 +169,12 @@ export function RecordingPanel() {
     setError("");
     try {
       await unlockDeviceLabels();
-      await loadAudioDevices();
+      const inputs = await loadAudioDevices();
+      // A website cannot scan for or pair Bluetooth headsets - that has to
+      // happen in the computer's or phone's own Bluetooth settings. So when
+      // nothing Bluetooth is connected yet, say how to connect it rather than
+      // leaving the button looking broken.
+      setShowBluetoothGuide(!inputs.some((device) => device.label && isBluetoothDevice(device.label)));
     } catch (deviceError) {
       setError(describeMicError(deviceError));
     } finally {
@@ -636,16 +650,31 @@ export function RecordingPanel() {
               type="button"
               onClick={() => void findMicrophones()}
               disabled={findingDevices || state === "recording" || state === "paused" || uploading}
-              title="ស្វែងរកមីក្រូហ្វូន រួមទាំង Bluetooth"
+              title="បង្ហាញមីក្រូហ្វូនដែលភ្ជាប់រួច រួមទាំង Bluetooth"
             >
-              {findingDevices ? "កំពុងរក..." : "🎧 រក Bluetooth"}
+              {findingDevices ? "កំពុងពិនិត្យ..." : "🎧 បង្ហាញ Bluetooth ដែលភ្ជាប់"}
             </button>
           </div>
           {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
-              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;រក Bluetooth&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
+              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;បង្ហាញ Bluetooth ដែលភ្ជាប់&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
             </p>
+          ) : null}
+          {showBluetoothGuide ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
+              <p className="font-semibold">រកមិនឃើញឧបករណ៍ Bluetooth ដែលភ្ជាប់ទេ។</p>
+              <p>
+                គេហទំព័រមិនអាចបើកផ្ទាំងភ្ជាប់ Bluetooth ដោយផ្ទាល់បានទេ (ជាច្បាប់សុវត្ថិភាពរបស់ browser គ្រប់ប្រភេទ)។ សូមភ្ជាប់ឧបករណ៍នៅក្នុង Settings ជាមុនសិន៖
+              </p>
+              <ul className="ml-4 list-disc">
+                <li><strong>កុំព្យូទ័រ Windows៖</strong> Settings → Bluetooth &amp; devices → Add device → Bluetooth</li>
+                <li><strong>Mac៖</strong> System Settings → Bluetooth → ចុច Connect លើឧបករណ៍</li>
+                <li><strong>ទូរស័ព្ទ Android៖</strong> Settings → Connected devices → Pair new device</li>
+                <li><strong>iPhone៖</strong> Settings → Bluetooth → ចុចលើឧបករណ៍</li>
+              </ul>
+              <p>បើកឧបករណ៍ Bluetooth ឲ្យស្ថិតក្នុងរបៀបភ្ជាប់ (pairing) រួចត្រឡប់មកចុចប៊ូតុងខាងលើម្តងទៀត — វានឹងលេចក្នុងបញ្ជីមីក្រូហ្វូន។</p>
+            </div>
           ) : null}
           {selectedBluetoothLabel ? (
             <p className="text-xs text-slate-500">
