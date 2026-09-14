@@ -6,6 +6,14 @@ import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
+import {
+  describeAudioDevice,
+  isBluetoothDevice,
+  listAudioInputs,
+  readSavedMicrophoneId,
+  saveMicrophoneId,
+  unlockDeviceLabels
+} from "@/lib/audio-devices";
 
 // Standalone room recording should capture the room as faithfully as possible.
 // Browser noise suppression is tuned for close-talk calls and can erase quiet
@@ -25,20 +33,6 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
 // noise floor than a close-talk mic would - keep this low to avoid flagging
 // legitimate far-field audio as silent.
 const silentInputThreshold = 0.0012;
-
-// A Bluetooth headset or speakerphone is just another audio input as far as
-// the browser is concerned, so recording from one already works - the real
-// problem was finding it in the list. enumerateDevices() returns blank
-// labels until microphone permission has been granted at least once, so
-// before that every entry reads "Microphone 1", "Microphone 2" and there is
-// no way to tell which is the Bluetooth one.
-const BLUETOOTH_LABEL_PATTERN = /bluetooth|hands[-\s]?free|headset|airpod|earbud|\bbt\b/i;
-
-function isBluetoothDevice(label: string) {
-  return BLUETOOTH_LABEL_PATTERN.test(label);
-}
-
-const SAVED_MICROPHONE_KEY = "khmermeet-microphone-id";
 
 function formatTime(seconds: number) {
   const safeSeconds = clampMeetingDurationSeconds(seconds);
@@ -95,12 +89,8 @@ export function RecordingPanel() {
     fetch("/api/health", { cache: "no-store" })
       .then((response) => setDbUnavailable(!response.ok))
       .catch(() => setDbUnavailable(true));
-    try {
-      const saved = window.localStorage.getItem(SAVED_MICROPHONE_KEY);
-      if (saved) setSelectedDeviceId(saved);
-    } catch {
-      // Storage blocked - fall back to the default microphone.
-    }
+    const saved = readSavedMicrophoneId();
+    if (saved) setSelectedDeviceId(saved);
     void loadAudioDevices();
 
     return () => cleanupRecording();
@@ -150,9 +140,7 @@ export function RecordingPanel() {
   }
 
   async function loadAudioDevices() {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
-    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-    const inputs = devices.filter((device) => device.kind === "audioinput");
+    const inputs = await listAudioInputs();
     setAudioDevices(inputs);
     // A remembered microphone that is no longer connected (the Bluetooth
     // headset is off, say) must fall back to the default rather than making
@@ -171,8 +159,7 @@ export function RecordingPanel() {
     setFindingDevices(true);
     setError("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
+      await unlockDeviceLabels();
       await loadAudioDevices();
     } catch (deviceError) {
       setError(describeMicError(deviceError));
@@ -189,12 +176,7 @@ export function RecordingPanel() {
 
   function rememberMicrophone(deviceId: string) {
     setSelectedDeviceId(deviceId);
-    try {
-      if (deviceId) window.localStorage.setItem(SAVED_MICROPHONE_KEY, deviceId);
-      else window.localStorage.removeItem(SAVED_MICROPHONE_KEY);
-    } catch {
-      // Storage blocked - the choice just will not survive a reload.
-    }
+    saveMicrophoneId(deviceId);
   }
 
   function buildAudioConstraints(): MediaTrackConstraints {
@@ -612,9 +594,7 @@ export function RecordingPanel() {
               <option value="">Default microphone</option>
               {audioDevices.map((device, index) => (
                 <option key={device.deviceId || index} value={device.deviceId}>
-                  {device.label
-                    ? `${isBluetoothDevice(device.label) ? "🎧 " : ""}${device.label}`
-                    : `Microphone ${index + 1}`}
+                  {describeAudioDevice(device, index)}
                 </option>
               ))}
             </select>

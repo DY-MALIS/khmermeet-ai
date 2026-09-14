@@ -20,6 +20,7 @@ import { cn } from "@/components/ui";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { clampMeetingDurationMs, clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { describeAudioDevice, listAudioInputs, readSavedMicrophoneId, saveMicrophoneId } from "@/lib/audio-devices";
 
 type TokenPayload = {
   token: string;
@@ -550,13 +551,24 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [micNotice, setMicNotice] = useState("");
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  // Starts from the microphone chosen anywhere in the app, so someone who
+  // picked their Bluetooth headset in the recorder does not have to pick it
+  // again before a call.
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [micTrackState, setMicTrackState] = useState("No live mic track");
   const manualMicTrackRef = useRef<LocalAudioTrack | null>(null);
 
   useEffect(() => {
+    const saved = readSavedMicrophoneId();
+    if (saved) setSelectedAudioDeviceId(saved);
     void loadAudioDevices();
+    // Pairing a Bluetooth headset mid-call should make it selectable right
+    // away, not only when the picker happens to be opened again.
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) return;
+    const onDeviceChange = () => void loadAudioDevices();
+    navigator.mediaDevices.addEventListener("devicechange", onDeviceChange);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", onDeviceChange);
   }, []);
 
   useEffect(() => {
@@ -622,9 +634,13 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
   }
 
   async function loadAudioDevices() {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-    setAudioDevices(devices.filter((device) => device.kind === "audioinput"));
+    const inputs = await listAudioInputs();
+    setAudioDevices(inputs);
+    // A remembered microphone that is no longer connected must fall back to
+    // the default, or publishing fails on an exact deviceId nothing matches.
+    setSelectedAudioDeviceId((current) =>
+      current && !inputs.some((device) => device.deviceId === current) ? "" : current
+    );
   }
 
   async function measureTrackLevel(mediaTrack: MediaStreamTrack, durationMs = 900) {
@@ -832,6 +848,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
             value={selectedAudioDeviceId}
             onChange={(event) => {
               setSelectedAudioDeviceId(event.target.value);
+              saveMicrophoneId(event.target.value);
               setMicNotice("បានជ្រើស microphone។ ចុច ជួសជុល Mic ដើម្បីប្រើ device ថ្មី។");
             }}
             onFocus={() => void loadAudioDevices()}
@@ -840,7 +857,7 @@ function LiveKitCallControls({ onLeaveRequest }: { onLeaveRequest: () => void })
             <option value="">Default microphone</option>
             {audioDevices.map((device, index) => (
               <option key={device.deviceId || index} value={device.deviceId}>
-                {device.label || `Microphone ${index + 1}`}
+                {describeAudioDevice(device, index)}
               </option>
             ))}
           </select>
