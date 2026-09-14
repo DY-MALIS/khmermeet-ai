@@ -8,9 +8,12 @@ import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meet
 import { readJsonResponse } from "@/lib/read-json-response";
 import {
   describeAudioDevice,
+  chooseNearbyBluetoothDevice,
+  findInputForBluetoothName,
   isBluetoothDevice,
   isVirtualAliasDevice,
   listAudioInputs,
+  supportsBluetoothChooser,
   readSavedMicrophoneId,
   saveMicrophoneId,
   unlockDeviceLabels
@@ -69,6 +72,7 @@ export function RecordingPanel() {
   // null until "show connected" has been pressed; then the real microphones
   // found, so people can see their device listed instead of a guess.
   const [detectedMics, setDetectedMics] = useState<string[] | null>(null);
+  const [bluetoothNotice, setBluetoothNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [activeMicLabel, setActiveMicLabel] = useState("");
   const [micLevel, setMicLevel] = useState(0);
   const [audioUrl, setAudioUrl] = useState("");
@@ -168,6 +172,46 @@ export function RecordingPanel() {
   // once, which is why a Bluetooth headset shows up as an unhelpful
   // "Microphone 2". Asking for the microphone and releasing it immediately
   // unlocks the real names without starting a recording.
+  // Phone-style one-to-one connect: Chrome's nearby-device popup, then the
+  // chosen device is looked up and selected in the microphone list. The popup
+  // itself cannot carry audio, so when the device is not a microphone yet the
+  // notice says what still has to happen instead of pretending it worked.
+  async function connectBluetoothDevice() {
+    setError("");
+    setBluetoothNotice(null);
+    if (!supportsBluetoothChooser()) {
+      await findMicrophones();
+      setBluetoothNotice({
+        tone: "warn",
+        text: "Browser នេះមិនអាចបង្ហាញផ្ទាំងភ្ជាប់ Bluetooth ទេ (សូមប្រើ Chrome ឬ Edge)។ ខាងក្រោមជាមីក្រូហ្វូនដែលឧបករណ៍របស់អ្នកបានភ្ជាប់រួច។"
+      });
+      return;
+    }
+    let name: string | null;
+    try {
+      name = await chooseNearbyBluetoothDevice();
+    } catch (chooserError) {
+      // Closing the popup without picking anything is not an error.
+      if (chooserError instanceof DOMException && chooserError.name === "NotFoundError") return;
+      setBluetoothNotice({
+        tone: "warn",
+        text: `មិនអាចបើកផ្ទាំង Bluetooth បានទេ៖ ${chooserError instanceof Error ? chooserError.message : String(chooserError)}`
+      });
+      return;
+    }
+    await findMicrophones();
+    const match = name ? findInputForBluetoothName(await listAudioInputs(), name) : null;
+    if (match) {
+      rememberMicrophone(match.deviceId);
+      setBluetoothNotice({ tone: "ok", text: `✅ បានភ្ជាប់ ${name} ហើយបានជ្រើសវាជាមីក្រូហ្វូនសម្រាប់ថត។` });
+      return;
+    }
+    setBluetoothNotice({
+      tone: "warn",
+      text: `បានជ្រើស ${name ?? "ឧបករណ៍នេះ"} ប៉ុន្តែវាមិនទាន់អាចផ្តល់សំឡេងសម្រាប់ថតបានទេ។ ផ្ទាំង Bluetooth របស់ Chrome ភ្ជាប់បានតែទិន្នន័យ មិនមែនសំឡេងទេ។ ដើម្បីថតសំឡេងពីវា សូមភ្ជាប់វាម្តងក្នុង Settings → Bluetooth & devices → Add device។ បន្ទាប់មកចុចប៊ូតុងនេះម្តងទៀត វានឹងលេចក្នុងបញ្ជីមីក្រូហ្វូន ហើយអេបនឹងចងចាំវា។`
+    });
+  }
+
   async function findMicrophones() {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
     setFindingDevices(true);
@@ -656,17 +700,26 @@ export function RecordingPanel() {
             <button
               className="kh-button-secondary shrink-0 whitespace-nowrap px-3"
               type="button"
-              onClick={() => void findMicrophones()}
+              onClick={() => void connectBluetoothDevice()}
               disabled={findingDevices || state === "recording" || state === "paused" || uploading}
-              title="បង្ហាញមីក្រូហ្វូនដែលភ្ជាប់រួច រួមទាំង Bluetooth"
+              title="ជ្រើសឧបករណ៍ Bluetooth នៅជិតៗ ដើម្បីភ្ជាប់"
             >
-              {findingDevices ? "កំពុងពិនិត្យ..." : "🎧 បង្ហាញ Bluetooth ដែលភ្ជាប់"}
+              {findingDevices ? "កំពុងពិនិត្យ..." : "🎧 ភ្ជាប់ Bluetooth"}
             </button>
           </div>
           {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
-              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;បង្ហាញ Bluetooth ដែលភ្ជាប់&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
+              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;ភ្ជាប់ Bluetooth&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
+            </p>
+          ) : null}
+          {bluetoothNotice ? (
+            <p
+              className={`rounded-lg border p-3 text-xs leading-6 ${
+                bluetoothNotice.tone === "ok" ? "border-leaf/30 bg-leaf/10 text-ink" : "border-amber-300 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {bluetoothNotice.text}
             </p>
           ) : null}
           {detectedMics && detectedMics.length > 0 ? (
@@ -686,7 +739,10 @@ export function RecordingPanel() {
                   no microphone either until Windows switches them to
                   hands-free - so when nothing wireless is in the list, point
                   at the one place that decides it. */}
-              {!detectedMics.some((name) => name.startsWith("🎧") || name.startsWith("🎙️")) ? (
+              {/* Hidden while a connect notice is showing: after a successful
+                  connect it contradicts the ✅, and after a failed one the
+                  notice already carries the same guidance. */}
+              {!bluetoothNotice && !detectedMics.some((name) => name.startsWith("🎧") || name.startsWith("🎙️")) ? (
                 <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
                   <p className="font-semibold">មិនឃើញឈ្មោះ Bluetooth របស់អ្នកក្នុងបញ្ជីនេះមែនទេ?</p>
                   <p>

@@ -48,7 +48,9 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Permissions-Policy",
-            value: "camera=(self), microphone=(self), display-capture=(self)"
+            // bluetooth=(self) lets the recorder open Chrome's nearby-device
+            // chooser; left out, a stricter browser default could block it.
+            value: "camera=(self), microphone=(self), display-capture=(self), bluetooth=(self)"
           }
         ]
       }

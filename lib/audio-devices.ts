@@ -48,6 +48,48 @@ export function describeAudioDevice(device: MediaDeviceInfo, index: number) {
   return `${marker}${device.label}`;
 }
 
+// Chrome and Edge (desktop and Android) can show a native "pick a nearby
+// Bluetooth device" popup, which is the phone-style one-to-one connect people
+// expect. It only opens a data connection, though - it cannot route a
+// headset's audio into the page. So the chosen device's name is used to find
+// and select that same device in the microphone list, and when the operating
+// system has not exposed it as a microphone yet the recorder says so plainly.
+type BluetoothChooser = {
+  requestDevice(options: { acceptAllDevices: boolean }): Promise<{ name?: string | null }>;
+};
+
+function bluetoothApi() {
+  if (typeof navigator === "undefined") return undefined;
+  return (navigator as Navigator & { bluetooth?: BluetoothChooser }).bluetooth;
+}
+
+export function supportsBluetoothChooser() {
+  return typeof bluetoothApi()?.requestDevice === "function";
+}
+
+export async function chooseNearbyBluetoothDevice() {
+  const api = bluetoothApi();
+  if (!api) return null;
+  const device = await api.requestDevice({ acceptAllDevices: true });
+  return device.name?.trim() || null;
+}
+
+function normalizeDeviceName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+export function findInputForBluetoothName(inputs: MediaDeviceInfo[], name: string) {
+  const target = normalizeDeviceName(name);
+  if (target.length < 3) return null;
+  return (
+    inputs.find((device) => {
+      if (isVirtualAliasDevice(device)) return false;
+      const label = normalizeDeviceName(device.label);
+      return label.length >= 3 && (label.includes(target) || target.includes(label));
+    }) ?? null
+  );
+}
+
 const SAVED_MICROPHONE_KEY = "khmermeet-microphone-id";
 
 export function readSavedMicrophoneId() {
