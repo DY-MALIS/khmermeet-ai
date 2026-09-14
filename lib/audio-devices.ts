@@ -7,7 +7,15 @@
 // browser, so recording from one already works. The only way to recognise it
 // is the device label, and labels stay blank until microphone permission has
 // been granted at least once.
-const BLUETOOTH_LABEL_PATTERN = /bluetooth|hands[-\s]?free|headset|airpod|earbud|\bbt\b/i;
+// Matching on the label is the only option: the Web API never says how an
+// audio input is connected. Generic wording covers most of it, but plenty of
+// real headsets and speakerphones report only a brand or model name with no
+// hint of Bluetooth in it ("WH-1000XM4", "Jabra Speak"), so the common
+// families are listed too. This only decides whether the 🎧 marker and the
+// quality note appear - every input is selectable either way, so a device
+// missing from this list still records perfectly well.
+const BLUETOOTH_LABEL_PATTERN =
+  /bluetooth|hands[-\s]?free|headset|airpod|earbud|buds|wireless|speakerphone|\bbt\b|jabra|jbl|powerconf|anker|soundcore|\bbose\b|\bwh-?\d|\bwf-?\d|beats|sennheiser|plantronics|\bpoly\b|shokz|aftershokz|\bqcy\b|edifier|xiaomi|redmi|huawei|freebuds|nothing ear|\bpixel buds\b/i;
 
 export function isBluetoothDevice(label: string) {
   return BLUETOOTH_LABEL_PATTERN.test(label);

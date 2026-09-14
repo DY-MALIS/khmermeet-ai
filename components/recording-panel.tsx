@@ -179,6 +179,41 @@ export function RecordingPanel() {
     saveMicrophoneId(deviceId);
   }
 
+  // Some microphones refuse the tuned constraints outright - a Bluetooth
+  // headset on the hands-free profile often cannot offer 48 kHz, and some
+  // drivers reject having the browser's own processing switched off. Without
+  // a fallback the whole recording fails on those devices, which is why
+  // "it works with my Bluetooth" was not true for every headset. Try the
+  // tuned settings first, then progressively plainer ones, keeping the chosen
+  // device for as long as possible. The "Using:" line shows which microphone
+  // actually opened, so a substitution is visible rather than silent.
+  async function openMicrophoneStream() {
+    const attempts: MediaTrackConstraints[] = [buildAudioConstraints()];
+    if (selectedDeviceId) {
+      attempts.push({ deviceId: { exact: selectedDeviceId } });
+      attempts.push({ deviceId: selectedDeviceId });
+    }
+    attempts.push({});
+
+    let lastError: unknown;
+    for (const audio of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio });
+      } catch (streamError) {
+        lastError = streamError;
+        // Relaxing constraints cannot turn a refused permission into a
+        // granted one, so stop rather than prompting repeatedly.
+        if (
+          streamError instanceof DOMException &&
+          (streamError.name === "NotAllowedError" || streamError.name === "SecurityError")
+        ) {
+          throw streamError;
+        }
+      }
+    }
+    throw lastError;
+  }
+
   function buildAudioConstraints(): MediaTrackConstraints {
     return selectedDeviceId
       ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
@@ -297,9 +332,7 @@ export function RecordingPanel() {
       return;
     }
     try {
-      const rawStream = await navigator.mediaDevices.getUserMedia({
-        audio: buildAudioConstraints()
-      });
+      const rawStream = await openMicrophoneStream();
       const [track] = rawStream.getAudioTracks();
       streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
@@ -620,7 +653,7 @@ export function RecordingPanel() {
             </p>
           ) : null}
           <p className="text-xs text-slate-500">
-            ថតពី microphone ដែលបានជ្រើស។ សម្រាប់ចាប់គ្រប់មាត់ក្នុងបន្ទប់ សូមប្រើ conference/external mic ឬដាក់ mic កណ្តាលតុ។
+            ថតពី microphone ដែលបានជ្រើស។ <strong>ឧបករណ៍ Bluetooth ដែលភ្ជាប់រួច នឹងបង្ហាញក្នុងបញ្ជីនេះ ហើយប្រើបានទាំងអស់</strong> — សូមជ្រើសវាតាមឈ្មោះ (រូប 🎧 គ្រាន់តែជាការសម្គាល់ជំនួយ ប៉ុណ្ណោះ)។ សម្រាប់ចាប់គ្រប់មាត់ក្នុងបន្ទប់ សូមប្រើ conference/external mic ឬដាក់ mic កណ្តាលតុ។
           </p>
         </label>
         <div className="space-y-2">
