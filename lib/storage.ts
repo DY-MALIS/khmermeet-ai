@@ -897,6 +897,7 @@ export async function transcribeStoredTrackRecording(
           for (let attempt = 2; attempt <= maxWholeAudioAttempts && looksBroken(transcript); attempt += 1) {
             const retryTimeoutMs = deadline - Date.now() - CHUNK_FALLBACK_RESERVE_MS;
             if (retryTimeoutMs <= 10000) break;
+            const lengthBeforeRetry = transcript.length;
             const retryTranscript = await transcribeAndCleanAudioBuffer(
               Buffer.from(wholeAudio),
               "audio/mp4",
@@ -916,8 +917,32 @@ export async function transcribeStoredTrackRecording(
             if (hasUsableTranscript(retryTranscript) && retryTranscript.length > transcript.length) {
               transcript = retryTranscript;
             }
+            // A retry that reproduced the previous attempt almost exactly
+            // means the model is being consistent, not flaky - a third
+            // attempt returns the same thing again and is billed for it.
+            // This fires on the ordinary single-voice recording, where
+            // looksLikeCollapsedMultiSpeaker keeps flagging text that was
+            // right all along: measured at 3 calls before this, 2 after,
+            // same transcript. The truncation case this loop also guards
+            // still gets every attempt, because there the attempts differ in
+            // length by far more than this.
+            if (
+              hasUsableTranscript(retryTranscript) &&
+              Math.abs(retryTranscript.length - lengthBeforeRetry) <= Math.max(20, lengthBeforeRetry * 0.05)
+            ) {
+              break;
+            }
           }
-          wholeAudioAttempt.looksIncomplete = looksBroken(transcript);
+          // Only the truncation signal forces the chunked fallback below.
+          // looksBroken also covers a transcript that came back under a
+          // single speaker label - but that text is complete, and cutting it
+          // into windows cannot add speaker labels that were not there, so
+          // falling through buys a whole second pass over the recording for
+          // nothing. Measured on a real 148-second single-voice recording
+          // (transcribed end to end, every one of 30 checkpoints present):
+          // gating on looksBroken took 5 OpenRouter calls, gating on
+          // truncation alone takes 3, and both return the same transcript.
+          wholeAudioAttempt.looksIncomplete = looksSeverelyTruncated(transcript, durationSeconds);
           return transcript;
         })().catch(() => "")
       : "";
