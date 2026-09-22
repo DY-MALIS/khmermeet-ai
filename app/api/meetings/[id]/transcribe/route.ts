@@ -74,10 +74,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       !chronologicalSpeakerSegments.length &&
       (!participantAudioSegments.length || speakerNames.length > participantAudioSegments.length);
     let rawTranscript = "";
-    // Set when a long recording ran out of transcription budget partway
-    // through its chunks - the transcript below is real but missing the
-    // tail, so the response has to say so instead of presenting it as the
-    // complete meeting.
+    // Set when part of a long recording did not transcribe completely -
+    // either the budget ran out before every chunk was reached (the tail is
+    // missing), or a chunk came back far too short for how long it runs even
+    // after its retries (speech missing from the middle). Either way the
+    // transcript below is real but incomplete, so the response has to say so
+    // instead of presenting it as the whole meeting.
     let incompleteLongRecording = false;
     let transcriptSpeakerNames = speakerNames;
     // Resolves each segment's label once here at assembly time: the real
@@ -278,7 +280,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcript,
         partial: true,
         message:
-          "This recording is long enough that transcription ran out of time before reaching the end, so the last part of the meeting is missing. The audio is saved in full - click Re-transcribe audio to continue."
+          "Part of this recording did not transcribe completely, so the transcript is missing speech - at the end, and possibly in the middle too. Your audio is saved in full. Pressing Re-transcribe audio starts the whole recording over from the beginning, which usually fills the gaps in, because the parts that fail are rarely the same ones twice."
       });
     }
 
@@ -293,7 +295,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 function transcriptionBudget(workDeadline: number) {
-  const configured = Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 180000);
+  // 200s, not the old 180s: the outer withinDeadline() race already caps this
+  // work at workDeadline - REFINE_RESERVE_MS (210s), and refineSavedTranscript
+  // only needs the 60s reserve after it, so 30 of the 300s the platform allows
+  // were simply going unused. Those seconds go to the chunked path, which is
+  // where a long recording runs out of time and loses its tail - and they are
+  // what makes room for a chunk that came back too short to be asked again.
+  // 200 + REFINE_RESERVE_MS (60) + FINALIZE_RESERVE_MS (10) = WORK_DEADLINE_MS.
+  const configured = Number(process.env.OPEN_ROUTER_SAVED_AUDIO_TIMEOUT_MS ?? 200000);
   return Math.max(1000, Math.min(configured, workDeadline - Date.now() - REFINE_RESERVE_MS));
 }
 

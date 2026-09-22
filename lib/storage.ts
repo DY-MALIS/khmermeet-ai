@@ -808,6 +808,11 @@ const WHOLE_AUDIO_TRANSCRIPTION_MAX_MS = 75000;
 // whenever this fallback does run - it just self-limits to whatever time is
 // actually left rather than needing a large fixed reserve up front.
 const CHUNK_FALLBACK_RESERVE_MS = 90000;
+// Total attempts per chunk once it has come back with real but implausibly
+// short text. Bounded so a recording full of quiet stretches - which trips
+// the same check honestly - cannot spend the whole budget re-asking for
+// windows that really were mostly silence.
+const MAX_CHUNK_TRANSCRIPTION_ATTEMPTS = 3;
 
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
@@ -950,6 +955,10 @@ export async function transcribeStoredTrackRecording(
   const transcripts = new Array<string>(chunks.length).fill("");
   const completed = new Array<boolean>(chunks.length).fill(false);
   const queue = chunks.map((chunk, index) => ({ chunk, index }));
+  // Set by the workers below, read after they finish - held on an object
+  // because TypeScript would narrow a plain `let` assigned only inside a
+  // nested function back to its initial value at the outer read.
+  const chunkOutcome = { anyStillTruncated: false };
 
   async function worker() {
     while (queue.length) {
@@ -960,7 +969,7 @@ export async function transcribeStoredTrackRecording(
       if (remainingMs < 8000) return;
 
       const chunkFile = new File(
-        [new Uint8Array(next.chunk)],
+        [new Uint8Array(next.chunk.audio)],
         chunks.length === 1 ? `recording.${chunkSourceExt}` : `recording-part-${String(next.index + 1).padStart(3, "0")}.${chunkSourceExt}`,
         { type: chunkSourceMimeType }
       );
@@ -978,7 +987,7 @@ export async function transcribeStoredTrackRecording(
         if (retryRemainingMs >= 15000) {
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
           const preparedAudio = await prepareAudioForTranscription(
-            Buffer.from(next.chunk),
+            Buffer.from(next.chunk.audio),
             chunkSourceExt,
             openRouterAudioLimit
           ).catch(() => null);
@@ -1012,7 +1021,42 @@ export async function transcribeStoredTrackRecording(
           }).catch(() => "");
         }
       }
-      transcripts[next.index] = cleanTranscriptionText(transcript);
+      // Every retry above only fires when a chunk comes back with nothing at
+      // all. A chunk that returns real but far-too-short text for how long it
+      // actually runs has failed just as badly: the model stopped partway
+      // through and the rest of those minutes is simply gone - and because it
+      // happens mid-recording rather than at the end, the transcript still
+      // reads as if it were complete. Confirmed as a real failure shape on
+      // the whole-audio path (see looksSeverelyTruncated); a 15-minute window
+      // is long audio too, so it is exposed to exactly the same thing.
+      for (
+        let attempt = 2;
+        attempt <= MAX_CHUNK_TRANSCRIPTION_ATTEMPTS &&
+        hasUsableTranscript(transcript) &&
+        looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds);
+        attempt += 1
+      ) {
+        const truncationRetryMs = deadline - Date.now();
+        if (truncationRetryMs < 15000) break;
+        const retryTranscript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
+          ...transcribeOptions,
+          timeoutMs: Math.max(8000, Math.min(150000, truncationRetryMs))
+        }).catch(() => "");
+        // Keep the longest usable attempt rather than whichever came last:
+        // a shorter retry must never be allowed to throw away text an
+        // earlier attempt did capture.
+        if (hasUsableTranscript(retryTranscript) && retryTranscript.length > transcript.length) {
+          transcript = retryTranscript;
+        }
+      }
+      const chunkTranscriptText = cleanTranscriptionText(transcript);
+      if (hasUsableTranscript(chunkTranscriptText) && looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)) {
+        // Still short after every attempt. The transcript below is real, but
+        // this window is missing speech - say so rather than handing back a
+        // gap-filled transcript that looks whole.
+        chunkOutcome.anyStillTruncated = true;
+      }
+      transcripts[next.index] = chunkTranscriptText;
       completed[next.index] = true;
     }
   }
@@ -1032,14 +1076,21 @@ export async function transcribeStoredTrackRecording(
   }
 
   if (wholeAudioAttempt.looksIncomplete) {
-    if (hasUsableTranscript(chunkTranscript)) return chunkTranscript;
+    if (hasUsableTranscript(chunkTranscript)) {
+      if (chunkOutcome.anyStillTruncated) options.onIncomplete?.();
+      return chunkTranscript;
+    }
     if (hasUsableTranscript(wholeTranscript)) {
       options.onIncomplete?.();
       return cleanTranscriptionText(wholeTranscript);
     }
   }
 
-  return chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);
+  const bestTranscript = chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);
+  // Only when the chunked run is what we are actually returning - a
+  // whole-audio transcript that won covers the recording end to end.
+  if (chunkOutcome.anyStillTruncated && bestTranscript === chunkTranscript) options.onIncomplete?.();
+  return bestTranscript;
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",

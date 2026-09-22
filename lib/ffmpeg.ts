@@ -132,15 +132,23 @@ async function findSilenceAdjustedCutTimes(inputPath: string, targetBoundarySeco
 // ~24MB (roughly 25-30 minutes at this app's recording bitrate). Splitting
 // only happens here, server-side, after the full recording is already
 // safely saved - it never affects what gets recorded or played back.
+// Each piece carries its own measured length. Without it the caller cannot
+// tell a chunk that genuinely holds little speech from one the model gave up
+// on partway through - and a chunk abandoned halfway loses minutes of the
+// meeting from the middle, where nobody notices it is gone.
+export type AudioChunk = { audio: Buffer; durationSeconds: number | null };
+
 export async function splitAudioIntoChunks(
   buffer: Buffer,
   ext: string,
   maxBytesPerChunk: number,
   preferredSegmentSeconds?: number
-): Promise<Buffer[]> {
-  if (buffer.length <= maxBytesPerChunk && !preferredSegmentSeconds) return [buffer];
+): Promise<AudioChunk[]> {
+  if (buffer.length <= maxBytesPerChunk && !preferredSegmentSeconds) {
+    return [{ audio: buffer, durationSeconds: null }];
+  }
   if (!ffmpegPath) {
-    if (buffer.length <= maxBytesPerChunk) return [buffer];
+    if (buffer.length <= maxBytesPerChunk) return [{ audio: buffer, durationSeconds: null }];
     throw new Error("ffmpeg binary not found. Long recordings need ffmpeg available in the deployment before they can be split for transcription.");
   }
 
@@ -156,7 +164,7 @@ export async function splitAudioIntoChunks(
     try {
       durationSeconds = await probeDurationSeconds(inputPath);
     } catch (error) {
-      if (buffer.length <= maxBytesPerChunk) return [buffer];
+      if (buffer.length <= maxBytesPerChunk) return [{ audio: buffer, durationSeconds: null }];
       throw error;
     }
     // Chrome MediaRecorder webm files routinely have no Duration header
@@ -168,7 +176,7 @@ export async function splitAudioIntoChunks(
     // confirmed live against a real 727s recording (returned 1 unsplit
     // chunk). Only skip splitting when duration is actually known to fit.
     if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || (durationSeconds !== null && durationSeconds <= preferredSegmentSeconds))) {
-      return [buffer];
+      return [{ audio: buffer, durationSeconds }];
     }
 
     const bytesPerSecond = durationSeconds ? buffer.length / Math.max(1, durationSeconds) : 4000;
@@ -214,8 +222,24 @@ export async function splitAudioIntoChunks(
     ]);
 
     const files = (await readdir(tmpDir)).filter((name) => name.startsWith("part-")).sort();
-    const chunks = (await Promise.all(files.map((name) => readFile(path.join(tmpDir, name)))))
-      .filter((chunk) => chunk.length > 1000);
+    const parts = await Promise.all(
+      files.map(async (name) => {
+        const partPath = path.join(tmpDir, name);
+        return {
+          audio: await readFile(partPath),
+          durationSeconds: await probeDurationSeconds(partPath).catch(() => null)
+        };
+      })
+    );
+    // The segment muxer can emit a trailing part that is only a container
+    // header with no audio behind it. Drop those by how much audio they
+    // actually hold rather than by byte size: the old flat 1000-byte cut-off
+    // also discarded a genuinely short final part, which is the end of the
+    // meeting going missing for no reason. Parts whose duration cannot be
+    // probed still fall back to the byte test.
+    const chunks = parts.filter((part) =>
+      part.durationSeconds === null ? part.audio.length > 1000 : part.durationSeconds >= 0.25
+    );
     if (!chunks.length) throw new Error("ffmpeg produced no usable output segments.");
     return chunks;
   } finally {
