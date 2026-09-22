@@ -323,6 +323,18 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
       : `The selected output language is ${language === "km" ? "Khmer" : "English"} and translating into it is required. This outranks the verbatim rules below: those keep you from paraphrasing, dropping, or inventing content, but they never mean leaving speech in the language it was spoken in. Translate every spoken phrase into ${language === "km" ? "Khmer" : "English"}. Write the translated transcript only - never both languages side by side, never the original next to a translation, and never a note about what you are translating.`;
   const selfIntroductionInstruction =
     "If a speaker clearly introduces a name in the audio (for example Khmer phrases like \"ខ្ញុំឈ្មោះ ...\", \"ខ្ញុំជា ...\", or English phrases like \"my name is ...\", \"I am ...\", \"I'm ...\", \"this is ...\"), transcribe that introduced name accurately inside the spoken sentence. Do not promote an introduced name into a speaker label unless the user already provided that exact participant name as a known speaker. Do not invent or guess real names.";
+  // Diarization guidance, mixed recordings only. Measured on a 7-minute
+  // three-voice test recording built to resemble one phone on a meeting table
+  // - two of the three voices deliberately similar, one of those quieter and
+  // further from the microphone, pink noise throughout. Without this the model
+  // returned 2 labels for 3 people, merged the two similar voices under one of
+  // them, and put only 57% of sentences on the right speaker. Each rule below
+  // is written against a specific way it failed: merging voices that sound
+  // alike, deciding turns from the content rather than the sound, and
+  // separating carefully at the start then giving up part way through.
+  const speakerSeparationInstruction = singleSpeaker
+    ? ""
+    : "Separate the speakers by how each voice actually sounds - not by what is being said, not by who you expect to speak next, and not by assuming people take turns in order. Before writing anything, listen through the recording and decide how many distinct voices are present, using pitch, timbre, speaking rate, accent, and how near or far each voice is from the microphone. Give every distinct voice its own label and reuse that exact same label every time that voice speaks, from the first word of the recording to the last. Two people can sound similar: a similar pitch or accent does not make them the same person, so weigh the finer differences in timbre, rhythm, breathing, and distance before deciding that two stretches are the same voice, and never collapse several people into one label. A turn ends the moment the voice changes - never carry one speaker's turn across a change of voice, and never put two people's words inside the same turn, however short the interruption. Keep separating speakers just as carefully in the last minutes as in the first: do not start well and then stop labelling and run the remainder of the recording together under whichever speaker you were on.";
   const accuracyInstruction =
     "The audio is the only source of truth. First focus on hearing and resolving the speech as clearly as possible, including quiet voices, distant voices, fast syllables, numbers, dates, names, and short backchannel phrases, before writing the transcript. Write what is actually spoken, in the way it is spoken; do not guess, paraphrase, summarize, polish, or translate unless the selected language mode explicitly requires translation. Keep false starts, repeated words, confirmations, questions, and short replies when they are actually spoken. Do not remove a word merely because it sounds informal, redundant, or grammatically awkward. For Khmer speech, preserve the speaker's meaning exactly; for English mixed into Khmer, follow the selected language mode precisely.";
 
@@ -337,6 +349,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Do a clarity-first pass before writing: listen for faint syllables, repeated context, speaker changes, and words hidden under room noise. Only after that pass should you decide whether any span is truly unclear.",
     "Every audible word matters. Do not omit greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, or quiet replies.",
     "Never invent words from context. Never fill in a sentence because it would sound natural. If you cannot hear the exact word after careful listening, mark only that exact span as [unclear].",
+    ...(speakerSeparationInstruction ? [speakerSeparationInstruction] : []),
     "If several people speak in the same minute, keep all speaker turns you can hear instead of returning only the clearest or longest speaker.",
     "Capture every audible speaker mouth and every audible word. Do not merge multiple people's speech into one cleaned sentence, and do not drop short interjections such as yes, no, okay, ah, um, or brief Khmer acknowledgements.",
     "When speakers overlap, separate each voice you can understand as its own turn in the closest chronological order. Listen carefully for both voices before using [unclear]; only the truly unintelligible words inside the overlap should become [unclear].",
