@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Pause, Play, RotateCcw, Square } from "lucide-react";
+import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -53,6 +53,7 @@ function defaultMeetingTitle() {
 export function RecordingPanel() {
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const processedStreamRef = useRef<MediaStream | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const startedAtRef = useRef(0);
@@ -84,6 +85,8 @@ export function RecordingPanel() {
   const [dbUnavailable, setDbUnavailable] = useState(false);
   const [error, setError] = useState("");
   const [quietWarning, setQuietWarning] = useState("");
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [quietScreenActive, setQuietScreenActive] = useState(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -145,6 +148,45 @@ export function RecordingPanel() {
     return () => document.removeEventListener("visibilitychange", restoreWakeLock);
   }, [state]);
 
+  // MediaRecorder now reads from the Web Audio graph instead of the raw
+  // device track, and a suspended AudioContext feeds it digital silence
+  // rather than simply stopping - so the file keeps growing and the timer
+  // keeps counting while nothing is actually being captured. Browsers
+  // suspend the context when the tab is backgrounded or the phone screen
+  // goes off, which is exactly what happens during a long meeting. Wake it
+  // back up whenever the page returns, and on a short timer as a safety net
+  // for the devices that suspend it without any visibility change.
+  useEffect(() => {
+    if (state !== "recording" && state !== "paused") return;
+    const resumeAudioGraph = () => {
+      const audioContext = recordingAudioContextRef.current;
+      if (audioContext && audioContext.state === "suspended") {
+        void audioContext.resume().catch(() => undefined);
+      }
+    };
+    resumeAudioGraph();
+    document.addEventListener("visibilitychange", resumeAudioGraph);
+    const timer = setInterval(resumeAudioGraph, 4000);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeAudioGraph);
+      clearInterval(timer);
+    };
+  }, [state]);
+
+  useEffect(() => {
+    if (state === "recording") return;
+    setQuietScreenActive(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }, [state]);
+
+  useEffect(() => {
+    const syncQuietScreen = () => {
+      if (!document.fullscreenElement) setQuietScreenActive(false);
+    };
+    document.addEventListener("fullscreenchange", syncQuietScreen);
+    return () => document.removeEventListener("fullscreenchange", syncQuietScreen);
+  }, []);
+
   function getMimeType() {
     const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
     return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
@@ -183,7 +225,7 @@ export function RecordingPanel() {
       await findMicrophones();
       setBluetoothNotice({
         tone: "warn",
-        text: "Browser នេះមិនអាចបង្ហាញផ្ទាំងភ្ជាប់ Bluetooth ទេ (សូមប្រើ Chrome ឬ Edge)។ ខាងក្រោមជាមីក្រូហ្វូនដែលឧបករណ៍របស់អ្នកបានភ្ជាប់រួច។"
+        text: "Browser នេះមិនអាចបើកផ្ទាំង Bluetooth បានទេ។ សូមភ្ជាប់ឧបករណ៍ក្នុង Settings រួចចុច \"រកមីក្រូហ្វូន\"។"
       });
       return;
     }
@@ -203,12 +245,12 @@ export function RecordingPanel() {
     const match = name ? findInputForBluetoothName(await listAudioInputs(), name) : null;
     if (match) {
       rememberMicrophone(match.deviceId);
-      setBluetoothNotice({ tone: "ok", text: `✅ បានភ្ជាប់ ${name} ហើយបានជ្រើសវាជាមីក្រូហ្វូនសម្រាប់ថត។` });
+      setBluetoothNotice({ tone: "ok", text: `បានជ្រើស ${name} ជាមីក្រូហ្វូនសម្រាប់ថតរួច។` });
       return;
     }
     setBluetoothNotice({
       tone: "warn",
-      text: `បានជ្រើស ${name ?? "ឧបករណ៍នេះ"} ប៉ុន្តែវាមិនទាន់អាចផ្តល់សំឡេងសម្រាប់ថតបានទេ។ ផ្ទាំង Bluetooth របស់ Chrome ភ្ជាប់បានតែទិន្នន័យ មិនមែនសំឡេងទេ។ ដើម្បីថតសំឡេងពីវា សូមភ្ជាប់វាម្តងក្នុង Settings → Bluetooth & devices → Add device។ បន្ទាប់មកចុចប៊ូតុងនេះម្តងទៀត វានឹងលេចក្នុងបញ្ជីមីក្រូហ្វូន ហើយអេបនឹងចងចាំវា។`
+      text: `${name ?? "ឧបករណ៍នេះ"} មិនទាន់លេចជា microphone ទេ។ សូមភ្ជាប់វាក្នុង Settings → Bluetooth & devices រួចចុច \"រកមីក្រូហ្វូន\"។`
     });
   }
 
@@ -291,6 +333,8 @@ export function RecordingPanel() {
     stopMicMonitor();
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    processedStreamRef.current?.getTracks().forEach((track) => track.stop());
+    processedStreamRef.current = null;
     displayStreamRef.current?.getTracks().forEach((track) => track.stop());
     displayStreamRef.current = null;
     void recordingAudioContextRef.current?.close().catch(() => undefined);
@@ -306,17 +350,23 @@ export function RecordingPanel() {
     try {
       const sentinel = await navigator.wakeLock.request("screen");
       wakeLockRef.current = sentinel;
+      setWakeLockActive(true);
       sentinel.addEventListener("release", () => {
-        if (wakeLockRef.current === sentinel) wakeLockRef.current = null;
+        if (wakeLockRef.current === sentinel) {
+          wakeLockRef.current = null;
+          setWakeLockActive(false);
+        }
       });
     } catch {
       // Recording still works on browsers or devices that deny Wake Lock.
+      setWakeLockActive(false);
     }
   }
 
   async function releaseRecordingWakeLock() {
     const sentinel = wakeLockRef.current;
     wakeLockRef.current = null;
+    setWakeLockActive(false);
     await sentinel?.release().catch(() => undefined);
   }
 
@@ -366,10 +416,41 @@ export function RecordingPanel() {
     updateLevel();
   }
 
-  // This only builds a lightweight analyser tap for the on-screen level
-  // meter. MediaRecorder gets the real device track directly; transcription
-  // enhancement happens server-side after the audio is safely saved.
-  async function buildLevelAnalyser(microphoneStream: MediaStream) {
+  // Apply moderate room-voice leveling before MediaRecorder so a distant
+  // speaker is not dwarfed by the nearest person. The compressor prevents
+  // close voices from clipping while the make-up gain lifts quieter speech.
+  // If Web Audio cannot create an output stream on a device, start() falls
+  // back to the untouched microphone stream below.
+  async function buildRecordingAudioGraph(microphoneStream: MediaStream) {
+    void recordingAudioContextRef.current?.close().catch(() => undefined);
+    const audioContext = new AudioContext();
+    recordingAudioContextRef.current = audioContext;
+    await audioContext.resume().catch(() => undefined);
+    const source = audioContext.createMediaStreamSource(microphoneStream);
+    const highpass = audioContext.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 70;
+    highpass.Q.value = 0.7;
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = -45;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.01;
+    compressor.release.value = 0.3;
+    const makeupGain = audioContext.createGain();
+    makeupGain.gain.value = 1.6;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    const destination = audioContext.createMediaStreamDestination();
+    source.connect(highpass);
+    highpass.connect(compressor);
+    compressor.connect(makeupGain);
+    makeupGain.connect(analyser);
+    makeupGain.connect(destination);
+    return { analyser, recordingStream: destination.stream };
+  }
+
+  async function buildLevelAnalyserFallback(microphoneStream: MediaStream) {
     void recordingAudioContextRef.current?.close().catch(() => undefined);
     const audioContext = new AudioContext();
     recordingAudioContextRef.current = audioContext;
@@ -403,10 +484,19 @@ export function RecordingPanel() {
       streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
       await loadAudioDevices();
-      const analyser = await buildLevelAnalyser(rawStream);
+      let recordingStream = rawStream;
+      let analyser: AnalyserNode;
+      try {
+        const audioGraph = await buildRecordingAudioGraph(rawStream);
+        recordingStream = audioGraph.recordingStream;
+        processedStreamRef.current = recordingStream;
+        analyser = audioGraph.analyser;
+      } catch {
+        analyser = await buildLevelAnalyserFallback(rawStream);
+      }
       startMicMonitor(analyser);
       const mimeType = getMimeType();
-      const media = new MediaRecorder(rawStream, getRecorderOptions(mimeType));
+      const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
       chunks.current = [];
       media.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.current.push(event.data);
@@ -472,6 +562,8 @@ export function RecordingPanel() {
         } finally {
           setUploading(false);
           rawStream.getTracks().forEach((track) => track.stop());
+          processedStreamRef.current?.getTracks().forEach((track) => track.stop());
+          processedStreamRef.current = null;
           displayStreamRef.current?.getTracks().forEach((track) => track.stop());
           displayStreamRef.current = null;
           void recordingAudioContextRef.current?.close().catch(() => undefined);
@@ -614,6 +706,22 @@ export function RecordingPanel() {
     setState("stopped");
   }
 
+  async function enterQuietScreen() {
+    setQuietScreenActive(true);
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // The dark overlay still works when a browser denies fullscreen mode.
+    }
+  }
+
+  async function exitQuietScreen() {
+    setQuietScreenActive(false);
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+  }
+
   return (
     <div className="kh-card overflow-hidden">
       <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 px-5 py-4 sm:px-6">
@@ -630,6 +738,14 @@ export function RecordingPanel() {
       <div className="p-5 sm:p-6">
       <div className="mb-4 rounded-xl border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
         សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
+      </div>
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+        ពេលកំពុងថត app នឹងព្យាយាមរក្សាអេក្រង់ឱ្យភ្លឺ ដើម្បីកុំឱ្យ browser ផ្អាកមីក្រូហ្វូន។ សូមទុកទំព័រនេះបើករហូតដល់ចុចបញ្ឈប់ ព្រោះការចាក់សោ ឬបិទអេក្រង់អាចធ្វើឱ្យការថតឈប់នៅលើទូរស័ព្ទ/Browser មួយចំនួន។
+        {state === "recording" ? (
+          <span className={`mt-2 block font-semibold ${wakeLockActive ? "text-leaf" : "text-amber-700"}`}>
+            {wakeLockActive ? "រក្សាអេក្រង់ឱ្យភ្លឺ៖ កំពុងដំណើរការ" : "Browser នេះមិនអនុញ្ញាត wake lock ទេ - សូមកុំចាក់សោអេក្រង់។"}
+          </span>
+        ) : null}
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
@@ -681,36 +797,49 @@ export function RecordingPanel() {
         </label>
       </div>
       <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
-        <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">Microphone</span>
-          <div className="flex gap-2">
+        <div className="block space-y-2">
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-slate-600">មីក្រូហ្វូន</span>
             <select
-              className="kh-input min-w-0"
+              className="kh-input"
               value={selectedDeviceId}
               onChange={(event) => rememberMicrophone(event.target.value)}
               disabled={state === "recording" || state === "paused" || uploading}
             >
-              <option value="">Default microphone</option>
+              <option value="">មីក្រូហ្វូន default</option>
               {audioDevices.map((device, index) => (
                 <option key={device.deviceId || index} value={device.deviceId}>
                   {describeAudioDevice(device, index)}
                 </option>
               ))}
             </select>
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
             <button
-              className="kh-button-secondary shrink-0 whitespace-nowrap px-3"
+              className="kh-button-secondary justify-center px-3"
+              type="button"
+              onClick={() => void findMicrophones()}
+              disabled={findingDevices || state === "recording" || state === "paused" || uploading}
+            >
+              {findingDevices ? "កំពុងរក..." : "រកមីក្រូហ្វូន"}
+            </button>
+            <button
+              className="kh-button-secondary justify-center px-3"
               type="button"
               onClick={() => void connectBluetoothDevice()}
               disabled={findingDevices || state === "recording" || state === "paused" || uploading}
-              title="ជ្រើសឧបករណ៍ Bluetooth នៅជិតៗ ដើម្បីភ្ជាប់"
+              title="បើកផ្ទាំង Bluetooth នៅលើ Chrome ឬ Edge"
             >
-              {findingDevices ? "កំពុងពិនិត្យ..." : "🎧 ភ្ជាប់ Bluetooth"}
+              Bluetooth
             </button>
           </div>
-          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">Using: {activeMicLabel}</p> : null}
+          <p className="text-xs text-slate-500">
+            ដោតមៃខ្សែ ឬ USB receiver រួចចុច <strong>រកមីក្រូហ្វូន</strong>។ បើជា Bluetooth headset សូមភ្ជាប់ក្នុង Settings ជាមុន បន្ទាប់មកជ្រើសពីបញ្ជី។
+          </p>
+          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">កំពុងប្រើ៖ {activeMicLabel}</p> : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
-              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ សូមចុច &quot;ភ្ជាប់ Bluetooth&quot; ម្តង ដើម្បីឲ្យ browser បង្ហាញឈ្មោះពិត (រួមទាំងឈ្មោះឧបករណ៍ Bluetooth របស់អ្នក)។
+              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ ចុច &quot;រកមីក្រូហ្វូន&quot; ដើម្បីអនុញ្ញាត mic ហើយបង្ហាញឈ្មោះពិត។
             </p>
           ) : null}
           {bluetoothNotice ? (
@@ -724,14 +853,14 @@ export function RecordingPanel() {
           ) : null}
           {detectedMics && detectedMics.length > 0 ? (
             <div className="rounded-lg border border-leaf/30 bg-leaf/10 p-3 text-xs leading-6 text-ink">
-              <p className="font-semibold">រកឃើញមីក្រូហ្វូន {detectedMics.length} គ្រឿង — សូមជ្រើសក្នុងបញ្ជីខាងលើ៖</p>
+              <p className="font-semibold">រកឃើញ {detectedMics.length} មីក្រូហ្វូន។ សូមជ្រើសមួយពីបញ្ជីខាងលើ។</p>
               <ul className="ml-4 list-disc">
                 {detectedMics.map((name, index) => (
                   <li key={`${name}-${index}`}>{name}</li>
                 ))}
               </ul>
               <p className="text-slate-500">
-                មៃឥតខ្សែ ដែលភ្ជាប់តាម receiver USB ជាធម្មតាមានឈ្មោះដូច &quot;USB Audio Device&quot; (សម្គាល់ដោយ 🎙️)។ បើមិនប្រាកដថាមួយណា សូមជ្រើសម្តងមួយៗ ហើយនិយាយសាក មើល Input level ខាងស្តាំ។
+                មិនប្រាកដថាមួយណា? ជ្រើសម្តងមួយៗ ហើយនិយាយសាក មើល Input level ខាងស្តាំ។
               </p>
               {/* Browsers can only list the microphones the operating system
                   exposes. A Bluetooth speaker has no microphone, and earbuds
@@ -746,13 +875,8 @@ export function RecordingPanel() {
                 <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
                   <p className="font-semibold">មិនឃើញឈ្មោះ Bluetooth របស់អ្នកក្នុងបញ្ជីនេះមែនទេ?</p>
                   <p>
-                    បញ្ជីនេះបង្ហាញតែមីក្រូហ្វូនដែល Windows អនុញ្ញាតឲ្យប្រើប៉ុណ្ណោះ។ សូមពិនិត្យ៖ <strong>Settings → System → Sound → Input</strong>។ បើឧបករណ៍ Bluetooth មិនមាននៅទីនោះ នោះកម្មវិធីណាក៏ប្រើវាជាមីក្រូហ្វូនមិនបានដែរ (រួមទាំង Zoom)។
+                    សូមពិនិត្យ <strong>Settings → System → Sound → Input</strong>។ បើមិនមាននៅទីនោះ app ក៏មិនអាចប្រើវាជាមីក្រូហ្វូនបានដែរ។
                   </p>
-                  <ul className="ml-4 list-disc">
-                    <li><strong>ឧបករណ៍បំពងសំឡេង (speaker)</strong> Bluetooth ភាគច្រើនគ្មានមីក្រូហ្វូនទេ។</li>
-                    <li><strong>កាស / headset</strong>៖ ក្នុង Settings → Bluetooth &amp; devices ត្រូវមានពាក្យ <strong>&quot;Connected voice&quot;</strong> ឬ <strong>&quot;Hands-Free&quot;</strong> មិនមែនត្រឹម &quot;Connected music&quot; ទេ។ បើមិនមាន សូមចុច Remove device រួចភ្ជាប់ឡើងវិញ។</li>
-                    <li><strong>មៃឥតខ្សែមាន receiver</strong>៖ ដោត receiver ចូលរន្ធ USB របស់កុំព្យូទ័រ ជំនួសឲ្យភ្ជាប់តាម Bluetooth។</li>
-                  </ul>
                 </div>
               ) : null}
             </div>
@@ -761,36 +885,43 @@ export function RecordingPanel() {
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
               <p className="font-semibold">រកមិនឃើញមីក្រូហ្វូនណាមួយទេ។</p>
               <p>
-                គេហទំព័រមិនអាចបើកផ្ទាំងភ្ជាប់ Bluetooth ដោយផ្ទាល់បានទេ (ជាច្បាប់សុវត្ថិភាពរបស់ browser គ្រប់ប្រភេទ)។ សូមភ្ជាប់ឧបករណ៍នៅក្នុង Settings ជាមុនសិន៖
+                សូមដោតមៃខ្សែ/USB receiver ឬភ្ជាប់ Bluetooth headset ក្នុង Settings រួចចុច &quot;រកមីក្រូហ្វូន&quot; ម្តងទៀត។
               </p>
-              <ul className="ml-4 list-disc">
-                <li><strong>កុំព្យូទ័រ Windows៖</strong> Settings → Bluetooth &amp; devices → Add device → Bluetooth</li>
-                <li><strong>Mac៖</strong> System Settings → Bluetooth → ចុច Connect លើឧបករណ៍</li>
-                <li><strong>ទូរស័ព្ទ Android៖</strong> Settings → Connected devices → Pair new device</li>
-                <li><strong>iPhone៖</strong> Settings → Bluetooth → ចុចលើឧបករណ៍</li>
-              </ul>
-              <p>បើកឧបករណ៍ Bluetooth ឲ្យស្ថិតក្នុងរបៀបភ្ជាប់ (pairing) រួចត្រឡប់មកចុចប៊ូតុងខាងលើម្តងទៀត — វានឹងលេចក្នុងបញ្ជីមីក្រូហ្វូន។</p>
             </div>
           ) : null}
           {selectedBluetoothLabel ? (
             <p className="text-xs text-slate-500">
-              កំពុងប្រើ Bluetooth៖ {selectedBluetoothLabel}។ សូមចំណាំថា headset Bluetooth ភាគច្រើនថតសំឡេងគុណភាពទាបជាងមីក្រូហ្វូនកុំព្យូទ័រ (ព្រោះកម្រិតសំឡេងរបស់ Bluetooth មានកំណត់)។ សម្រាប់ប្រជុំក្នុងបន្ទប់ ឧបករណ៍ Bluetooth ប្រភេទ conference speakerphone ផ្តល់លទ្ធផលល្អជាងគេ។
+              Bluetooth បានជ្រើស៖ {selectedBluetoothLabel}
             </p>
           ) : null}
-          <p className="text-xs text-slate-500">
-            ថតពី microphone ដែលបានជ្រើស។ <strong>ឧបករណ៍ Bluetooth ដែលភ្ជាប់រួច នឹងបង្ហាញក្នុងបញ្ជីនេះ ហើយប្រើបានទាំងអស់</strong> — សូមជ្រើសវាតាមឈ្មោះ (រូប 🎧 គ្រាន់តែជាការសម្គាល់ជំនួយ ប៉ុណ្ណោះ)។ សម្រាប់ចាប់គ្រប់មាត់ក្នុងបន្ទប់ សូមប្រើ conference/external mic ឬដាក់ mic កណ្តាលតុ។
-          </p>
-        </label>
+        </div>
         <div className="space-y-2">
-          <p className="text-sm font-semibold text-slate-600">Input level</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-600">កម្រិតសំឡេងចូល</p>
+            {state === "recording" ? (
+              <span className="text-xs font-semibold tabular-nums text-slate-500">
+                {Math.round(micLevel * 100)}%
+              </span>
+            ) : null}
+          </div>
           <div className="h-10 rounded-lg border border-slate-200 bg-white p-1.5 shadow-inner">
             <div
-              className={`h-full rounded-md transition-all ${micLevel > 0.08 ? "bg-leaf" : "bg-saffron"}`}
-              style={{ width: `${Math.max(4, Math.round(micLevel * 100))}%` }}
+              className={`h-full rounded-md transition-all duration-150 ${
+                state !== "recording" ? "bg-slate-200" : micLevel >= 0.025 ? "bg-leaf" : "bg-saffron"
+              }`}
+              style={{ width: state === "recording" ? `${Math.max(2, Math.round(micLevel * 100))}%` : "0%" }}
             />
           </div>
           <p className="text-xs text-slate-500">
-            {state === "recording" ? (micLevel > 0.08 ? "Sound detected" : "Speak now - level is low") : "Start recording to test the mic"}
+            {state === "recording"
+              ? micLevel >= 0.025
+                ? "សំឡេងចូលល្អ"
+                : micLevel >= 0.008
+                  ? "មានសំឡេងចូល ប៉ុន្តែនៅខ្សោយ"
+                  : "សំឡេងខ្សោយខ្លាំង - សូមខិត microphone ឱ្យជិតកណ្ដាលតុ"
+              : state === "paused"
+                ? "ការថតត្រូវបានផ្អាក"
+                : "ចាប់ផ្តើមថត ដើម្បីពិនិត្យកម្រិត microphone"}
           </p>
         </div>
       </div>
@@ -812,6 +943,16 @@ export function RecordingPanel() {
           {state === "recording" || state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={stop} type="button"><Square className="h-4 w-4" />បញ្ឈប់</button> : null}
         </div>
       </div>
+      {state === "recording" ? (
+        <button
+          className="mt-4 flex min-h-14 w-full items-center justify-center gap-3 rounded-lg bg-slate-950 px-4 font-semibold text-white shadow-sm transition hover:bg-black"
+          onClick={() => void enterQuietScreen()}
+          type="button"
+        >
+          <Moon className="h-5 w-5" />
+          បិទពន្លឺអេក្រង់ ខណៈកំពុងថត
+        </button>
+      ) : null}
       </div>
       {state === "stopped" ? (
         <div className="mt-6 space-y-4">
@@ -846,7 +987,48 @@ export function RecordingPanel() {
         </div>
       ) : null}
       </div>
+      {quietScreenActive && state === "recording" ? (
+        <div className="fixed inset-0 z-[100] flex min-h-dvh flex-col items-center justify-between bg-black px-6 py-8 text-center text-white">
+          <div className="flex w-full justify-end">
+            <button
+              aria-label="ត្រឡប់ពីអេក្រង់ងងឹត"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white/70 transition hover:bg-white/10 hover:text-white"
+              onClick={() => void exitQuietScreen()}
+              title="ត្រឡប់ទៅផ្ទាំងថត"
+              type="button"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div>
+            <div className="mb-5 flex items-center justify-center gap-3 text-sm font-semibold text-white/70">
+              <span className="h-3 w-3 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+              កំពុងថតសំឡេង
+            </div>
+            <p className="text-5xl font-semibold tabular-nums text-white/80 sm:text-6xl">{formatTime(seconds)}</p>
+            <p className="mt-5 max-w-sm text-sm leading-6 text-white/45">
+              អេក្រង់ត្រូវបានបន្ថយពន្លឺ ដើម្បីកុំឱ្យរំខានការប្រជុំ។ សូមកុំចាក់សោទូរស័ព្ទ។
+            </p>
+          </div>
+          <div className="flex w-full max-w-sm gap-3">
+            <button
+              className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 font-semibold text-white/80"
+              onClick={() => void exitQuietScreen()}
+              type="button"
+            >
+              ត្រឡប់
+            </button>
+            <button
+              className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-950/50 px-4 font-semibold text-red-100"
+              onClick={stop}
+              type="button"
+            >
+              <Square className="h-4 w-4" />
+              បញ្ឈប់
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
-

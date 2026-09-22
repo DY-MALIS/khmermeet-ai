@@ -21,6 +21,14 @@ export function ShellStatusCard({ user }: { user: { name: string; email: string 
           // does not expect to be thrown out on their phone too, and being
           // thrown out unexpectedly is the whole complaint being chased.
           await createSupabaseBrowserClient().auth.signOut({ scope: "local" });
+          // Full reload, not router.push: a soft navigation keeps the React
+          // tree, the already-rendered signed-in shell and the in-memory
+          // Supabase client alive, so the old identity can still show through
+          // (and SessionKeeper is still mounted while it does). Signing out
+          // is exactly the moment that has to start from nothing. The Next
+          // rule below prefers router.push() for internal links; that advice
+          // does not hold for sign-out, which needs the client state gone.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.href = "/login";
         }}
         className="mt-2 text-xs font-semibold text-leaf hover:underline"

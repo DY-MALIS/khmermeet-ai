@@ -349,7 +349,13 @@ function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boole
 function looksSeverelyTruncated(transcript: string, durationSeconds: number | null) {
   if (!durationSeconds || durationSeconds < 30) return false;
   const length = transcript.trim().length;
-  return length < Math.min(300, durationSeconds * 2);
+  // Scale with the recording instead of capping the check at 300 chars: a
+  // 30-minute meeting returning one short paragraph is still truncated even
+  // though that paragraph happens to exceed the old fixed ceiling. The cap
+  // avoids demanding an unrealistic amount of text from multi-hour audio
+  // that legitimately contains long silent stretches.
+  const minimumExpectedLength = Math.min(4000, Math.max(180, durationSeconds * 1.25));
+  return length < minimumExpectedLength;
 }
 
 function speakerNumberToIndex(value: string) {
@@ -755,12 +761,22 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-// Owner decision (2026-09-01): this only governs the rare chunking
-// fallback now - transcribeStoredTrackRecording always tries the whole
-// recording as one OpenRouter request first (see above), so this path only
-// runs when that single request can't be used at all. Fewer, larger pieces
-// here means fewer separate OpenRouter transactions on the recordings that
-// do need it.
+// Owner decision (2026-09-01, reconfirmed 2026-09-22): this only governs the
+// chunking fallback - transcribeStoredTrackRecording always tries the whole
+// recording as one OpenRouter request first (see above), so this path runs
+// only when that single request can't be used or came back looking
+// incomplete. Fewer, larger pieces here means fewer separate OpenRouter
+// transactions on the recordings that do need it.
+//
+// Briefly lowered to 2 minutes to make it harder for a provider to skip a
+// distant speaker inside one window, then reverted: the budget arithmetic
+// doesn't allow it. By the measured numbers just below (~60s per piece, 10 in
+// parallel, and only the ~90s left after the whole-audio attempt), 2-minute
+// windows cover ~20 minutes of audio in the one round there is time for, so
+// any longer meeting reaching this fallback would be returned truncated -
+// and the fallback now fires more often, because a whole-audio transcript
+// that merely looks short is enough to trigger it. 15-minute windows cover
+// ~2.5 hours in that same single round.
 //
 // An earlier attempt at 30-45s (tried before splitAudioIntoChunks' silence-
 // aware cut fix existed) found real content loss on a long 727s recording
@@ -824,14 +840,18 @@ export async function transcribeStoredTrackRecording(
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = audioExtensionFromMime(file.type || "audio/webm");
   const deadline = Date.now() + Math.max(1000, timeoutMs);
-  // Owner decision (2026-09-01): a recording should show as one OpenRouter
-  // transaction, not one per ~15s chunk - so always try the whole-audio
-  // request first now, and only fall back to chunking when that single
-  // request genuinely can't be used (too large even after compression, ran
-  // out of time, or came back empty/unusable). compressWholeAudioForTranscription
-  // already adapts its bitrate to fit the provider's byte ceiling for
-  // however long the recording actually is, so this isn't bounded to short
-  // clips the way the old size pre-filter was.
+  // Held in one object rather than as separate `let`s: these are assigned
+  // inside the async IIFE below, and TypeScript's narrowing would otherwise
+  // read them back out here as their initial values.
+  const wholeAudioAttempt: { buffer: Buffer | null; durationSeconds: number | null; looksIncomplete: boolean } = {
+    buffer: null,
+    durationSeconds: null,
+    looksIncomplete: false
+  };
+  // Try the complete enhanced recording first because it gives the model the
+  // best speaker and sentence context. If it comes back empty or implausibly
+  // short, fall back to bounded windows below instead of accepting partial
+  // text as the complete meeting.
   const remainingMsAtStart = deadline - Date.now();
   const wholeAudioTimeoutMs = Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMsAtStart - CHUNK_FALLBACK_RESERVE_MS);
   const wholeTranscript =
@@ -849,6 +869,8 @@ export async function transcribeStoredTrackRecording(
             openRouterAudioLimit,
             compressTimeoutMs
           );
+          wholeAudioAttempt.buffer = Buffer.from(wholeAudio);
+          wholeAudioAttempt.durationSeconds = durationSeconds;
           let transcript = await transcribeAndCleanAudioBuffer(
             Buffer.from(wholeAudio),
             "audio/mp4",
@@ -890,17 +912,38 @@ export async function transcribeStoredTrackRecording(
               transcript = retryTranscript;
             }
           }
+          wholeAudioAttempt.looksIncomplete = looksBroken(transcript);
           return transcript;
         })().catch(() => "")
       : "";
 
-  if (hasUsableTranscript(wholeTranscript)) {
+  if (hasUsableTranscript(wholeTranscript) && !wholeAudioAttempt.looksIncomplete) {
     return cleanTranscriptionText(wholeTranscript);
   }
 
+  // Reuse the already-enhanced whole-file encode as the chunk source - but
+  // only while it still holds real detail. compressWholeAudioForTranscription
+  // picks its bitrate so the *entire* recording fits the provider's 24 MB
+  // ceiling, so anything past roughly an hour is encoded near its 16 kbps
+  // floor. Splitting that into two-minute windows would hand every chunk
+  // audio noticeably worse than the original recording, which is the
+  // opposite of what the quiet-voice enhancement is here to do - and the
+  // chunk path re-runs prepareAudioForTranscription on its own anyway when a
+  // chunk comes back empty. Shorter recordings encode at the full 48 kbps
+  // with the speech filter already applied, so reusing the encode there is a
+  // genuine win and saves an FFmpeg pass per chunk.
+  const preparedWholeAudioBitrate =
+    wholeAudioAttempt.buffer && wholeAudioAttempt.durationSeconds
+      ? (wholeAudioAttempt.buffer.length * 8) / wholeAudioAttempt.durationSeconds
+      : 0;
+  const preparedWholeAudio = preparedWholeAudioBitrate >= 32000 ? wholeAudioAttempt.buffer : null;
+  const reusePreparedWholeAudio = preparedWholeAudio !== null;
+  const chunkSourceBuffer = preparedWholeAudio ?? buffer;
+  const chunkSourceExt = reusePreparedWholeAudio ? "m4a" : ext;
+  const chunkSourceMimeType = reusePreparedWholeAudio ? "audio/mp4" : (file.type || "audio/webm");
   const chunks = await splitAudioIntoChunks(
-    buffer,
-    ext,
+    chunkSourceBuffer,
+    chunkSourceExt,
     openRouterAudioLimit,
     STORED_TRANSCRIPTION_SEGMENT_SECONDS
   );
@@ -918,12 +961,13 @@ export async function transcribeStoredTrackRecording(
 
       const chunkFile = new File(
         [new Uint8Array(next.chunk)],
-        chunks.length === 1 ? file.name : `recording-part-${String(next.index + 1).padStart(3, "0")}.${ext}`,
-        { type: file.type || "audio/webm" }
+        chunks.length === 1 ? `recording.${chunkSourceExt}` : `recording-part-${String(next.index + 1).padStart(3, "0")}.${chunkSourceExt}`,
+        { type: chunkSourceMimeType }
       );
-      // Cap raised alongside STORED_TRANSCRIPTION_SEGMENT_SECONDS (15 min
-      // chunks, not 15s) - a much longer chunk needs more than 90s to
-      // transcribe.
+      // Cap sized for STORED_TRANSCRIPTION_SEGMENT_SECONDS (15 min chunks,
+      // not 15s) - a much longer chunk needs more than 90s to transcribe.
+      // Workers run in parallel, so a long meeting does not need one timeout
+      // period per chunk.
       const chunkTimeoutMs = Math.max(8000, Math.min(150000, remainingMs));
       let transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
         ...transcribeOptions,
@@ -935,7 +979,7 @@ export async function transcribeStoredTrackRecording(
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
           const preparedAudio = await prepareAudioForTranscription(
             Buffer.from(next.chunk),
-            ext,
+            chunkSourceExt,
             openRouterAudioLimit
           ).catch(() => null);
           if (preparedAudio) {
@@ -977,12 +1021,22 @@ export async function transcribeStoredTrackRecording(
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
   if (completed.some((done) => !done)) {
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
-    const best = chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript, languageMode);
+    const best = wholeAudioAttempt.looksIncomplete && hasUsableTranscript(chunkTranscript)
+      ? chunkTranscript
+      : chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript, languageMode);
     // Only really incomplete if the chunked (partial) run is what we're
     // returning - when the whole-audio attempt succeeded and won, it covers
     // the entire recording regardless of how many chunks finished.
     if (best !== wholeAudioTranscript) options.onIncomplete?.();
     return best;
+  }
+
+  if (wholeAudioAttempt.looksIncomplete) {
+    if (hasUsableTranscript(chunkTranscript)) return chunkTranscript;
+    if (hasUsableTranscript(wholeTranscript)) {
+      options.onIncomplete?.();
+      return cleanTranscriptionText(wholeTranscript);
+    }
   }
 
   return chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);

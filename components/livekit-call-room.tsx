@@ -13,7 +13,7 @@ import {
 } from "@livekit/components-react";
 import { createLocalAudioTrack, RoomEvent, Track } from "livekit-client";
 import type { LocalAudioTrack, RemoteParticipant } from "livekit-client";
-import { Bot, Camera, Copy, Download, Loader2, Mic, Phone, Save, Share2, Square } from "lucide-react";
+import { Bot, Camera, Copy, Download, Loader2, Mic, Moon, Phone, Save, Share2, Square, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/components/ui";
@@ -964,6 +964,8 @@ function LiveKitMeetingAgent({
   // who clicked the button - shown as a passive "recording" indicator only,
   // they have no controls of their own.
   const [remoteRecordingActive, setRemoteRecordingActive] = useState(false);
+  const [quietScreenActive, setQuietScreenActive] = useState(false);
+  const isAnyRecordingActive = recording || Boolean(serverRecording) || Boolean(egressRecording) || remoteRecordingActive;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const segmentRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1062,6 +1064,36 @@ function LiveKitMeetingAgent({
       if (localBackupUrl) URL.revokeObjectURL(localBackupUrl);
     };
   }, [localBackupUrl]);
+
+  useEffect(() => {
+    if (isAnyRecordingActive) return;
+    setQuietScreenActive(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }, [isAnyRecordingActive]);
+
+  useEffect(() => {
+    const syncQuietScreen = () => {
+      if (!document.fullscreenElement) setQuietScreenActive(false);
+    };
+    document.addEventListener("fullscreenchange", syncQuietScreen);
+    return () => document.removeEventListener("fullscreenchange", syncQuietScreen);
+  }, []);
+
+  async function enterQuietScreen() {
+    setQuietScreenActive(true);
+    try {
+      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // The black overlay still reduces light when fullscreen is unavailable.
+    }
+  }
+
+  async function exitQuietScreen() {
+    setQuietScreenActive(false);
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
+  }
 
   function rememberSpeakerName(identity: string, name: string) {
     const cleanIdentity = identity.trim();
@@ -1971,6 +2003,16 @@ function LiveKitMeetingAgent({
           កិច្ចប្រជុំនេះកំពុងត្រូវបានថតសំឡេង — សូមអញ្ជើញអ្នកចូលរួមទាំងអស់ដឹងជាមុន (microphone របស់អ្នកចូលរួមម្នាក់ៗកំពុងត្រូវបានថតដោយស្វ័យប្រវត្តិ)។
         </div>
       ) : null}
+      {isAnyRecordingActive ? (
+        <button
+          className="mb-4 flex min-h-14 w-full items-center justify-center gap-3 rounded-lg bg-slate-950 px-4 font-semibold text-white shadow-sm transition hover:bg-black"
+          onClick={() => void enterQuietScreen()}
+          type="button"
+        >
+          <Moon className="h-5 w-5" />
+          បិទពន្លឺអេក្រង់ ខណៈកំពុងថត
+        </button>
+      ) : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="flex items-center gap-2 text-sm font-semibold text-leaf">
@@ -2063,7 +2105,38 @@ function LiveKitMeetingAgent({
           ) : null}
         </div>
       ) : null}
+      {quietScreenActive && isAnyRecordingActive ? (
+        <div className="fixed inset-0 z-[100] flex min-h-dvh flex-col items-center justify-between bg-black px-6 py-8 text-center text-white">
+          <div className="flex w-full justify-end">
+            <button
+              aria-label="ត្រឡប់ពីអេក្រង់ងងឹត"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white/70 transition hover:bg-white/10 hover:text-white"
+              onClick={() => void exitQuietScreen()}
+              title="ត្រឡប់ទៅផ្ទាំងប្រជុំ"
+              type="button"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div>
+            <div className="mb-5 flex items-center justify-center gap-3 text-sm font-semibold text-white/70">
+              <span className="h-3 w-3 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+              កិច្ចប្រជុំកំពុងត្រូវបានថតសំឡេង
+            </div>
+            <p className="text-5xl font-semibold tabular-nums text-white/80 sm:text-6xl">{formatTime(seconds)}</p>
+            <p className="mt-5 max-w-sm text-sm leading-6 text-white/45">
+              អេក្រង់ត្រូវបានធ្វើឱ្យងងឹត ដើម្បីកុំឱ្យរំខានការប្រជុំ។ សូមកុំចាក់សោទូរស័ព្ទ។
+            </p>
+          </div>
+          <button
+            className="flex min-h-12 w-full max-w-sm items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 font-semibold text-white/80"
+            onClick={() => void exitQuietScreen()}
+            type="button"
+          >
+            ត្រឡប់ទៅផ្ទាំងប្រជុំ
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
-
