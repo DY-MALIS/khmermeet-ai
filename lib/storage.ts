@@ -321,16 +321,61 @@ function substituteDetectedSpeakerLabels(transcript: string, detected: Record<nu
 // speaker label for its whole length is a strong signal that diarization
 // silently failed on this particular attempt, not that the room really had
 // only one voice - worth one retry before accepting it.
+// Splits a transcript into "Name: text" turns, folding continuation lines
+// into the turn they belong to so a turn's real length is measured rather
+// than just its first line.
+function transcriptTurns(transcript: string) {
+  const turns: Array<{ label: string; text: string }> = [];
+  for (const line of transcript.split(/\r?\n/)) {
+    const match = line.match(/^\s*([^:\n]{1,60}):\s+(\S.*)$/);
+    if (match) {
+      turns.push({ label: match[1].trim(), text: match[2].trim() });
+    } else if (turns.length && line.trim()) {
+      turns[turns.length - 1].text += ` ${line.trim()}`;
+    }
+  }
+  return turns;
+}
+
+function countDistinctSpeakerLabels(transcript: string) {
+  return new Set(transcriptTurns(transcript).map((turn) => turn.label)).size;
+}
+
 function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boolean) {
   if (singleSpeaker) return false;
-  if (transcript.trim().length < 400) return false;
-  const labels = new Set<string>();
-  for (const line of transcript.split(/\r?\n/)) {
-    const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
-    if (match) labels.add(match[1].trim());
-    if (labels.size > 1) return false;
-  }
-  return labels.size <= 1;
+  const clean = transcript.trim();
+  if (clean.length < 400) return false;
+
+  const turns = transcriptTurns(clean);
+  if (!turns.length) return false;
+
+  const labels = new Set(turns.map((turn) => turn.label));
+  if (labels.size <= 1) return true;
+
+  // Partial collapse - the failure the whole-transcript label count above
+  // cannot see. Measured on a real 3-person room recording the owner
+  // reported: the model separated the first five turns correctly (9 to 190
+  // characters each, three labels), then stopped separating and dumped the
+  // rest of the meeting into a single turn of 799 characters - 74.5% of all
+  // speech, 42x the median of every other turn. That transcript carries
+  // three speaker labels, so it passed every existing check while most of
+  // the meeting sat under whoever happened to be talking when the model
+  // gave up.
+  //
+  // A genuine long monologue among short exchanges has the same shape, so
+  // the thresholds sit far above that: four turns minimum (the model was
+  // demonstrably separating), one turn holding 60% of all speech, and that
+  // turn at least 8x the median of the rest. A false positive costs one
+  // extra request and never a worse transcript - the retry loop keeps
+  // whichever attempt is better.
+  if (turns.length < 4) return false;
+  const lengths = turns.map((turn) => turn.text.length).sort((a, b) => a - b);
+  const totalLength = lengths.reduce((sum, length) => sum + length, 0);
+  if (!totalLength) return false;
+  const longest = lengths[lengths.length - 1];
+  const others = lengths.slice(0, -1);
+  const medianOfOthers = others[Math.floor(others.length / 2)] || 1;
+  return longest / totalLength >= 0.6 && longest / medianOfOthers >= 8;
 }
 
 // Confirmed live (2026-09-04): a real 148.9-second mobile recording came
@@ -898,6 +943,7 @@ export async function transcribeStoredTrackRecording(
             const retryTimeoutMs = deadline - Date.now() - CHUNK_FALLBACK_RESERVE_MS;
             if (retryTimeoutMs <= 10000) break;
             const lengthBeforeRetry = transcript.length;
+            const labelsBeforeRetry = countDistinctSpeakerLabels(transcript);
             const retryTranscript = await transcribeAndCleanAudioBuffer(
               Buffer.from(wholeAudio),
               "audio/mp4",
@@ -917,18 +963,26 @@ export async function transcribeStoredTrackRecording(
             if (hasUsableTranscript(retryTranscript) && retryTranscript.length > transcript.length) {
               transcript = retryTranscript;
             }
-            // A retry that reproduced the previous attempt almost exactly
-            // means the model is being consistent, not flaky - a third
-            // attempt returns the same thing again and is billed for it.
-            // This fires on the ordinary single-voice recording, where
+            // A retry that reproduced the previous attempt almost exactly -
+            // same length and the same number of speakers - means the model
+            // is being consistent, not flaky, so a third attempt returns the
+            // same thing again and is billed for it. This fires on the
+            // ordinary single-voice recording, where
             // looksLikeCollapsedMultiSpeaker keeps flagging text that was
-            // right all along: measured at 3 calls before this, 2 after,
-            // same transcript. The truncation case this loop also guards
-            // still gets every attempt, because there the attempts differ in
-            // length by far more than this.
+            // right all along: measured at 3 calls before this change, 2
+            // after, same transcript.
+            //
+            // The speaker count has to match too. Diarization is exactly what
+            // varies between attempts on identical audio, so a retry that
+            // came back the same length but split the speakers differently is
+            // evidence the model is still moving, and stopping there would
+            // throw away the attempt that lands it. The truncation case is
+            // unaffected either way - there the attempts differ in length by
+            // far more than this.
             if (
               hasUsableTranscript(retryTranscript) &&
-              Math.abs(retryTranscript.length - lengthBeforeRetry) <= Math.max(20, lengthBeforeRetry * 0.05)
+              Math.abs(retryTranscript.length - lengthBeforeRetry) <= Math.max(20, lengthBeforeRetry * 0.05) &&
+              countDistinctSpeakerLabels(retryTranscript) === labelsBeforeRetry
             ) {
               break;
             }
