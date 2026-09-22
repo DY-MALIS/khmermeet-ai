@@ -66,6 +66,25 @@ function rejoinKhmerWordSpacing(text: string) {
   return text.replace(/([ក-៓])[ \t]+(?=[ក-៓])/g, "$1");
 }
 
+// The model is asked for one speaker turn per line and usually obliges - but
+// not always. Confirmed on a real 8.7-minute three-person recording: it
+// returned the entire meeting as a single line with "Speaker 1:",
+// "Speaker 2:", "Speaker 3:" and "Speaker 4:" sitting inline in the middle of
+// the text. Everything downstream splits on newlines, so that transcript
+// counted as one turn by one speaker: the diarization was there and was
+// actually better than the stored version, and the app threw all of it away -
+// including the collapse detection, which saw a single label and could not
+// tell anything was wrong. Put each label back on its own line before
+// anything reads the text. Only our own generic label forms are split on;
+// splitting at any "word:" would cut real speech that happens to contain a
+// colon.
+function splitInlineSpeakerLabels(text: string) {
+  return text.replace(
+    /(\S)[ \t]*((?:Unknown\s+Speaker|Speaker|Participant|អ្នកនិយាយ|អ្នកចូលរួម)\s*[0-9០-៩]*\s*[:：])/g,
+    "$1\n$2"
+  );
+}
+
 function cleanTranscriptionText(text: string) {
   if (hasTranscriptionPromptLeakage(text)) return "";
   const noSpeechPatterns = [
@@ -90,9 +109,7 @@ function cleanTranscriptionText(text: string) {
     /^(?:diagnostic|analysis)\s*[:：]/i
   ];
 
-  const cleaned = text
-    .replace(/^```(?:text)?/i, "")
-    .replace(/```$/i, "")
+  const cleaned = splitInlineSpeakerLabels(text.replace(/^```(?:text)?/i, "").replace(/```$/i, ""))
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
