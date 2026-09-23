@@ -1360,6 +1360,53 @@ function addSingleSpeakerLabel(text: string, speakerNames: string[]) {
     .join("\n");
 }
 
+// The refine pass is a text-only proofreader with no access to the audio, and
+// making broken speech sound finished is exactly what text-only rewriting is
+// best at. Its prompt forbids adding words - but nothing ever checked whether
+// it obeyed. Every guard in chooseBetterSavedTranscript catches the refined
+// version getting SMALLER (fewer tokens, fewer turns, one language squeezed
+// out); an invented sentence makes it bigger and sailed straight through.
+//
+// In km-en mode the refined text is meant to be the raw text respaced and
+// tidied, so every part of it should appear somewhere in the raw. Compare with
+// whitespace and punctuation stripped, since the pass legitimately rejoins
+// Khmer syllables and repairs punctuation, then look for a long stretch of
+// material that is nowhere in the raw. A whole fabricated sentence looks
+// exactly like that; ordinary tidying, relabelling and de-duplication do not.
+//
+// km-en only: the translating modes are required to change the words, so there
+// is nothing meaningful to compare them against.
+// Measured on a Khmer fixture: an honest clean-up (a duplicated recogniser
+// line removed, nothing else touched) introduces 0.0% new material, while the
+// same clean-up plus one fabricated sentence introduces 19.7%. A contiguous-run
+// test was tried first and is too weak for Khmer - ordinary syllables recur
+// everywhere and keep breaking the run - so measure the total instead.
+const INVENTED_MATERIAL_SHARE = 0.05;
+const INVENTED_RUN_GRAM = 5;
+
+function comparableTranscriptText(text: string) {
+  return text.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
+function inventedMaterialShare(rawTranscript: string, refinedTranscript: string) {
+  const raw = comparableTranscriptText(rawTranscript);
+  const refined = comparableTranscriptText(refinedTranscript);
+  if (raw.length < INVENTED_RUN_GRAM || refined.length < INVENTED_RUN_GRAM) return 0;
+
+  const seen = new Set<string>();
+  for (let i = 0; i + INVENTED_RUN_GRAM <= raw.length; i += 1) {
+    seen.add(raw.slice(i, i + INVENTED_RUN_GRAM));
+  }
+
+  let positions = 0;
+  let unmatched = 0;
+  for (let i = 0; i + INVENTED_RUN_GRAM <= refined.length; i += 1) {
+    positions += 1;
+    if (!seen.has(refined.slice(i, i + INVENTED_RUN_GRAM))) unmatched += 1;
+  }
+  return positions ? unmatched / positions : 0;
+}
+
 function chooseBetterSavedTranscript(
   rawTranscript: string,
   refinedTranscript: string,
@@ -1394,6 +1441,9 @@ function chooseBetterSavedTranscript(
     const rawKhmerChars = countKhmerChars(rawTranscript);
     const refinedKhmerChars = countKhmerChars(refinedTranscript);
     if (rawKhmerChars >= 12 && refinedKhmerChars < rawKhmerChars * 0.4) return rawTranscript;
+
+    // Nothing above notices content the proofreader invented rather than lost.
+    if (inventedMaterialShare(rawTranscript, refinedTranscript) >= INVENTED_MATERIAL_SHARE) return rawTranscript;
   }
 
   return refinedTranscript;
