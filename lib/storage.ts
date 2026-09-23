@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
-import { unlink } from "fs/promises";
+import { rm, unlink } from "fs/promises";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -466,6 +466,44 @@ export function getLocalAudioPath(name: string) {
   return path.join(uploadRoot, path.basename(name));
 }
 
+// The same sources as loadStoredAudioAsFile, but handing back the bytes
+// instead of wrapping them in a File. A File keeps its own copy and
+// file.arrayBuffer() then makes a third, so a caller that only wants the bytes
+// was holding a multi-hour recording three times over - 867 MB of heap for a
+// real 5-hour, 289 MB meeting, before any of it had been transcribed.
+export async function loadStoredAudioBytes(audioUrl: string): Promise<{ bytes: Buffer; mimeType: string }> {
+  const normalizedUrl = audioUrl.trim();
+  if (!normalizedUrl) throw new Error("Missing audio URL.");
+
+  if (normalizedUrl.startsWith("/api/uploads/")) {
+    const idOrName = path.basename(decodeURIComponent(normalizedUrl.split("?")[0]));
+    const dbAudio = await prisma.audioFile.findUnique({ where: { id: idOrName } }).catch(() => null);
+    if (dbAudio) return { bytes: Buffer.from(dbAudio.data), mimeType: dbAudio.mimeType };
+    return { bytes: await readFile(getLocalAudioPath(idOrName)), mimeType: contentTypeFromPath(idOrName) };
+  }
+
+  if (normalizedUrl.startsWith("/api/storage/")) {
+    const objectPath = normalizedUrl
+      .replace(/^\/api\/storage\//, "")
+      .split("/")
+      .map(decodeURIComponent)
+      .join("/");
+    const downloaded = await downloadSupabaseAudio(objectPath);
+    return { bytes: Buffer.from(downloaded.data), mimeType: downloaded.mimeType };
+  }
+
+  if (/^https?:\/\//i.test(normalizedUrl)) {
+    const response = await fetch(normalizedUrl);
+    if (!response.ok) throw new Error("Could not download audio for transcription.");
+    return {
+      bytes: Buffer.from(await response.arrayBuffer()),
+      mimeType: response.headers.get("content-type") || contentTypeFromPath(normalizedUrl)
+    };
+  }
+
+  throw new Error("Unsupported audio storage path.");
+}
+
 export async function loadStoredAudioAsFile(audioUrl: string) {
   const normalizedUrl = audioUrl.trim();
   if (!normalizedUrl) throw new Error("Missing audio URL.");
@@ -888,6 +926,14 @@ const CHUNK_FALLBACK_RESERVE_MS = 90000;
 // the same check honestly - cannot spend the whole budget re-asking for
 // windows that really were mostly silence.
 const MAX_CHUNK_TRANSCRIPTION_ATTEMPTS = 3;
+const EMPTY_AUDIO_BUFFER = Buffer.alloc(0);
+// Ceiling on how much audio may be in flight at once. Each window in flight
+// costs roughly its own size again as a copy, and a third as much on top once
+// base64-encoded into the request body, so ten 15 MB windows is around half a
+// gigabyte of a 1024 MB function. Capping the bytes rather than the count
+// keeps short recordings at full concurrency while stopping a long one from
+// running the function out of memory.
+const MAX_IN_FLIGHT_AUDIO_BYTES = 90 * 1024 * 1024;
 
 // Finished chunk transcripts, kept outside this function so a long recording
 // can be completed across several requests instead of restarting each time.
@@ -932,7 +978,10 @@ export async function transcribeStoredTrackRecording(
     durationSeconds?: number;
   } = {}
 ) {
-  const file = await loadStoredAudioAsFile(audioUrl);
+  // Bytes, not a File: see loadStoredAudioBytes. Reassignable so the
+  // recording can be released the moment it has been cut into windows.
+  const source = await loadStoredAudioBytes(audioUrl);
+  const sourceMimeType = source.mimeType || "audio/webm";
   // This is always a whole-call recording (minutes to hours), never a
   // short clip - skipPrimaryModel avoids the ~60-90s wasted on chirp-3's
   // confirmed rejection of longer English audio before falling back.
@@ -944,8 +993,14 @@ export async function transcribeStoredTrackRecording(
     skipPrimaryModel: true
   };
   const { compressWholeAudioForTranscription, splitAudioIntoChunks } = await import("@/lib/ffmpeg");
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const ext = audioExtensionFromMime(file.type || "audio/webm");
+  // Deliberately reassignable: on a multi-hour recording this is hundreds of
+  // megabytes, and it is dead weight the moment the audio has been cut into
+  // windows. Measured on a real 5-hour, 289 MB recording: holding the source
+  // alongside the windows and the requests in flight peaked at 970 MB of a
+  // 1024 MB function - close enough to crash that the recording this whole
+  // feature exists for was the one that would fail.
+  let buffer = source.bytes;
+  const ext = audioExtensionFromMime(sourceMimeType);
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   // Held in one object rather than as separate `let`s: these are assigned
   // inside the async IIFE below, and TypeScript's narrowing would otherwise
@@ -1091,13 +1146,20 @@ export async function transcribeStoredTrackRecording(
   const reusePreparedWholeAudio = preparedWholeAudio !== null;
   const chunkSourceBuffer = preparedWholeAudio ?? buffer;
   const chunkSourceExt = reusePreparedWholeAudio ? "m4a" : ext;
-  const chunkSourceMimeType = reusePreparedWholeAudio ? "audio/mp4" : (file.type || "audio/webm");
-  const chunks = await splitAudioIntoChunks(
+  const chunkSourceMimeType = reusePreparedWholeAudio ? "audio/mp4" : sourceMimeType;
+  const split = await splitAudioIntoChunks(
     chunkSourceBuffer,
     chunkSourceExt,
     openRouterAudioLimit,
     STORED_TRANSCRIPTION_SEGMENT_SECONDS
   );
+  const chunks = split.chunks;
+  // The windows now hold their own copy of the audio, so every reference to
+  // the whole recording can go. On a 5-hour file that is nearly 300 MB
+  // released before a single request is built.
+  buffer = EMPTY_AUDIO_BUFFER;
+  wholeAudioAttempt.buffer = null;
+
   // Anything finished by an earlier request is already done - skip straight
   // past it and spend this request's budget on what is still missing.
   const alreadyDone: Record<number, string> = options.chunkStore
@@ -1126,8 +1188,13 @@ export async function transcribeStoredTrackRecording(
       const remainingMs = deadline - Date.now();
       if (remainingMs < 8000) return;
 
+      // Read only while this window is being worked on. Holding every window
+      // in memory at once is what put a 5-hour recording over the function's
+      // memory limit before it could finish.
+      const chunkBytes = await readFile(next.chunk.path).catch(() => null);
+      if (!chunkBytes) continue;
       const chunkFile = new File(
-        [new Uint8Array(next.chunk.audio)],
+        [new Uint8Array(chunkBytes)],
         chunks.length === 1 ? `recording.${chunkSourceExt}` : `recording-part-${String(next.index + 1).padStart(3, "0")}.${chunkSourceExt}`,
         { type: chunkSourceMimeType }
       );
@@ -1145,7 +1212,7 @@ export async function transcribeStoredTrackRecording(
         if (retryRemainingMs >= 15000) {
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
           const preparedAudio = await prepareAudioForTranscription(
-            Buffer.from(next.chunk.audio),
+            Buffer.from(chunkBytes),
             chunkSourceExt,
             openRouterAudioLimit
           ).catch(() => null);
@@ -1214,6 +1281,10 @@ export async function transcribeStoredTrackRecording(
         // gap-filled transcript that looks whole.
         chunkOutcome.anyStillTruncated = true;
       }
+      // Done with this window's audio - take it off the disk as well, so a
+      // long recording does not leave twenty copies of itself in the
+      // function's temporary storage while it works through them.
+      await rm(next.chunk.path, { force: true }).catch(() => undefined);
       transcripts[next.index] = chunkTranscriptText;
       // A window counts as done only if it actually produced speech. An empty
       // result means the provider failed on it or gave up, and calling that
@@ -1232,7 +1303,14 @@ export async function transcribeStoredTrackRecording(
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(STORED_TRANSCRIPTION_CONCURRENCY, chunks.length) }, worker));
+  // Each window in flight costs its own size again as a copy and a third more
+  // once base64-encoded into the request body, so capping the bytes rather
+  // than the count keeps a short recording at full concurrency while stopping
+  // a long one from running the function out of memory.
+  const byteSafeConcurrency = Math.max(2, Math.floor(MAX_IN_FLIGHT_AUDIO_BYTES / (openRouterAudioLimit * 0.7)));
+  const workerCount = Math.min(STORED_TRANSCRIPTION_CONCURRENCY, byteSafeConcurrency, queue.length || 1);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  await split.dispose().catch(() => undefined);
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
   if (completed.some((done) => !done)) {
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);

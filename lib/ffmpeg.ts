@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "fs/promises";
 import path from "path";
 import os from "os";
 import ffmpegPath from "ffmpeg-static";
@@ -132,29 +132,57 @@ async function findSilenceAdjustedCutTimes(inputPath: string, targetBoundarySeco
 // ~24MB (roughly 25-30 minutes at this app's recording bitrate). Splitting
 // only happens here, server-side, after the full recording is already
 // safely saved - it never affects what gets recorded or played back.
-// Each piece carries its own measured length. Without it the caller cannot
-// tell a chunk that genuinely holds little speech from one the model gave up
-// on partway through - and a chunk abandoned halfway loses minutes of the
-// meeting from the middle, where nobody notices it is gone.
-export type AudioChunk = { audio: Buffer; durationSeconds: number | null };
+// A window of the recording, left on disk rather than handed over as bytes.
+// Returning every window as a Buffer meant a multi-hour recording was held in
+// memory twice over - once as the source, once as the windows - before a
+// single request was built. Measured on a real 5-hour, 289 MB recording: that
+// peaked at 1251 MB inside a 1024 MB function, so the recording this whole
+// feature exists for was the one guaranteed to crash. The caller reads each
+// window when it needs it and drops it again afterwards.
+//
+// durationSeconds is measured per window, so the caller can tell a window that
+// genuinely holds little speech from one the model gave up on partway through
+// - a window abandoned halfway loses minutes from the middle of the meeting,
+// where nobody notices it is gone.
+export type AudioChunk = { path: string; durationSeconds: number | null };
+
+// The windows plus the temporary directory holding them. dispose() must be
+// called when the caller is done, since the directory now outlives this
+// function.
+export type SplitAudio = { chunks: AudioChunk[]; dispose: () => Promise<void> };
+
+async function singleChunkResult(buffer: Buffer, ext: string, durationSeconds: number | null): Promise<SplitAudio> {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-onechunk-"));
+  const only = path.join(dir, `part-000.${ext}`);
+  await writeFile(only, buffer);
+  return {
+    chunks: [{ path: only, durationSeconds }],
+    dispose: async () => {
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
+}
 
 export async function splitAudioIntoChunks(
   buffer: Buffer,
   ext: string,
   maxBytesPerChunk: number,
   preferredSegmentSeconds?: number
-): Promise<AudioChunk[]> {
+): Promise<SplitAudio> {
   if (buffer.length <= maxBytesPerChunk && !preferredSegmentSeconds) {
-    return [{ audio: buffer, durationSeconds: null }];
+    return singleChunkResult(buffer, ext, null);
   }
   if (!ffmpegPath) {
-    if (buffer.length <= maxBytesPerChunk) return [{ audio: buffer, durationSeconds: null }];
+    if (buffer.length <= maxBytesPerChunk) return singleChunkResult(buffer, ext, null);
     throw new Error("ffmpeg binary not found. Long recordings need ffmpeg available in the deployment before they can be split for transcription.");
   }
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-split-"));
   const inputPath = path.join(tmpDir, `input.${ext}`);
   const outputPattern = path.join(tmpDir, `part-%03d.${ext}`);
+  // The windows live in this directory until the caller has transcribed them,
+  // so it can only be removed here when we are returning without them.
+  let keepTmpDir = false;
 
   try {
     await writeFile(inputPath, buffer);
@@ -164,7 +192,10 @@ export async function splitAudioIntoChunks(
     try {
       durationSeconds = await probeDurationSeconds(inputPath);
     } catch (error) {
-      if (buffer.length <= maxBytesPerChunk) return [{ audio: buffer, durationSeconds: null }];
+      if (buffer.length <= maxBytesPerChunk) {
+        keepTmpDir = false;
+        return await singleChunkResult(buffer, ext, null);
+      }
       throw error;
     }
     // Chrome MediaRecorder webm files routinely have no Duration header
@@ -176,7 +207,8 @@ export async function splitAudioIntoChunks(
     // confirmed live against a real 727s recording (returned 1 unsplit
     // chunk). Only skip splitting when duration is actually known to fit.
     if (buffer.length <= maxBytesPerChunk && (!preferredSegmentSeconds || (durationSeconds !== null && durationSeconds <= preferredSegmentSeconds))) {
-      return [{ audio: buffer, durationSeconds }];
+      keepTmpDir = false;
+      return await singleChunkResult(buffer, ext, durationSeconds);
     }
 
     const bytesPerSecond = durationSeconds ? buffer.length / Math.max(1, durationSeconds) : 4000;
@@ -235,8 +267,9 @@ export async function splitAudioIntoChunks(
       files.map(async (name) => {
         const partPath = path.join(tmpDir, name);
         return {
-          audio: await readFile(partPath),
-          durationSeconds: await probeDurationSeconds(partPath).catch(() => null)
+          path: partPath,
+          durationSeconds: await probeDurationSeconds(partPath).catch(() => null),
+          bytes: (await stat(partPath)).size
         };
       })
     );
@@ -246,13 +279,21 @@ export async function splitAudioIntoChunks(
     // also discarded a genuinely short final part, which is the end of the
     // meeting going missing for no reason. Parts whose duration cannot be
     // probed still fall back to the byte test.
-    const chunks = parts.filter((part) =>
-      part.durationSeconds === null ? part.audio.length > 1000 : part.durationSeconds >= 0.25
-    );
+    const chunks = parts
+      .filter((part) => (part.durationSeconds === null ? part.bytes > 1000 : part.durationSeconds >= 0.25))
+      .map((part) => ({ path: part.path, durationSeconds: part.durationSeconds }));
     if (!chunks.length) throw new Error("ffmpeg produced no usable output segments.");
-    return chunks;
+    // The source is no longer needed and is the largest thing in here.
+    await rm(inputPath, { force: true }).catch(() => undefined);
+    keepTmpDir = true;
+    return {
+      chunks,
+      dispose: async () => {
+        await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+      }
+    };
   } finally {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    if (!keepTmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
