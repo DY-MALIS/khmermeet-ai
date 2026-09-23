@@ -411,12 +411,25 @@ function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boole
 function looksSeverelyTruncated(transcript: string, durationSeconds: number | null) {
   if (!durationSeconds || durationSeconds < 30) return false;
   const length = transcript.trim().length;
-  // Scale with the recording instead of capping the check at 300 chars: a
-  // 30-minute meeting returning one short paragraph is still truncated even
-  // though that paragraph happens to exceed the old fixed ceiling. The cap
-  // avoids demanding an unrealistic amount of text from multi-hour audio
-  // that legitimately contains long silent stretches.
-  const minimumExpectedLength = Math.min(4000, Math.max(180, durationSeconds * 1.25));
+  // Measured against this app's own real transcripts (2026-09-22, one
+  // account, Khmer and English, 12 recordings from 18 seconds to 6.7
+  // minutes): a healthy transcript runs 8.5 to 12.6 characters per second of
+  // audio, and Khmer and English land in the same band, so one number works
+  // for both. The rule started at 1.25 per second capped at 4000, which is
+  // between 7 and 10 times looser than any real transcript - loose enough
+  // that it stayed silent on a real 8.7-minute recording that came back with
+  // 1142 characters, about a fifth of what that meeting actually contained.
+  // Catching that is the entire point of this check.
+  //
+  // 4 per second sits at less than half the quietest healthy recording, so a
+  // meeting with genuinely long silences still has room; the cap keeps a
+  // multi-hour recording from being asked for an unrealistic amount, while
+  // no longer flattening to almost nothing the way a 4000-character ceiling
+  // did (that let a 2.5-hour recording pass on 0.44 characters per second).
+  // A false positive costs retries and an "incomplete" warning, never a
+  // worse transcript - and a wrong warning is the better failure here than
+  // silently presenting a fifth of a meeting as the whole of it.
+  const minimumExpectedLength = Math.min(20000, Math.max(120, durationSeconds * 4));
   return length < minimumExpectedLength;
 }
 
