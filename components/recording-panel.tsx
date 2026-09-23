@@ -32,6 +32,22 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleSize: { ideal: 16 }
 };
 
+// iOS ties automatic gain control to the same voice-processing audio unit as
+// echo cancellation. Asking for echoCancellation:false - which the room
+// constraints above deliberately do, so far-field speech is not erased as
+// background noise - switches that whole unit off, and the autoGainControl:true
+// sitting next to it is then quietly ignored. What is left is the raw iPhone
+// microphone, which is far quieter than the processed one: confirmed by the
+// owner on an iPhone, where the input meter stayed in the low band however
+// loudly the room spoke, while the same page on a computer reached a normal
+// level - and phone recordings transcribed noticeably worse than computer ones.
+const voiceProcessingAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: { ideal: 1 }
+};
+
 // Recordings pick up speakers away from the device (an ambient room mic,
 // not someone talking directly into it), so quiet voices sit closer to the
 // noise floor than a close-talk mic would - keep this low to avoid flagging
@@ -86,6 +102,7 @@ export function RecordingPanel() {
   const [error, setError] = useState("");
   const [quietWarning, setQuietWarning] = useState("");
   const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [voiceProcessingActive, setVoiceProcessingActive] = useState(false);
   const [quietScreenActive, setQuietScreenActive] = useState(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
@@ -322,6 +339,19 @@ export function RecordingPanel() {
     throw lastError;
   }
 
+  // Read back what the track actually granted rather than guessing from the
+  // user agent. A browser that honoured the tuned far-field request keeps it; a
+  // browser that silently dropped the gain control gets reopened with its own
+  // voice processing, which is much louder and is the only thing a phone in
+  // that state can usefully record. A browser that reports no settings at all
+  // is left alone - there is nothing to act on.
+  function automaticGainWasGranted(track: MediaStreamTrack | undefined) {
+    if (!track || typeof track.getSettings !== "function") return true;
+    const settings = track.getSettings() as MediaTrackSettings & { autoGainControl?: boolean };
+    if (!settings || Object.keys(settings).length === 0) return true;
+    return settings.autoGainControl === true;
+  }
+
   function buildAudioConstraints(): MediaTrackConstraints {
     return selectedDeviceId
       ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
@@ -438,7 +468,15 @@ export function RecordingPanel() {
     compressor.attack.value = 0.01;
     compressor.release.value = 0.3;
     const makeupGain = audioContext.createGain();
-    makeupGain.gain.value = 1.6;
+    // The compressor above squashes hard: output above its -45 dB threshold is
+    // threshold + (input - threshold) / 4, so even a full-scale input leaves at
+    // about -33.75 dBFS. With the 1.6x (+4 dB) this started at, the loudest
+    // possible sample reached only -29.7 dBFS - every recording came out very
+    // quiet, and speech near the noise floor was lifted by almost nothing,
+    // which is the opposite of what the compressor is here for. 5x is +14 dB,
+    // putting the ceiling at about -19.8 dBFS: still impossible to clip, while
+    // a quiet far-field voice finally rises well clear of the floor.
+    makeupGain.gain.value = 5;
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
     const destination = audioContext.createMediaStreamDestination();
@@ -479,8 +517,25 @@ export function RecordingPanel() {
       return;
     }
     try {
-      const rawStream = await openMicrophoneStream();
-      const [track] = rawStream.getAudioTracks();
+      let rawStream = await openMicrophoneStream();
+      let [track] = rawStream.getAudioTracks();
+      let usedVoiceProcessing = false;
+      if (!automaticGainWasGranted(track)) {
+        const processedStream = await navigator.mediaDevices
+          .getUserMedia({
+            audio: selectedDeviceId
+              ? { ...voiceProcessingAudioConstraints, deviceId: { exact: selectedDeviceId } }
+              : voiceProcessingAudioConstraints
+          })
+          .catch(() => null);
+        if (processedStream) {
+          rawStream.getTracks().forEach((existing) => existing.stop());
+          rawStream = processedStream;
+          [track] = rawStream.getAudioTracks();
+          usedVoiceProcessing = true;
+        }
+      }
+      setVoiceProcessingActive(usedVoiceProcessing);
       streamRef.current = rawStream;
       setActiveMicLabel(track?.label || "Default microphone");
       await loadAudioDevices();
@@ -836,7 +891,12 @@ export function RecordingPanel() {
           <p className="text-xs text-slate-500">
             ដោតមៃខ្សែ ឬ USB receiver រួចចុច <strong>រកមីក្រូហ្វូន</strong>។ បើជា Bluetooth headset សូមភ្ជាប់ក្នុង Settings ជាមុន បន្ទាប់មកជ្រើសពីបញ្ជី។
           </p>
-          {activeMicLabel && state !== "idle" ? <p className="text-xs text-slate-500">កំពុងប្រើ៖ {activeMicLabel}</p> : null}
+          {activeMicLabel && state !== "idle" ? (
+            <p className="text-xs text-slate-500">
+              កំពុងប្រើ៖ {activeMicLabel}
+              {voiceProcessingActive ? " (បើកការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់ឧបករណ៍)" : ""}
+            </p>
+          ) : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
               ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ ចុច &quot;រកមីក្រូហ្វូន&quot; ដើម្បីអនុញ្ញាត mic ហើយបង្ហាញឈ្មោះពិត។
