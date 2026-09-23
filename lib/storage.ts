@@ -889,6 +889,16 @@ const CHUNK_FALLBACK_RESERVE_MS = 90000;
 // windows that really were mostly silence.
 const MAX_CHUNK_TRANSCRIPTION_ATTEMPTS = 3;
 
+// Finished chunk transcripts, kept outside this function so a long recording
+// can be completed across several requests instead of restarting each time.
+// load() is given the number of windows this run split the recording into, so
+// an implementation can discard anything stored under a different split rather
+// than stitching together windows that no longer line up.
+export type StoredChunkTranscripts = {
+  load: (totalChunks: number) => Promise<Record<number, string>>;
+  save: (chunkIndex: number, totalChunks: number, text: string) => Promise<void>;
+};
+
 // Transcribe a complete saved recording in bounded audio windows. Sending a
 // long meeting as one giant multimodal request fits the byte limit after
 // compression, but providers can still skip stretches of speech or stop early
@@ -903,7 +913,24 @@ export async function transcribeStoredTrackRecording(
   // transcript of the parts that finished, just missing the tail - callers
   // pass this so they can tell the user rather than presenting a silently
   // truncated transcript as if it were the whole meeting.
-  options: { speakerNames?: string[]; singleSpeaker?: boolean; onIncomplete?: () => void } = {}
+  options: {
+    speakerNames?: string[];
+    singleSpeaker?: boolean;
+    onIncomplete?: () => void;
+    // Where finished chunks are kept between requests. Everything here has to
+    // finish inside one serverless request, and a long meeting cannot: a
+    // 5-hour recording is 20 windows and there is only ever time for a few.
+    // Without somewhere to put the finished ones, every attempt redid the
+    // same early windows and stopped in the same place, so the end of a long
+    // meeting could never be reached however many times anyone pressed the
+    // button - while the message told them pressing it would continue.
+    chunkStore?: StoredChunkTranscripts;
+    // The meeting's known length, when the caller has it. Without it the
+    // whole-file attempt below has to be started before anything can tell it
+    // is hopeless, and on a long recording just preparing that attempt -
+    // writing the file out and probing it - can spend the entire request.
+    durationSeconds?: number;
+  } = {}
 ) {
   const file = await loadStoredAudioAsFile(audioUrl);
   // This is always a whole-call recording (minutes to hours), never a
@@ -933,7 +960,17 @@ export async function transcribeStoredTrackRecording(
   // short, fall back to bounded windows below instead of accepting partial
   // text as the complete meeting.
   const remainingMsAtStart = deadline - Date.now();
-  const wholeAudioTimeoutMs = Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMsAtStart - CHUNK_FALLBACK_RESERVE_MS);
+  // Beyond this length the whole-file attempt cannot succeed and is not free
+  // to discover that: compressWholeAudioForTranscription writes the entire
+  // recording to disk and probes it before it can refuse, which on a
+  // multi-hour file is minutes of a request that only has a few. Long
+  // recordings go straight to the chunked path, which is the only thing that
+  // was ever going to finish them.
+  const wholeAudioMaxSeconds = 45 * 60;
+  const skipWholeAudio = Boolean(options.durationSeconds && options.durationSeconds > wholeAudioMaxSeconds);
+  const wholeAudioTimeoutMs = skipWholeAudio
+    ? 0
+    : Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, remainingMsAtStart - CHUNK_FALLBACK_RESERVE_MS);
   const wholeTranscript =
     wholeAudioTimeoutMs > 10000
       ? await (async () => {
@@ -1061,9 +1098,21 @@ export async function transcribeStoredTrackRecording(
     openRouterAudioLimit,
     STORED_TRANSCRIPTION_SEGMENT_SECONDS
   );
+  // Anything finished by an earlier request is already done - skip straight
+  // past it and spend this request's budget on what is still missing.
+  const alreadyDone: Record<number, string> = options.chunkStore
+    ? await options.chunkStore.load(chunks.length).catch(() => ({}) as Record<number, string>)
+    : {};
   const transcripts = new Array<string>(chunks.length).fill("");
   const completed = new Array<boolean>(chunks.length).fill(false);
-  const queue = chunks.map((chunk, index) => ({ chunk, index }));
+  for (const [key, text] of Object.entries(alreadyDone)) {
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 0 && index < chunks.length && text.trim()) {
+      transcripts[index] = text;
+      completed[index] = true;
+    }
+  }
+  const queue = chunks.map((chunk, index) => ({ chunk, index })).filter((entry) => !completed[entry.index]);
   // Set by the workers below, read after they finish - held on an object
   // because TypeScript would narrow a plain `let` assigned only inside a
   // nested function back to its initial value at the outer read.
@@ -1166,7 +1215,20 @@ export async function transcribeStoredTrackRecording(
         chunkOutcome.anyStillTruncated = true;
       }
       transcripts[next.index] = chunkTranscriptText;
-      completed[next.index] = true;
+      // A window counts as done only if it actually produced speech. An empty
+      // result means the provider failed on it or gave up, and calling that
+      // "done" is how whole stretches of a meeting used to disappear in
+      // silence: the window was marked finished, no text was kept, and
+      // nothing was reported. Left unfinished it is both reported now and
+      // picked up again by the next pass.
+      const windowHasSpeech = hasUsableTranscript(chunkTranscriptText);
+      completed[next.index] = windowHasSpeech;
+      // Written down the moment it succeeds, not at the end: the request can
+      // be cut off at any point, and a window not recorded here has to be
+      // paid for all over again next time.
+      if (options.chunkStore && windowHasSpeech) {
+        await options.chunkStore.save(next.index, chunks.length, chunkTranscriptText).catch(() => undefined);
+      }
     }
   }
 

@@ -54,6 +54,12 @@ const voiceProcessingAudioConstraints: MediaTrackConstraints = {
 // legitimate far-field audio as silent.
 const silentInputThreshold = 0.0012;
 
+// Upper bound on how many times the browser will ask the server to continue a
+// long recording. Twenty fifteen-minute windows is a five-hour meeting, and a
+// pass gets through several of them, so this is generous - it exists to stop
+// a stuck recording looping forever, not to cut a real one short.
+const MAX_TRANSCRIPTION_PASSES = 12;
+
 function formatTime(seconds: number) {
   const safeSeconds = clampMeetingDurationSeconds(seconds);
   const h = Math.floor(safeSeconds / 3600);
@@ -689,23 +695,45 @@ export function RecordingPanel() {
   async function transcribeCompleteRecording(meetingId: string, isRetry = false) {
     setTranscriptionProgress("កំពុងកែលម្អគុណភាពសំឡេង និងបំលែងឯកសារពេញជាអក្សរ...");
     try {
-      const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode: transcriptionLanguage })
-      });
-      const data = await readJsonResponse<{ transcript?: string; error?: string; partial?: boolean }>(response);
-      if (!response.ok || !data.transcript?.trim()) {
-        throw new Error(data.error ?? "រកមិនឃើញសំឡេងនិយាយច្បាស់លាស់ក្នុងការថតនេះទេ។");
+      // One request can only transcribe as much of a long recording as fits
+      // in the server's own time limit, and a 5-hour meeting needs far more
+      // than one. The server now keeps every window it finishes, so each
+      // further request continues instead of starting over - which is only
+      // any use if something actually makes those requests. Keep going here
+      // until the meeting is complete, rather than leaving someone to press
+      // the button twenty times and hope.
+      let pass = 1;
+      let previousLength = 0;
+      for (;;) {
+        const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ languageMode: transcriptionLanguage })
+        });
+        const data = await readJsonResponse<{ transcript?: string; error?: string; partial?: boolean }>(response);
+        if (!response.ok || !data.transcript?.trim()) {
+          throw new Error(data.error ?? "រកមិនឃើញសំឡេងនិយាយច្បាស់លាស់ក្នុងការថតនេះទេ។");
+        }
+        if (!data.partial) {
+          setTranscriptionProgress("បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។");
+          break;
+        }
+        // Stop if a pass adds nothing. Continuing then would just spend the
+        // same money again on the same windows for the same result.
+        const length = data.transcript.length;
+        const madeProgress = length > previousLength;
+        previousLength = length;
+        if (!madeProgress || pass >= MAX_TRANSCRIPTION_PASSES) {
+          setTranscriptionProgress(
+            "ការថតនេះវែងណាស់ ហើយនៅមានផ្នែកខ្លះមិនទាន់បំលែងបានទេ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ។ សូមបើកប្រជុំ រួចចុច \"Re-transcribe audio\" — វានឹងបន្តពីកន្លែងដែលឈប់ មិនចាប់ផ្តើមពីដើមវិញទេ។"
+          );
+          break;
+        }
+        pass += 1;
+        setTranscriptionProgress(
+          `ការថតវែង — កំពុងបន្តផ្នែកទី ${pass}។ អត្ថបទបាន ${length.toLocaleString()} តួរួចហើយ។ សូមទុកទំព័រនេះបើករហូតដល់ចប់។`
+        );
       }
-      // A very long recording can run out of transcription time partway
-      // through - the saved text is real but stops before the end of the
-      // meeting, so say so rather than reporting a clean finish.
-      setTranscriptionProgress(
-        data.partial
-          ? "ការថតវែងពេក ដូច្នេះការបំលែងជាអក្សរមិនទាន់ដល់ចប់ទេ — ផ្នែកចុងក្រោយនៃការប្រជុំនៅខ្វះ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ សូមបើកប្រជុំ រួចចុច \"Re-transcribe audio\" ដើម្បីបន្ត។"
-          : "បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។"
-      );
       void releaseRecordingWakeLock();
     } catch (error) {
       if (isNetworkDropError(error) && !isRetry) {

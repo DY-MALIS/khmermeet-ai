@@ -204,9 +204,18 @@ export async function splitAudioIntoChunks(
     for (let t = segmentSeconds; t < estimatedTotalSeconds * 1.2; t += segmentSeconds) {
       targetBoundaries.push(t);
     }
-    const segmentTimes = targetBoundaries.length
-      ? await findSilenceAdjustedCutTimes(inputPath, targetBoundaries)
-      : [];
+    // findSilenceAdjustedCutTimes decodes the entire file to locate silence.
+    // That is worth it for a short recording, where a cut landing mid-word
+    // really does cost a word. On a multi-hour recording it is the single
+    // most expensive thing in the whole request - a 5-hour file has to be
+    // decoded end to end before one second of it can be transcribed - and the
+    // benefit is negligible, because the cut is one boundary every 15 minutes.
+    // Past this length, cut on the clock and spend the time transcribing.
+    const silenceSearchMaxSeconds = 40 * 60;
+    const segmentTimes =
+      targetBoundaries.length && estimatedTotalSeconds <= silenceSearchMaxSeconds
+        ? await findSilenceAdjustedCutTimes(inputPath, targetBoundaries)
+        : [];
 
     await execFileAsync(ffmpegPath, [
       "-y",

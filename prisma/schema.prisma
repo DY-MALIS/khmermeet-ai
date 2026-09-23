@@ -31,6 +31,7 @@ model Meeting {
   tasks              Task[]
   decisions          Decision[]
   transcriptSegments MeetingTranscriptSegment[]
+  audioChunks        MeetingAudioChunk[]
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 }
@@ -150,4 +151,25 @@ model WorkbenchVersion {
   project   WorkbenchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
+}
+
+// One finished window of a long recording's transcript. Everything in the
+// transcribe route has to complete inside a single serverless request, and a
+// long meeting cannot: a 5-hour recording is 20 fifteen-minute windows and
+// there is only ever time for a few. Without these rows every attempt redid
+// the same early windows and stopped in the same place, so the end of a long
+// meeting was unreachable no matter how many times anyone pressed the button.
+// Rows are deleted once the whole recording is assembled.
+model MeetingAudioChunk {
+  id          String   @id @default(cuid())
+  meetingId   String
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  chunkIndex  Int
+  totalChunks Int
+  text        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([meetingId, chunkIndex])
+  @@index([meetingId])
 }

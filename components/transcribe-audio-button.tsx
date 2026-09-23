@@ -15,6 +15,12 @@ type TranscribeAudioButtonProps = {
   onTranscribed?: (transcript: string) => void;
 };
 
+// Upper bound on how many times the browser will ask the server to continue.
+// Twenty fifteen-minute windows is a five-hour meeting and a pass gets through
+// several, so this is generous - it is here to stop a stuck recording looping
+// forever, not to cut a real one short.
+const MAX_TRANSCRIPTION_PASSES = 12;
+
 const progressSteps = [
   "កំពុងរៀបចំសំឡេង...",
   "កំពុងស្តាប់សំឡេងជាបំណែកតូចៗ...",
@@ -48,25 +54,48 @@ export function TranscribeAudioButton({
       setProgressStep((step) => Math.min(step + 1, progressSteps.length - 1));
     }, 14000);
     try {
-      const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ languageMode })
-      });
-      const data = await readJsonResponse<{ transcript?: string; error?: string; message?: string; partial?: boolean }>(response);
-      if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
-      const nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
-      if (!nextTranscript) {
-        throw new Error("Transcription finished, but no speech text was returned. Please try again with clearer audio.");
+      // A long recording needs more than one request: the server finishes as
+      // many windows as its own time limit allows, keeps them, and continues
+      // from there next time. Keep asking until the meeting is complete
+      // rather than making someone press the button once per window.
+      let pass = 1;
+      let previousLength = 0;
+      let nextTranscript = "";
+      let stillPartial = false;
+      for (;;) {
+        const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ languageMode })
+        });
+        const data = await readJsonResponse<{ transcript?: string; error?: string; message?: string; partial?: boolean }>(response);
+        if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
+        nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
+        if (!nextTranscript) {
+          throw new Error("Transcription finished, but no speech text was returned. Please try again with clearer audio.");
+        }
+        onTranscribed?.(nextTranscript);
+        if (!data.partial) {
+          stillPartial = false;
+          break;
+        }
+        // A pass that adds nothing means continuing would only spend the same
+        // money again on the same windows for the same result.
+        const madeProgress = nextTranscript.length > previousLength;
+        previousLength = nextTranscript.length;
+        if (!madeProgress || pass >= MAX_TRANSCRIPTION_PASSES) {
+          stillPartial = true;
+          break;
+        }
+        pass += 1;
+        setMessage(`Long recording - continuing, part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`);
       }
-      onTranscribed?.(nextTranscript);
       setMessage(
-        data.message ??
-          (data.partial
-            ? "Transcript saved so far. Click Re-transcribe audio again to continue."
-            : hasTranscript
-              ? "Transcript replaced below. Refreshing meeting data..."
-              : "Transcription saved below. Refreshing meeting data...")
+        stillPartial
+          ? "This recording is long and some of it is still not transcribed. The audio is saved in full. Click Re-transcribe audio again - it carries on from where it stopped rather than starting over."
+          : hasTranscript
+            ? "Transcript replaced below. Refreshing meeting data..."
+            : "Transcription saved below. Refreshing meeting data..."
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {

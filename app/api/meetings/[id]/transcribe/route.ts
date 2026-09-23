@@ -13,6 +13,7 @@ import {
   sanitizeKnownSpeakerNames,
   transcribeStoredTrackRecording
 } from "@/lib/storage";
+import type { StoredChunkTranscripts } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -117,6 +118,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
           singleSpeaker: false,
+          durationSeconds: meeting.duration || undefined,
+          chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
           }
@@ -180,6 +183,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
           singleSpeaker: false,
+          durationSeconds: meeting.duration || undefined,
+          chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
           }
@@ -203,6 +208,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
           speakerNames,
           singleSpeaker: false,
+          durationSeconds: meeting.duration || undefined,
+          chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
           }
@@ -261,6 +268,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     });
 
+    // The per-window rows only exist to carry a long recording across
+    // requests. Once the whole meeting is assembled they are dead weight, and
+    // leaving them behind would also make a later re-transcription reuse text
+    // from a recording the user may have replaced.
+    if (!incompleteLongRecording && !skippedPendingSegments) {
+      await prisma.meetingAudioChunk.deleteMany({ where: { meetingId: id } }).catch(() => undefined);
+    }
+
     revalidatePath("/transcripts");
     revalidatePath("/summaries");
     revalidatePath("/dashboard");
@@ -292,6 +307,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       { status: publicError.status }
     );
   }
+}
+
+// Keeps finished windows of a long recording between requests, so pressing
+// the button again continues instead of starting over. Every call is wrapped
+// by the caller in a catch: if the table is not there yet the whole thing
+// simply degrades to the old restart-from-zero behaviour rather than failing
+// the transcription.
+function meetingChunkStore(meetingId: string): StoredChunkTranscripts {
+  return {
+    load: async (totalChunks: number) => {
+      const rows = await prisma.meetingAudioChunk.findMany({
+        where: { meetingId, totalChunks },
+        select: { chunkIndex: true, text: true }
+      });
+      const stored: Record<number, string> = {};
+      for (const row of rows) stored[row.chunkIndex] = row.text;
+      return stored;
+    },
+    save: async (chunkIndex: number, totalChunks: number, text: string) => {
+      await prisma.meetingAudioChunk.upsert({
+        where: { meetingId_chunkIndex: { meetingId, chunkIndex } },
+        create: { meetingId, chunkIndex, totalChunks, text },
+        update: { totalChunks, text }
+      });
+    }
+  };
 }
 
 function transcriptionBudget(workDeadline: number) {
