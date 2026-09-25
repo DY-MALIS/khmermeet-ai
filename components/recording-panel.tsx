@@ -621,6 +621,11 @@ export function RecordingPanel() {
   async function start() {
     setError("");
     setQuietWarning("");
+    // A recording that ended by error rather than by the stop button can
+    // leave the dark screen armed; starting the next one must never black
+    // out the screen before the person chose that.
+    setQuietScreenActive(false);
+    setQuietScreenControlsVisible(false);
     setAudioUrl("");
     setPreviewUrl("");
     setSavedMeetingId("");
@@ -637,29 +642,24 @@ export function RecordingPanel() {
     try {
       let rawStream = await openMicrophoneStream();
       let [track] = rawStream.getAudioTracks();
-      let usedVoiceProcessing = false;
-      if (!automaticGainWasGranted(track)) {
-        const processedStream = await navigator.mediaDevices
-          .getUserMedia({
-            audio: selectedDeviceId
-              ? { ...voiceProcessingAudioConstraints, deviceId: { exact: selectedDeviceId } }
-              : voiceProcessingAudioConstraints
-          })
-          .catch(() => null);
-        if (processedStream) {
-          rawStream.getTracks().forEach((existing) => existing.stop());
-          rawStream = processedStream;
-          [track] = rawStream.getAudioTracks();
-          usedVoiceProcessing = true;
-        }
-      }
-      setVoiceProcessingActive(usedVoiceProcessing);
+      // Held from the moment the microphone opens, so that a failure while
+      // building the audio graph below still leaves cleanupRecording a
+      // stream to close - otherwise the microphone stays live with the
+      // recorder never having started.
       streamRef.current = rawStream;
-      setActiveMicLabel(track?.label || "មីក្រូហ្វូនលំនាំដើម");
-      await loadAudioDevices();
+      let usedVoiceProcessing = false;
       let recordingStream = rawStream;
       let analyser: AnalyserNode;
       let rawAnalyser: AnalyserNode | undefined;
+      // Handing the device's own voice processing the job is the last resort,
+      // not the first. On a phone it is never granted alongside the far-field
+      // constraints above (iOS runs gain control and echo cancellation from
+      // one unit), so checking for it here first sent every phone down the
+      // processed path - noise suppression back on, the person at the far end
+      // of the table erased again - and the app's own leveling below, written
+      // for exactly that device, never ran at all. So build the graph first:
+      // its input gain stage measures this microphone and makes up whatever
+      // it is short, whether or not the device granted anything.
       try {
         const audioGraph = await buildRecordingAudioGraph(rawStream);
         recordingStream = audioGraph.recordingStream;
@@ -668,8 +668,33 @@ export function RecordingPanel() {
         rawAnalyser = audioGraph.rawAnalyser;
         inputGainRef.current = audioGraph.inputGain;
       } catch {
+        // No Web Audio output stream on this device, so nothing here can
+        // level the signal. Only now is the device's own processing worth
+        // taking: it costs the far speaker, but a quiet raw capsule with no
+        // gain at all costs everyone.
+        if (!automaticGainWasGranted(track)) {
+          const processedStream = await navigator.mediaDevices
+            .getUserMedia({
+              audio: selectedDeviceId
+                ? { ...voiceProcessingAudioConstraints, deviceId: { exact: selectedDeviceId } }
+                : voiceProcessingAudioConstraints
+            })
+            .catch(() => null);
+          if (processedStream) {
+            rawStream.getTracks().forEach((existing) => existing.stop());
+            rawStream = processedStream;
+            [track] = rawStream.getAudioTracks();
+            recordingStream = rawStream;
+            streamRef.current = rawStream;
+            usedVoiceProcessing = true;
+          }
+        }
         analyser = await buildLevelAnalyserFallback(rawStream);
       }
+      setVoiceProcessingActive(usedVoiceProcessing);
+      streamRef.current = rawStream;
+      setActiveMicLabel(track?.label || "មីក្រូហ្វូនលំនាំដើម");
+      await loadAudioDevices();
       setMicDiagnostics(describeMicTrack(track, Boolean(rawAnalyser), usedVoiceProcessing));
       startMicMonitor(analyser, rawAnalyser);
       const mimeType = getMimeType();
@@ -903,6 +928,19 @@ export function RecordingPanel() {
     setSeconds(clampMeetingDurationSeconds(Math.floor(accumulatedMsRef.current / 1000)));
     recorder.current?.stop();
     setState("stopped");
+    // Leave the dark screen behind with the recording. The overlay itself
+    // only renders while recording, so staying "active" is invisible until
+    // the next recording starts - and then the screen would go black the
+    // instant they press record, which nobody asked for. Exiting here also
+    // drops fullscreen so the saving and transcription progress below is
+    // readable. The wake lock is deliberately kept (see above): this call
+    // does not release it. Written out here rather than calling
+    // exitQuietScreen so stop() keeps reading nothing but refs and state
+    // setters: the max-duration timer effect calls stop() and depends on it
+    // not changing identity as the screen is toggled.
+    setQuietScreenActive(false);
+    setQuietScreenControlsVisible(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
   }
 
   async function enterQuietScreen() {
