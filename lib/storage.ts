@@ -787,21 +787,8 @@ export async function transcribeAudio(
   // cause of a 12-minute recording's chunk loop taking 400s+ even after
   // fixing the chunking itself and raising worker concurrency.
   const skipVariants = options.mode === "live";
-  const preparedVariants = skipVariants
-    ? []
-    : await (await import("@/lib/ffmpeg")).prepareAudioVariantsForTranscription(
-        originalAudioBuffer,
-        originalExt,
-        openRouterAudioLimit
-      );
-  const audioAttempts = [
-    ...preparedVariants.map((variant) => ({
-      audioBuffer: Buffer.from(variant.buffer),
-      mimeType: variant.mimeType,
-      filename: `${path.basename(originalFilename, path.extname(originalFilename)) || "meeting-audio"}-${variant.filename}`
-    })),
-    { audioBuffer: originalAudioBuffer, mimeType: originalMimeType, filename: originalFilename }
-  ];
+  const variantCount = skipVariants ? 0 : (await import("@/lib/ffmpeg")).TRANSCRIPTION_VARIANT_COUNT;
+  const attemptBaseName = path.basename(originalFilename, path.extname(originalFilename)) || "meeting-audio";
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
   // All languages use the configured multimodal transcription model
@@ -810,7 +797,36 @@ export async function transcribeAudio(
   // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
 
-  for (const attempt of audioAttempts) {
+  // The attempts are ordered best-prepared first, and a later one is now
+  // only ever used when the ones before it came back unusable - since
+  // repeated listens to the same audio stopped being scored against each
+  // other, the winner can only be the first usable result. Running the rest
+  // anyway bought nothing and cost everything: three or four more full
+  // transcription calls per recording, each with its own timeout, against a
+  // server request that has a time limit of its own to fit a long meeting
+  // into. So stop at the first usable transcript - the result is identical,
+  // it just arrives without paying for the attempts that could not win.
+  // Each variant is encoded only when the attempt before it came back
+  // unusable, and the untouched original is the last attempt of all.
+  for (let index = 0; index <= variantCount; index += 1) {
+    let attempt = { audioBuffer: originalAudioBuffer, mimeType: originalMimeType, filename: originalFilename };
+    if (index < variantCount) {
+      const { prepareAudioVariantForTranscription } = await import("@/lib/ffmpeg");
+      const variant = await prepareAudioVariantForTranscription(
+        originalAudioBuffer,
+        originalExt,
+        openRouterAudioLimit,
+        index
+      );
+      // This variant could not be encoded, or came out outside the size the
+      // provider accepts. Nothing to send; the next attempt still runs.
+      if (!variant) continue;
+      attempt = {
+        audioBuffer: Buffer.from(variant.buffer),
+        mimeType: variant.mimeType,
+        filename: `${attemptBaseName}-${variant.filename}`
+      };
+    }
     const attemptTranscript = await transcribeAndCleanAudioBuffer(
       attempt.audioBuffer,
       attempt.mimeType,
@@ -821,6 +837,7 @@ export async function transcribeAudio(
       options.singleSpeaker ?? false
     );
     cleanedTranscript = chooseMoreCompleteTranscript(cleanedTranscript, attemptTranscript);
+    if (cleanedTranscript.trim() && !isLikelyIncompleteTranscript(cleanedTranscript)) break;
   }
 
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;

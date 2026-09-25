@@ -398,57 +398,67 @@ export async function prepareAudioForTranscription(
   ext: string,
   maxBytes: number
 ): Promise<Buffer> {
-  const variants = await prepareAudioVariantsForTranscription(buffer, ext, maxBytes);
-  return variants[0]?.buffer ?? buffer;
+  const variant = await prepareAudioVariantForTranscription(buffer, ext, maxBytes, 0);
+  return variant?.buffer ?? buffer;
 }
 
-export async function prepareAudioVariantsForTranscription(
+// The enhancement variants a transcription attempt can be made from, in the
+// order they are worth trying: the gentlest first, the most aggressive last.
+const transcriptionVariants = [
+  { filter: gentleSpeechEnhancementFilter, filename: "speech-gentle.m4a" },
+  { filter: speechEnhancementFilter, filename: "speech-boosted.m4a" },
+  { filter: noisyRoomSpeechEnhancementFilter, filename: "speech-noisy-room.m4a" }
+];
+
+export const TRANSCRIPTION_VARIANT_COUNT = transcriptionVariants.length;
+
+// One variant at a time, on request. All three used to be encoded up front
+// whichever ones the caller went on to use, which on the chunk-retry path
+// meant up to three re-encodes of a fifteen-minute window - inside a retry
+// that only runs at all when there are fifteen seconds left to spend. The
+// old shape also threw away variants that had already encoded fine if a
+// later one failed, because one try/catch covered the whole set.
+export async function prepareAudioVariantForTranscription(
   buffer: Buffer,
   ext: string,
-  maxBytes: number
-): Promise<Array<{ buffer: Buffer; mimeType: string; filename: string }>> {
-  if (!ffmpegPath) return [];
+  maxBytes: number,
+  index: number
+): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
+  const variant = transcriptionVariants[index];
+  if (!ffmpegPath || !variant) return null;
 
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-prepare-"));
   const inputPath = path.join(tmpDir, `input.${ext}`);
-  const variants = [
-    { filter: gentleSpeechEnhancementFilter, filename: "speech-gentle.m4a" },
-    { filter: speechEnhancementFilter, filename: "speech-boosted.m4a" },
-    { filter: noisyRoomSpeechEnhancementFilter, filename: "speech-noisy-room.m4a" }
-  ];
 
   try {
     await writeFile(inputPath, buffer);
     await ensureFfmpegExecutable();
 
-    const prepared: Array<{ buffer: Buffer; mimeType: string; filename: string }> = [];
-    for (const variant of variants) {
-      const outputPath = path.join(/* turbopackIgnore: true */ tmpDir, variant.filename);
-      await execFileAsync(
-        ffmpegPath,
-        [
-          "-y",
-          "-i", inputPath,
-          "-vn",
-          "-map", "0:a:0",
-          "-ac", "1",
-          "-ar", "16000",
-          "-af", variant.filter,
-          "-c:a", "aac",
-          "-b:a", "64000",
-          "-movflags", "+faststart",
-          outputPath
-        ],
-        { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
-      );
-      const output = await readFile(/* turbopackIgnore: true */ outputPath);
-      if (output.length >= 1000 && output.length <= maxBytes) {
-        prepared.push({ buffer: output, mimeType: "audio/mp4", filename: variant.filename });
-      }
+    const outputPath = path.join(/* turbopackIgnore: true */ tmpDir, variant.filename);
+    await execFileAsync(
+      ffmpegPath,
+      [
+        "-y",
+        "-i", inputPath,
+        "-vn",
+        "-map", "0:a:0",
+        "-ac", "1",
+        "-ar", "16000",
+        "-af", variant.filter,
+        "-c:a", "aac",
+        "-b:a", "64000",
+        "-movflags", "+faststart",
+        outputPath
+      ],
+      { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
+    );
+    const output = await readFile(/* turbopackIgnore: true */ outputPath);
+    if (output.length >= 1000 && output.length <= maxBytes) {
+      return { buffer: output, mimeType: "audio/mp4", filename: variant.filename };
     }
-    return prepared;
+    return null;
   } catch {
-    return [];
+    return null;
   } finally {
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
