@@ -820,7 +820,7 @@ export async function transcribeAudio(
       speakerNames,
       options.singleSpeaker ?? false
     );
-    cleanedTranscript = chooseMoreCompleteTranscript(cleanedTranscript, attemptTranscript, normalizedLanguageMode);
+    cleanedTranscript = chooseMoreCompleteTranscript(cleanedTranscript, attemptTranscript);
   }
 
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
@@ -1316,7 +1316,7 @@ export async function transcribeStoredTrackRecording(
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
     const best = wholeAudioAttempt.looksIncomplete && hasUsableTranscript(chunkTranscript)
       ? chunkTranscript
-      : chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript, languageMode);
+      : chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript);
     // Only really incomplete if the chunked (partial) run is what we're
     // returning - when the whole-audio attempt succeeded and won, it covers
     // the entire recording regardless of how many chunks finished.
@@ -1335,7 +1335,7 @@ export async function transcribeStoredTrackRecording(
     }
   }
 
-  const bestTranscript = chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript), languageMode);
+  const bestTranscript = chooseMoreCompleteTranscript(chunkTranscript, cleanTranscriptionText(wholeTranscript));
   // Only when the chunked run is what we are actually returning - a
   // whole-audio transcript that won covers the recording end to end.
   if (chunkOutcome.anyStillTruncated && bestTranscript === chunkTranscript) options.onIncomplete?.();
@@ -1591,26 +1591,13 @@ function chooseBetterSavedTranscript(
 
 function chooseMoreCompleteTranscript(
   currentTranscript: string,
-  candidateTranscript: string,
-  languageMode: TranscriptionLanguageMode
+  candidateTranscript: string
 ) {
   if (!candidateTranscript.trim() || isLikelyIncompleteTranscript(candidateTranscript)) return currentTranscript;
   if (!currentTranscript.trim() || isLikelyIncompleteTranscript(currentTranscript)) return candidateTranscript;
-
-  const currentScore = transcriptTokenScore(currentTranscript);
-  const candidateScore = transcriptTokenScore(candidateTranscript);
-  const currentTurns = countTranscriptTurns(currentTranscript);
-  const candidateTurns = countTranscriptTurns(candidateTranscript);
-
-  if (candidateScore > currentScore * 1.08) return candidateTranscript;
-  if (candidateTurns > currentTurns && candidateScore >= currentScore * 0.9) return candidateTranscript;
-
-  if (languageMode === "km-en") {
-    const currentLatinWords = countLatinWords(currentTranscript);
-    const candidateLatinWords = countLatinWords(candidateTranscript);
-    if (candidateLatinWords > currentLatinWords && candidateScore >= currentScore * 0.85) return candidateTranscript;
-  }
-
+  // Repeated listens to the same audio can add fluent words that were never
+  // spoken. Length, extra turns, and extra English words are not evidence of
+  // accuracy. Keep the first usable result unless it is actually incomplete.
   return currentTranscript;
 }
 
