@@ -273,7 +273,7 @@ export function RecordingPanel() {
       await findMicrophones();
       setBluetoothNotice({
         tone: "warn",
-        text: "Browser នេះមិនអាចបើកផ្ទាំង Bluetooth បានទេ។ សូមភ្ជាប់ឧបករណ៍ក្នុង Settings រួចចុច \"រកមីក្រូហ្វូន\"។"
+        text: "កម្មវិធីរុករកនេះមិនអាចបើកផ្ទាំង Bluetooth បានទេ។ សូមភ្ជាប់ឧបករណ៍ក្នុងការកំណត់ Bluetooth រួចចុច «រកមីក្រូហ្វូន»។"
       });
       return;
     }
@@ -298,7 +298,7 @@ export function RecordingPanel() {
     }
     setBluetoothNotice({
       tone: "warn",
-      text: `${name ?? "ឧបករណ៍នេះ"} មិនទាន់លេចជា microphone ទេ។ សូមភ្ជាប់វាក្នុង Settings → Bluetooth & devices រួចចុច \"រកមីក្រូហ្វូន\"។`
+        text: `${name ?? "ឧបករណ៍នេះ"} មិនទាន់បង្ហាញជាមីក្រូហ្វូនទេ។ សូមភ្ជាប់វាក្នុងការកំណត់ Bluetooth របស់ឧបករណ៍ រួចចុច «រកមីក្រូហ្វូន»។`
     });
   }
 
@@ -393,8 +393,8 @@ export function RecordingPanel() {
     lines.push(`កាត់អេកូ៖ ${yesNo(settings.echoCancellation)}`);
     lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
     lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
-    lines.push(`ការកែសំឡេងក្នុង browser៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
-    lines.push(`ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់ app៖ x${appliedGainRef.current.toFixed(1)}`);
+    lines.push(`ការកែសំឡេងក្នុងកម្មវិធីរុករក៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
+    lines.push(`ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់កម្មវិធី៖ x${appliedGainRef.current.toFixed(1)}`);
     return lines;
   }
 
@@ -627,11 +627,11 @@ export function RecordingPanel() {
     setTranscriptionProgress("");
     cleanupRecording();
     if (!supported) {
-      setError("Browser នេះមិនគាំទ្រ audio recording ទេ។ សូមប្រើ Chrome, Edge, ឬ Firefox ថ្មីៗ។");
+      setError("កម្មវិធីរុករកនេះមិនគាំទ្រការថតសំឡេងទេ។ សូមប្រើ Chrome, Edge ឬ Firefox កំណែថ្មី។");
       return;
     }
     if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      setError("Camera/Microphone មិនដំណើរការលើ HTTP LAN link ទេ។ សូមបើកតាម domain HTTPS របស់ app។");
+      setError("មីក្រូហ្វូនមិនដំណើរការតាមតំណ HTTP ទេ។ សូមបើកគេហទំព័រតាមតំណ HTTPS។");
       return;
     }
     try {
@@ -655,7 +655,7 @@ export function RecordingPanel() {
       }
       setVoiceProcessingActive(usedVoiceProcessing);
       streamRef.current = rawStream;
-      setActiveMicLabel(track?.label || "Default microphone");
+      setActiveMicLabel(track?.label || "មីក្រូហ្វូនលំនាំដើម");
       await loadAudioDevices();
       let recordingStream = rawStream;
       let analyser: AnalyserNode;
@@ -695,11 +695,11 @@ export function RecordingPanel() {
         const analysis = await analyzeRecordedAudio(blob);
         if (maxMicLevelRef.current < silentInputThreshold) {
           setQuietWarning(
-            "សំឡេងហាក់ស្ងាត់ខ្លាំងកំឡុងពេលថត។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
+            "សំឡេងហាក់ស្ងាត់ខ្លាំងពេលថត។ សូមស្តាប់សំឡេងដែលបានថតខាងក្រោម។ ការថតនេះនៅតែត្រូវបានរក្សាទុក។"
           );
         } else if (!("decodeError" in analysis) && analysis.peak < silentInputThreshold) {
           setQuietWarning(
-            "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់ preview ខាងក្រោមឲ្យប្រាកដ - ការថតនេះនៅតែនឹងត្រូវរក្សាទុកដដែល។"
+            "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់សំឡេងដែលបានថតខាងក្រោម។ ការថតនេះនៅតែត្រូវបានរក្សាទុក។"
           );
         }
         setUploading(true);
@@ -723,7 +723,7 @@ export function RecordingPanel() {
               throw new Error(
                 data.error ??
                   (response.status === 413
-                    ? "សំឡេងធំពេក មិនអាច upload បានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
+                    ? "ឯកសារសំឡេងធំពេក មិនអាចផ្ទុកឡើងបានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
                     : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
               );
             }
@@ -734,7 +734,7 @@ export function RecordingPanel() {
           await saveMeetingAuto(uploadedAudioUrl);
         } catch (error) {
           setError(
-            error instanceof Error ? error.message : "មិនអាច upload សំឡេងបានទេ។ សូមពិនិត្យ server ហើយសាកល្បងម្តងទៀត។"
+            error instanceof Error ? error.message : "មិនអាចផ្ទុកសំឡេងឡើងបានទេ។ សូមពិនិត្យការតភ្ជាប់ ហើយសាកល្បងម្តងទៀត។"
           );
         } finally {
           setUploading(false);
@@ -841,7 +841,7 @@ export function RecordingPanel() {
         previousLength = length;
         if (!madeProgress || pass >= MAX_TRANSCRIPTION_PASSES) {
           setTranscriptionProgress(
-            "ការថតនេះវែងណាស់ ហើយនៅមានផ្នែកខ្លះមិនទាន់បំលែងបានទេ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ។ សូមបើកប្រជុំ រួចចុច \"Re-transcribe audio\" — វានឹងបន្តពីកន្លែងដែលឈប់ មិនចាប់ផ្តើមពីដើមវិញទេ។"
+            "ការថតនេះវែងណាស់ ហើយនៅមានផ្នែកខ្លះមិនទាន់បំលែងបានទេ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ។ សូមបើកប្រជុំ រួចចុច «បំលែងសំឡេងជាអក្សរឡើងវិញ» ដើម្បីបន្តពីកន្លែងដែលបានឈប់។"
           );
           break;
         }
@@ -865,7 +865,7 @@ export function RecordingPanel() {
       }
       setTranscriptionProgress(
         isNetworkDropError(error)
-          ? "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែការតភ្ជាប់ដាច់ ប្រហែលមកពីអេក្រង់ទូរស័ព្ទបានចាក់សោ ឬប្តូរទៅកម្មវិធីផ្សេងពេលកំពុងបំលែង។ សូមទុកអេក្រង់បើក និងស្ថិតនៅលើទំព័រនេះ រួចចុច \"Re-transcribe audio\" ខាងក្រោមដើម្បីសាកម្តងទៀត។"
+          ? "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែការតភ្ជាប់ដាច់ ប្រហែលមកពីអេក្រង់ទូរស័ព្ទបានចាក់សោ ឬប្តូរទៅកម្មវិធីផ្សេងពេលកំពុងបំលែង។ សូមទុកអេក្រង់បើក និងស្ថិតនៅលើទំព័រនេះ រួចចុច «បំលែងសំឡេងជាអក្សរឡើងវិញ» ដើម្បីសាកម្តងទៀត។"
           : `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${error instanceof Error ? error.message : "សូមសាកល្បងម្តងទៀត។"}`
       );
       void releaseRecordingWakeLock();
@@ -930,7 +930,7 @@ export function RecordingPanel() {
       <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 px-5 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-leaf">Recorder</p>
+            <p className="text-sm font-semibold text-leaf">ឧបករណ៍ថតសំឡេង</p>
             <h2 className="text-xl font-bold text-ink">ថតសំឡេងប្រជុំ</h2>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm">
@@ -943,7 +943,7 @@ export function RecordingPanel() {
         សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
       </div>
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
-        ពេលកំពុងថត app នឹងព្យាយាមរក្សាអេក្រង់ឱ្យភ្លឺ ដើម្បីកុំឱ្យ browser ផ្អាកមីក្រូហ្វូន។ សូមទុកទំព័រនេះបើករហូតដល់ចុចបញ្ឈប់ ព្រោះការចាក់សោ ឬបិទអេក្រង់អាចធ្វើឱ្យការថតឈប់នៅលើទូរស័ព្ទ/Browser មួយចំនួន។
+        ពេលកំពុងថត កម្មវិធីនឹងព្យាយាមរក្សាអេក្រង់ឱ្យនៅបើក ដើម្បីកុំឱ្យកម្មវិធីរុករកផ្អាកមីក្រូហ្វូន។ សូមទុកទំព័រនេះបើករហូតដល់ចុច «ឈប់ថត»។ ការចាក់សោទូរស័ព្ទអាចធ្វើឱ្យការថតផ្អាក។
         {state === "recording" ? (
           <span className={`mt-2 block font-semibold ${wakeLockActive ? "text-leaf" : "text-amber-700"}`}>
             {wakeLockActive ? "រក្សាអេក្រង់មិនឱ្យរលត់៖ កំពុងដំណើរការ" : "មិនទាន់អាចរក្សាអេក្រង់មិនឱ្យរលត់បានទេ។ សូមចុចជម្រើសអេក្រង់ម្តងទៀត និងកុំចាក់សោអេក្រង់។"}
@@ -952,7 +952,7 @@ export function RecordingPanel() {
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          មិនអាចត្រួតពិនិត្យស្ថានភាព database ពី browser នេះបានទេ។ អ្នកនៅតែអាចថត ហើយសាកល្បងរក្សាទុកបាន server នឹងបញ្ជាក់នៅពេលរក្សាទុកជោគជ័យ។
+          មិនអាចពិនិត្យការតភ្ជាប់ទិន្នន័យបានទេ។ អ្នកនៅតែអាចថត និងសាកល្បងរក្សាទុកបាន។ កម្មវិធីនឹងបញ្ជាក់ពេលរក្សាទុកជោគជ័យ។
         </div>
       ) : null}
       {error ? (
@@ -993,9 +993,9 @@ export function RecordingPanel() {
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
-            <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
-            <option value="en">English only (translate all to English)</option>
+            <option value="km-en">ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)</option>
+            <option value="km">ភាសាខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)</option>
+            <option value="en">ភាសាអង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)</option>
           </select>
         </label>
       </div>
@@ -1010,7 +1010,7 @@ export function RecordingPanel() {
               onChange={(event) => rememberMicrophone(event.target.value)}
               disabled={state === "recording" || state === "paused" || uploading}
             >
-              <option value="">មីក្រូហ្វូន default</option>
+              <option value="">មីក្រូហ្វូនលំនាំដើម</option>
               {audioDevices.map((device, index) => (
                 <option key={device.deviceId || index} value={device.deviceId}>
                   {describeAudioDevice(device, index)}
@@ -1038,7 +1038,7 @@ export function RecordingPanel() {
             </button>
           </div>
           <p className="text-xs text-slate-500">
-            ដោតមៃខ្សែ ឬ USB receiver រួចចុច <strong>រកមីក្រូហ្វូន</strong>។ បើជា Bluetooth headset សូមភ្ជាប់ក្នុង Settings ជាមុន បន្ទាប់មកជ្រើសពីបញ្ជី។
+            ដោតមីក្រូហ្វូន ឬឧបករណ៍ទទួល USB រួចចុច <strong>រកមីក្រូហ្វូន</strong>។ បើប្រើកាស Bluetooth សូមភ្ជាប់វាក្នុងការកំណត់ឧបករណ៍ជាមុន រួចជ្រើសពីបញ្ជី។
           </p>
           {activeMicLabel && state !== "idle" ? (
             <p className="text-xs text-slate-500">
@@ -1048,7 +1048,7 @@ export function RecordingPanel() {
           ) : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
-              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ ចុច &quot;រកមីក្រូហ្វូន&quot; ដើម្បីអនុញ្ញាត mic ហើយបង្ហាញឈ្មោះពិត។
+              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ ចុច «រកមីក្រូហ្វូន» ដើម្បីអនុញ្ញាតឱ្យប្រើមីក្រូហ្វូន និងបង្ហាញឈ្មោះរបស់វា។
             </p>
           ) : null}
           {bluetoothNotice ? (
@@ -1069,7 +1069,7 @@ export function RecordingPanel() {
                 ))}
               </ul>
               <p className="text-slate-500">
-                មិនប្រាកដថាមួយណា? ជ្រើសម្តងមួយៗ ហើយនិយាយសាក មើល Input level ខាងស្តាំ។
+                បើមិនប្រាកដថាមួយណា សូមជ្រើសម្តងមួយៗ ហើយនិយាយសាក ដោយមើលកម្រិតសំឡេងចូលខាងស្តាំ។
               </p>
               {/* Browsers can only list the microphones the operating system
                   exposes. A Bluetooth speaker has no microphone, and earbuds
@@ -1084,7 +1084,7 @@ export function RecordingPanel() {
                 <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
                   <p className="font-semibold">មិនឃើញឈ្មោះ Bluetooth របស់អ្នកក្នុងបញ្ជីនេះមែនទេ?</p>
                   <p>
-                    សូមពិនិត្យ <strong>Settings → System → Sound → Input</strong>។ បើមិនមាននៅទីនោះ app ក៏មិនអាចប្រើវាជាមីក្រូហ្វូនបានដែរ។
+                    សូមពិនិត្យមីក្រូហ្វូនក្នុងការកំណត់សំឡេងរបស់ឧបករណ៍។ បើមិនមាននៅទីនោះ កម្មវិធីក៏មិនអាចប្រើវាបានដែរ។
                   </p>
                 </div>
               ) : null}
@@ -1094,7 +1094,7 @@ export function RecordingPanel() {
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
               <p className="font-semibold">រកមិនឃើញមីក្រូហ្វូនណាមួយទេ។</p>
               <p>
-                សូមដោតមៃខ្សែ/USB receiver ឬភ្ជាប់ Bluetooth headset ក្នុង Settings រួចចុច &quot;រកមីក្រូហ្វូន&quot; ម្តងទៀត។
+                សូមដោតមីក្រូហ្វូន ឬឧបករណ៍ទទួល USB ឬភ្ជាប់កាស Bluetooth ក្នុងការកំណត់ឧបករណ៍ រួចចុច «រកមីក្រូហ្វូន» ម្តងទៀត។
               </p>
             </div>
           ) : null}
@@ -1127,10 +1127,10 @@ export function RecordingPanel() {
                 ? "សំឡេងចូលល្អ"
                 : micLevel >= 0.008
                   ? "មានសំឡេងចូល ប៉ុន្តែនៅខ្សោយ"
-                  : "សំឡេងខ្សោយខ្លាំង - សូមខិត microphone ឱ្យជិតកណ្ដាលតុ"
+                  : "សំឡេងខ្សោយខ្លាំង — សូមដាក់មីក្រូហ្វូនឱ្យជិតកណ្ដាលតុ"
               : state === "paused"
                 ? "ការថតត្រូវបានផ្អាក"
-                : "ចាប់ផ្តើមថត ដើម្បីពិនិត្យកម្រិត microphone"}
+                : "ចាប់ផ្តើមថត ដើម្បីពិនិត្យកម្រិតសំឡេងមីក្រូហ្វូន"}
           </p>
           {/* A phone cannot be inspected from a laptop. These are the numbers
               the device itself reports, so a "it is quiet on my phone" report
@@ -1210,12 +1210,12 @@ export function RecordingPanel() {
                 download={`khmermeet-${(title.trim() || "recording").replace(/[^\wក-៿-]+/g, "-")}.webm`}
                 href={previewUrl}
               >
-                ទាញយកឯកសារសំឡេង (Download)
+                ទាញយកឯកសារសំឡេង
               </a>
             </div>
           ) : null}
           {uploading ? (
-            <p className="text-sm text-slate-500">កំពុង upload សំឡេង...</p>
+            <p className="text-sm text-slate-500">កំពុងផ្ទុកសំឡេងឡើង...</p>
           ) : savingMeeting ? (
             <p className="text-sm text-slate-500">កំពុងរក្សាទុកប្រជុំដោយស្វ័យប្រវត្តិ...</p>
           ) : savedMeetingId ? (

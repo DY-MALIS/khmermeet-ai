@@ -15,7 +15,7 @@ export const revalidate = 0;
 
 export default async function NewMeetingPage() {
   const user = await requireUser();
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
   const recordings = await prisma.meeting
     .findMany({
       where: { ...ownerWhere(user), audioUrl: { not: null } },
@@ -38,7 +38,7 @@ export default async function NewMeetingPage() {
           </div>
         </div>
       </div>
-      <NextMeetingPrep user={user} />
+      <NextMeetingPrep user={user} language={language} />
       <RecordingPanel />
       <ExternalMediaUploadPanel />
       <section className="kh-card p-5 sm:p-6">

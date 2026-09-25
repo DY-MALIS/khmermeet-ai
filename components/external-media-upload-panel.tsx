@@ -70,7 +70,7 @@ export function ExternalMediaUploadPanel() {
     setPending(true);
     setError("");
     setWarning("");
-    setStatus("កំពុង upload ឯកសារ...");
+    setStatus("កំពុងផ្ទុកឯកសារឡើង...");
 
     try {
       const duration = await getMediaDuration(file);
@@ -81,7 +81,7 @@ export function ExternalMediaUploadPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || titleFromFile(file) || "កិច្ចប្រជុំពីការ upload",
+          title: title.trim() || titleFromFile(file) || "កិច្ចប្រជុំពីឯកសារដែលបានផ្ទុកឡើង",
           audioUrl,
           transcript: "",
           duration,
@@ -98,7 +98,7 @@ export function ExternalMediaUploadPanel() {
       router.push(`/meetings/${meetingJson.id}?transcribe=1#transcript`);
       router.refresh();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "មិនអាច upload ឯកសារនេះបានទេ។");
+      setError(uploadError instanceof Error ? uploadError.message : "មិនអាចផ្ទុកឯកសារនេះឡើងបានទេ។");
     } finally {
       setPending(false);
     }
@@ -112,11 +112,11 @@ export function ExternalMediaUploadPanel() {
           <UploadCloud className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-leaf">Upload សំឡេង ឬវីដេអូ</p>
+          <p className="text-sm font-semibold text-leaf">ផ្ទុកឯកសារសំឡេង ឬវីដេអូឡើង</p>
           <h2 className="text-xl font-bold text-ink">បំលែងការថតសំឡេងពីខាងក្រៅជាអក្សរ</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Upload ឯកសារប្រភេទ MP3, M4A, WebM, MP4 ឬប្រភេទផ្សេងទៀតដែល browser គាំទ្រ។ កម្មវិធីនឹងរក្សាទុកឯកសារនោះ
-            ជាកំណត់ត្រាប្រជុំ។ សម្រាប់ឯកសារវែង សូមបើក meeting ហើយចុច Transcribe audio ពេលក្រោយ ដើម្បីកុំឲ្យ upload timeout។
+            ផ្ទុកឯកសារប្រភេទ MP3, M4A, WebM, MP4 ឬប្រភេទផ្សេងទៀតដែលកម្មវិធីរុករកគាំទ្រ។ កម្មវិធីនឹងរក្សាទុកឯកសារនោះ
+            ជាកំណត់ត្រាប្រជុំ។ សម្រាប់ឯកសារវែង អ្នកអាចបើកប្រជុំ ហើយចុច «បំលែងសំឡេងជាអក្សរ» ពេលក្រោយ។
           </p>
         </div>
       </div>
@@ -145,9 +145,9 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
-          <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
-          <option value="en">English only (translate all to English)</option>
+          <option value="km-en">ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)</option>
+          <option value="km">ភាសាខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)</option>
+          <option value="en">ភាសាអង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)</option>
         </select>
       </div>
 
@@ -161,7 +161,7 @@ export function ExternalMediaUploadPanel() {
         />
         <button className="kh-button-primary" disabled={pending || !file} onClick={uploadAndCreateMeeting} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-          {pending ? "កំពុងដំណើរការ..." : "Upload និងរក្សាទុក"}
+          {pending ? "កំពុងដំណើរការ..." : "ផ្ទុកឡើង និងរក្សាទុក"}
         </button>
       </div>
 

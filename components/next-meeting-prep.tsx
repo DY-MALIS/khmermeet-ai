@@ -2,8 +2,9 @@ import Link from "next/link";
 import { CalendarClock, ListTodo, MessagesSquare, ScrollText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere } from "@/lib/session";
+import type { DisplayLanguage } from "@/lib/navigation-labels";
 
-export async function NextMeetingPrep({ user }: { user: { id: string; email?: string | null } }) {
+export async function NextMeetingPrep({ user, language }: { user: { id: string; email?: string | null }; language: DisplayLanguage }) {
   const lastMeeting = await prisma.meeting
     .findFirst({
       where: { ...ownerWhere(user), transcript: { not: null } },
@@ -28,10 +29,10 @@ export async function NextMeetingPrep({ user }: { user: { id: string; email?: st
       <div className="mb-3 flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-bold text-leaf">
           <CalendarClock className="h-4 w-4" />
-          AI Next Meeting Preparation
+          {language === "km" ? "ត្រៀមសម្រាប់ប្រជុំបន្ទាប់ដោយ AI" : "AI Next Meeting Preparation"}
         </p>
         <Link className="text-xs font-semibold text-leaf hover:underline" href={`/meetings/${lastMeeting.id}`}>
-          Open last meeting: {lastMeeting.title}
+          {language === "km" ? "បើកប្រជុំមុន៖ " : "Open last meeting: "}{lastMeeting.title}
         </Link>
       </div>
 
@@ -39,7 +40,7 @@ export async function NextMeetingPrep({ user }: { user: { id: string; email?: st
         <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs leading-6 text-slate-600">
           <p className="mb-1 flex items-center gap-1 font-bold text-ink">
             <ScrollText className="h-3.5 w-3.5" />
-            Previous summary
+            {language === "km" ? "សេចក្តីសង្ខេបពីប្រជុំមុន" : "Previous summary"}
           </p>
           <p className="line-clamp-4 whitespace-pre-wrap">{lastMeeting.summary}</p>
         </div>
@@ -49,7 +50,7 @@ export async function NextMeetingPrep({ user }: { user: { id: string; email?: st
         <div className="mb-3">
           <p className="mb-1 flex items-center gap-1 text-xs font-bold text-ink">
             <ListTodo className="h-3.5 w-3.5" />
-            Pending tasks ({lastMeeting.tasks.length})
+            {language === "km" ? "កិច្ចការមិនទាន់បញ្ចប់" : "Pending tasks"} ({lastMeeting.tasks.length})
           </p>
           <ul className="space-y-1 text-xs text-slate-600">
             {lastMeeting.tasks.map((task) => (
@@ -61,7 +62,7 @@ export async function NextMeetingPrep({ user }: { user: { id: string; email?: st
 
       {lastMeeting.decisions.length ? (
         <div className="mb-3">
-          <p className="mb-1 text-xs font-bold text-ink">Unfinished decisions ({lastMeeting.decisions.length})</p>
+          <p className="mb-1 text-xs font-bold text-ink">{language === "km" ? "សេចក្តីសម្រេចដែលមិនទាន់អនុវត្ត" : "Unfinished decisions"} ({lastMeeting.decisions.length})</p>
           <ul className="space-y-1 text-xs text-slate-600">
             {lastMeeting.decisions.map((decision) => (
               <li key={decision.id}>• {decision.title}</li>
@@ -74,7 +75,7 @@ export async function NextMeetingPrep({ user }: { user: { id: string; email?: st
         <div>
           <p className="mb-1 flex items-center gap-1 text-xs font-bold text-ink">
             <MessagesSquare className="h-3.5 w-3.5" />
-            Open questions
+            {language === "km" ? "សំណួរមិនទាន់មានចម្លើយ" : "Open questions"}
           </p>
           <ul className="space-y-1 text-xs text-slate-600">
             {openQuestions.slice(0, 5).map((question, index) => (
