@@ -94,6 +94,16 @@ export function hasTranscriptionPromptLeakage(text: string) {
 export function hasLowSpeechSignal(text: string) {
   const timestampMatches = text.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g) ?? [];
   const compact = stripSpeakerLabels(text)
+    // Bracketed annotations - [unclear] above all, whatever language it comes
+    // back in - are not spoken content and must not count towards the
+    // repetition checks below. The transcriber is asked to mark every span it
+    // can hear but cannot make out, so a genuinely difficult recording comes
+    // back with that marker many times over: honest reporting, and the exact
+    // shape the hallucination-loop check reads as one word repeated forever.
+    // Dropping them here leaves those checks looking at the real words only,
+    // and a transcript that is nothing but markers still falls through to the
+    // empty case below, which is what it is.
+    .replace(/\[[^\]\n]{1,30}\]/g, " ")
     .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
