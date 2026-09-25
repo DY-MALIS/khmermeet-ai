@@ -36,9 +36,6 @@ import {
 // the unit off and takes automatic gain with it, leaving the raw capsule,
 // which is much quieter. On a phone the device is left to do its job and the
 // browser adds nothing on top.
-export type RecordingDeviceMode = "phone" | "computer";
-const RECORDING_MODE_STORAGE_KEY = "khmermeet.recordingDeviceMode";
-
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
@@ -48,25 +45,16 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleSize: { ideal: 16 }
 };
 
-// What a phone is asked for: let the device's own voice processing run, and
-// do not add a second stage in the browser on top of it.
-const phoneAudioConstraints: MediaTrackConstraints = {
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-  channelCount: { ideal: 1 }
-};
-
-// Best guess at which mode to start in, overridable and remembered. Touch
-// support plus a coarse pointer is what separates a phone or tablet from a
-// laptop with a touchscreen reasonably well; getting it wrong only means the
-// person switches it once.
-function looksLikeHandheld() {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  const coarse = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
-  const touch = (navigator.maxTouchPoints ?? 0) > 1;
-  return coarse && touch;
-}
+// How loud the microphone signal should be before it reaches the compressor.
+// About -20 dBFS during speech, which is a normal recording level and leaves
+// plenty of headroom.
+const TARGET_INPUT_RMS = 0.1;
+// Below this there is nothing to measure - an empty room, not a weak
+// microphone - so the gain is left where it is rather than wound up into the
+// noise floor.
+const SPEECH_FLOOR_RMS = 0.002;
+const MIN_INPUT_GAIN = 1;
+const MAX_INPUT_GAIN = 16;
 
 // iOS ties automatic gain control to the same voice-processing audio unit as
 // echo cancellation. Asking for echoCancellation:false - which the room
@@ -121,6 +109,10 @@ export function RecordingPanel() {
   const micMonitorFrameRef = useRef<number | null>(null);
   const maxMicLevelRef = useRef(0);
   const maxRawMicLevelRef = useRef(0);
+  const inputGainRef = useRef<GainNode | null>(null);
+  const appliedGainRef = useRef(1);
+  const recentRawPeakRef = useRef(0);
+  const lastGainAdjustRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
@@ -137,7 +129,6 @@ export function RecordingPanel() {
   const [micLevel, setMicLevel] = useState(0);
   const [rawMicLevel, setRawMicLevel] = useState(0);
   const [micDiagnostics, setMicDiagnostics] = useState<string[]>([]);
-  const [deviceMode, setDeviceMode] = useState<RecordingDeviceMode>("computer");
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -165,13 +156,6 @@ export function RecordingPanel() {
       .catch(() => setDbUnavailable(true));
     const saved = readSavedMicrophoneId();
     if (saved) setSelectedDeviceId(saved);
-    let savedMode: string | null = null;
-    try {
-      savedMode = window.localStorage.getItem(RECORDING_MODE_STORAGE_KEY);
-    } catch {
-      // Private browsing can refuse storage; the guess below still applies.
-    }
-    setDeviceMode(savedMode === "phone" || savedMode === "computer" ? savedMode : looksLikeHandheld() ? "phone" : "computer");
     void loadAudioDevices();
 
     return () => cleanupRecording();
@@ -416,7 +400,7 @@ export function RecordingPanel() {
     lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
     lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
     lines.push(`ការកែសំឡេងក្នុង browser៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
-    lines.push(`របៀបថត៖ ${deviceMode === "phone" ? "ទូរស័ព្ទ" : "កុំព្យូទ័រ"}`);
+    lines.push(`ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់ app៖ x${appliedGainRef.current.toFixed(1)}`);
     return lines;
   }
 
@@ -427,18 +411,10 @@ export function RecordingPanel() {
     return settings.autoGainControl === true;
   }
 
-  function rememberDeviceMode(mode: RecordingDeviceMode) {
-    setDeviceMode(mode);
-    try {
-      window.localStorage.setItem(RECORDING_MODE_STORAGE_KEY, mode);
-    } catch {
-      // Not being able to remember the choice is not worth failing over.
-    }
-  }
-
   function buildAudioConstraints(): MediaTrackConstraints {
-    const base = deviceMode === "phone" ? phoneAudioConstraints : clearVoiceAudioConstraints;
-    return selectedDeviceId ? { ...base, deviceId: { exact: selectedDeviceId } } : base;
+    return selectedDeviceId
+      ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
+      : clearVoiceAudioConstraints;
   }
 
   function cleanupRecording() {
@@ -483,6 +459,34 @@ export function RecordingPanel() {
     await sentinel?.release().catch(() => undefined);
   }
 
+  // Walks the input gain towards whatever this microphone actually needs.
+  // Driven by the loudest moment in the last stretch rather than the current
+  // instant, so it settles on the level of someone speaking instead of
+  // pumping between words, and it moves slowly enough not to be audible.
+  function adjustInputGain(rawRms: number) {
+    const gainNode = inputGainRef.current;
+    if (!gainNode) return;
+    recentRawPeakRef.current = Math.max(recentRawPeakRef.current, rawRms);
+
+    const now = Date.now();
+    if (now - lastGainAdjustRef.current < 700) return;
+    lastGainAdjustRef.current = now;
+
+    const peak = recentRawPeakRef.current;
+    // Decay rather than reset, so one loud moment does not hold the gain down
+    // for the rest of the meeting and a quiet stretch does not wind it up.
+    recentRawPeakRef.current = peak * 0.6;
+    if (peak < SPEECH_FLOOR_RMS) return;
+
+    const wanted = Math.min(MAX_INPUT_GAIN, Math.max(MIN_INPUT_GAIN, TARGET_INPUT_RMS / peak));
+    appliedGainRef.current = wanted;
+    try {
+      gainNode.gain.setTargetAtTime(wanted, gainNode.context.currentTime, 1.5);
+    } catch {
+      gainNode.gain.value = wanted;
+    }
+  }
+
   function stopMicMonitor() {
     if (micMonitorFrameRef.current !== null) {
       cancelAnimationFrame(micMonitorFrameRef.current);
@@ -490,6 +494,10 @@ export function RecordingPanel() {
     }
     setMicLevel(0);
     setRawMicLevel(0);
+    inputGainRef.current = null;
+    appliedGainRef.current = 1;
+    recentRawPeakRef.current = 0;
+    lastGainAdjustRef.current = 0;
   }
 
   async function analyzeRecordedAudio(blob: Blob) {
@@ -533,6 +541,7 @@ export function RecordingPanel() {
         const rawRms = rmsOf(rawAnalyser, rawData);
         maxRawMicLevelRef.current = Math.max(maxRawMicLevelRef.current, rawRms);
         setRawMicLevel(Math.min(1, rawRms * 12));
+        adjustInputGain(rawRms);
       }
       micMonitorFrameRef.current = requestAnimationFrame(updateLevel);
     };
@@ -550,6 +559,15 @@ export function RecordingPanel() {
     recordingAudioContextRef.current = audioContext;
     await audioContext.resume().catch(() => undefined);
     const source = audioContext.createMediaStreamSource(microphoneStream);
+    // Stands in for the automatic gain control the device may not be giving
+    // us. A laptop usually grants it and arrives at a healthy level, so this
+    // sits near 1x and does nothing. A phone asked to leave its voice
+    // processing off - which is what keeps the person at the far end of the
+    // table from being erased as background noise - hands back the raw
+    // capsule instead, which is far quieter; here that is measured and made
+    // up for. Nobody has to know which device they are on.
+    const inputGain = audioContext.createGain();
+    inputGain.gain.value = 1;
     const highpass = audioContext.createBiquadFilter();
     highpass.type = "highpass";
     highpass.frequency.value = 70;
@@ -569,7 +587,11 @@ export function RecordingPanel() {
     // which is the opposite of what the compressor is here for. 5x is +14 dB,
     // putting the ceiling at about -19.8 dBFS: still impossible to clip, while
     // a quiet far-field voice finally rises well clear of the floor.
-    makeupGain.gain.value = 5;
+    // Modest and fixed now that the input side is levelled: the compressor
+    // above holds the peaks down, and inputGain has already brought quiet
+    // speech up to a normal level, so this only restores what the compression
+    // took off rather than trying to rescue the whole signal on its own.
+    makeupGain.gain.value = 2.5;
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
     // A second tap on the microphone before any processing. The on-screen
@@ -581,12 +603,13 @@ export function RecordingPanel() {
     rawAnalyser.fftSize = 1024;
     const destination = audioContext.createMediaStreamDestination();
     source.connect(rawAnalyser);
-    source.connect(highpass);
+    source.connect(inputGain);
+    inputGain.connect(highpass);
     highpass.connect(compressor);
     compressor.connect(makeupGain);
     makeupGain.connect(analyser);
     makeupGain.connect(destination);
-    return { analyser, rawAnalyser, recordingStream: destination.stream };
+    return { analyser, rawAnalyser, inputGain, recordingStream: destination.stream };
   }
 
   async function buildLevelAnalyserFallback(microphoneStream: MediaStream) {
@@ -621,7 +644,7 @@ export function RecordingPanel() {
       let rawStream = await openMicrophoneStream();
       let [track] = rawStream.getAudioTracks();
       let usedVoiceProcessing = false;
-      if (deviceMode === "computer" && !automaticGainWasGranted(track)) {
+      if (!automaticGainWasGranted(track)) {
         const processedStream = await navigator.mediaDevices
           .getUserMedia({
             audio: selectedDeviceId
@@ -643,22 +666,15 @@ export function RecordingPanel() {
       let recordingStream = rawStream;
       let analyser: AnalyserNode;
       let rawAnalyser: AnalyserNode | undefined;
-      if (deviceMode === "phone") {
-        // Record exactly what the phone's own voice processing produced. A
-        // second compressor and gain stage in the browser is at best
-        // redundant on top of it, and the meter here reads the microphone
-        // itself rather than a processed copy of it.
+      try {
+        const audioGraph = await buildRecordingAudioGraph(rawStream);
+        recordingStream = audioGraph.recordingStream;
+        processedStreamRef.current = recordingStream;
+        analyser = audioGraph.analyser;
+        rawAnalyser = audioGraph.rawAnalyser;
+        inputGainRef.current = audioGraph.inputGain;
+      } catch {
         analyser = await buildLevelAnalyserFallback(rawStream);
-      } else {
-        try {
-          const audioGraph = await buildRecordingAudioGraph(rawStream);
-          recordingStream = audioGraph.recordingStream;
-          processedStreamRef.current = recordingStream;
-          analyser = audioGraph.analyser;
-          rawAnalyser = audioGraph.rawAnalyser;
-        } catch {
-          analyser = await buildLevelAnalyserFallback(rawStream);
-        }
       }
       setMicDiagnostics(describeMicTrack(track, Boolean(rawAnalyser), usedVoiceProcessing));
       startMicMonitor(analyser, rawAnalyser);
@@ -985,47 +1001,8 @@ export function RecordingPanel() {
           </select>
         </label>
       </div>
-      {/* A phone and a computer need opposite microphone settings, so the
-          recorder asks which one this is rather than trying to satisfy both.
-          The starting choice is a guess from the screen; changing it is
-          remembered. */}
-      <div className="mb-5 space-y-2">
-        <p className="text-sm font-semibold text-slate-600">អ្នកកំពុងថតលើអ្វី?</p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {([
-            {
-              mode: "phone" as const,
-              title: "ទូរស័ព្ទ / ថេប្លេត",
-              detail: "ប្រើប្រព័ន្ធសំឡេងរបស់ឧបករណ៍ផ្ទាល់ — ច្បាស់ជាងសម្រាប់ទូរស័ព្ទ"
-            },
-            {
-              mode: "computer" as const,
-              title: "កុំព្យូទ័រ / laptop",
-              detail: "សម្រាប់ចាប់សំឡេងអ្នកអង្គុយឆ្ងាយក្នុងបន្ទប់ប្រជុំ"
-            }
-          ]).map((option) => (
-            <button
-              key={option.mode}
-              type="button"
-              onClick={() => rememberDeviceMode(option.mode)}
-              disabled={state === "recording" || state === "paused" || uploading}
-              aria-pressed={deviceMode === option.mode}
-              className={`rounded-xl border p-3 text-left transition disabled:opacity-60 ${
-                deviceMode === option.mode
-                  ? "border-leaf bg-leaf/10 ring-1 ring-leaf"
-                  : "border-slate-200 bg-white hover:border-slate-300"
-              }`}
-            >
-              <span className="block text-sm font-semibold text-ink">{option.title}</span>
-              <span className="mt-0.5 block text-xs leading-5 text-slate-500">{option.detail}</span>
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500">
-          បើសំឡេងថតមិនច្បាស់ សូមសាកប្តូរទៅជម្រើសម្ខាងទៀត រួចថតសាកម្តងទៀត។
-        </p>
-      </div>
-      <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
+
+        <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
         <div className="block space-y-2">
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-slate-600">មីក្រូហ្វូន</span>
