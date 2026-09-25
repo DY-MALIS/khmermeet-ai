@@ -23,6 +23,22 @@ import {
 // Browser noise suppression is tuned for close-talk calls and can erase quiet
 // far-field speakers as "background"; the server-side ffmpeg pass handles
 // denoise/leveling before transcription, where it can be retried safely.
+// Two recording modes, because a phone and a computer need opposite things
+// and a single setting for both has now failed twice in the owner's hands.
+//
+// A laptop recording a meeting room is a far-field problem: the browser's own
+// noise suppression is tuned for someone talking into a headset and erases the
+// quiet person at the other end of the table as "background", so it is turned
+// off and the leveling is done afterwards.
+//
+// A phone is the opposite. Its voice processing is the whole reason an iPhone
+// sounds good, and it is one unit: asking for echoCancellation:false switches
+// the unit off and takes automatic gain with it, leaving the raw capsule,
+// which is much quieter. On a phone the device is left to do its job and the
+// browser adds nothing on top.
+export type RecordingDeviceMode = "phone" | "computer";
+const RECORDING_MODE_STORAGE_KEY = "khmermeet.recordingDeviceMode";
+
 const clearVoiceAudioConstraints: MediaTrackConstraints = {
   echoCancellation: false,
   noiseSuppression: false,
@@ -31,6 +47,26 @@ const clearVoiceAudioConstraints: MediaTrackConstraints = {
   sampleRate: { ideal: 48000 },
   sampleSize: { ideal: 16 }
 };
+
+// What a phone is asked for: let the device's own voice processing run, and
+// do not add a second stage in the browser on top of it.
+const phoneAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: { ideal: 1 }
+};
+
+// Best guess at which mode to start in, overridable and remembered. Touch
+// support plus a coarse pointer is what separates a phone or tablet from a
+// laptop with a touchscreen reasonably well; getting it wrong only means the
+// person switches it once.
+function looksLikeHandheld() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const coarse = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const touch = (navigator.maxTouchPoints ?? 0) > 1;
+  return coarse && touch;
+}
 
 // iOS ties automatic gain control to the same voice-processing audio unit as
 // echo cancellation. Asking for echoCancellation:false - which the room
@@ -101,6 +137,7 @@ export function RecordingPanel() {
   const [micLevel, setMicLevel] = useState(0);
   const [rawMicLevel, setRawMicLevel] = useState(0);
   const [micDiagnostics, setMicDiagnostics] = useState<string[]>([]);
+  const [deviceMode, setDeviceMode] = useState<RecordingDeviceMode>("computer");
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -128,6 +165,13 @@ export function RecordingPanel() {
       .catch(() => setDbUnavailable(true));
     const saved = readSavedMicrophoneId();
     if (saved) setSelectedDeviceId(saved);
+    let savedMode: string | null = null;
+    try {
+      savedMode = window.localStorage.getItem(RECORDING_MODE_STORAGE_KEY);
+    } catch {
+      // Private browsing can refuse storage; the guess below still applies.
+    }
+    setDeviceMode(savedMode === "phone" || savedMode === "computer" ? savedMode : looksLikeHandheld() ? "phone" : "computer");
     void loadAudioDevices();
 
     return () => cleanupRecording();
@@ -372,6 +416,7 @@ export function RecordingPanel() {
     lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
     lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
     lines.push(`ការកែសំឡេងក្នុង browser៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
+    lines.push(`របៀបថត៖ ${deviceMode === "phone" ? "ទូរស័ព្ទ" : "កុំព្យូទ័រ"}`);
     return lines;
   }
 
@@ -382,10 +427,18 @@ export function RecordingPanel() {
     return settings.autoGainControl === true;
   }
 
+  function rememberDeviceMode(mode: RecordingDeviceMode) {
+    setDeviceMode(mode);
+    try {
+      window.localStorage.setItem(RECORDING_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Not being able to remember the choice is not worth failing over.
+    }
+  }
+
   function buildAudioConstraints(): MediaTrackConstraints {
-    return selectedDeviceId
-      ? { ...clearVoiceAudioConstraints, deviceId: { exact: selectedDeviceId } }
-      : clearVoiceAudioConstraints;
+    const base = deviceMode === "phone" ? phoneAudioConstraints : clearVoiceAudioConstraints;
+    return selectedDeviceId ? { ...base, deviceId: { exact: selectedDeviceId } } : base;
   }
 
   function cleanupRecording() {
@@ -568,7 +621,7 @@ export function RecordingPanel() {
       let rawStream = await openMicrophoneStream();
       let [track] = rawStream.getAudioTracks();
       let usedVoiceProcessing = false;
-      if (!automaticGainWasGranted(track)) {
+      if (deviceMode === "computer" && !automaticGainWasGranted(track)) {
         const processedStream = await navigator.mediaDevices
           .getUserMedia({
             audio: selectedDeviceId
@@ -590,14 +643,22 @@ export function RecordingPanel() {
       let recordingStream = rawStream;
       let analyser: AnalyserNode;
       let rawAnalyser: AnalyserNode | undefined;
-      try {
-        const audioGraph = await buildRecordingAudioGraph(rawStream);
-        recordingStream = audioGraph.recordingStream;
-        processedStreamRef.current = recordingStream;
-        analyser = audioGraph.analyser;
-        rawAnalyser = audioGraph.rawAnalyser;
-      } catch {
+      if (deviceMode === "phone") {
+        // Record exactly what the phone's own voice processing produced. A
+        // second compressor and gain stage in the browser is at best
+        // redundant on top of it, and the meter here reads the microphone
+        // itself rather than a processed copy of it.
         analyser = await buildLevelAnalyserFallback(rawStream);
+      } else {
+        try {
+          const audioGraph = await buildRecordingAudioGraph(rawStream);
+          recordingStream = audioGraph.recordingStream;
+          processedStreamRef.current = recordingStream;
+          analyser = audioGraph.analyser;
+          rawAnalyser = audioGraph.rawAnalyser;
+        } catch {
+          analyser = await buildLevelAnalyserFallback(rawStream);
+        }
       }
       setMicDiagnostics(describeMicTrack(track, Boolean(rawAnalyser), usedVoiceProcessing));
       startMicMonitor(analyser, rawAnalyser);
@@ -923,6 +984,46 @@ export function RecordingPanel() {
             <option value="en">English only (translate all to English)</option>
           </select>
         </label>
+      </div>
+      {/* A phone and a computer need opposite microphone settings, so the
+          recorder asks which one this is rather than trying to satisfy both.
+          The starting choice is a guess from the screen; changing it is
+          remembered. */}
+      <div className="mb-5 space-y-2">
+        <p className="text-sm font-semibold text-slate-600">អ្នកកំពុងថតលើអ្វី?</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {([
+            {
+              mode: "phone" as const,
+              title: "ទូរស័ព្ទ / ថេប្លេត",
+              detail: "ប្រើប្រព័ន្ធសំឡេងរបស់ឧបករណ៍ផ្ទាល់ — ច្បាស់ជាងសម្រាប់ទូរស័ព្ទ"
+            },
+            {
+              mode: "computer" as const,
+              title: "កុំព្យូទ័រ / laptop",
+              detail: "សម្រាប់ចាប់សំឡេងអ្នកអង្គុយឆ្ងាយក្នុងបន្ទប់ប្រជុំ"
+            }
+          ]).map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              onClick={() => rememberDeviceMode(option.mode)}
+              disabled={state === "recording" || state === "paused" || uploading}
+              aria-pressed={deviceMode === option.mode}
+              className={`rounded-xl border p-3 text-left transition disabled:opacity-60 ${
+                deviceMode === option.mode
+                  ? "border-leaf bg-leaf/10 ring-1 ring-leaf"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              }`}
+            >
+              <span className="block text-sm font-semibold text-ink">{option.title}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-slate-500">{option.detail}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500">
+          បើសំឡេងថតមិនច្បាស់ សូមសាកប្តូរទៅជម្រើសម្ខាងទៀត រួចថតសាកម្តងទៀត។
+        </p>
       </div>
       <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
         <div className="block space-y-2">
