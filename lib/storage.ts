@@ -1630,11 +1630,20 @@ function isLikelyIncompleteTranscript(transcript: string) {
   if (!clean || isTimestampOnlyTranscript(clean)) return true;
 
   const lower = clean.toLowerCase();
+  // "silence" is the one word in this list a good transcript can legitimately
+  // contain: a model annotating a pause as [silence] partway through, or
+  // somebody actually saying it. Matching it anywhere threw that whole
+  // transcript away as an empty recording - the caller either discards it
+  // with "no clear speech was detected" or pays to transcribe the same audio
+  // again. A report that the recording is silent is a sentence or two; a
+  // meeting is not, so length tells the two apart. The rest of these are
+  // phrases a model only writes when reporting that it found nothing.
+  const reportsSilence = lower.includes("silence") && clean.length <= 120;
   if (
     lower.includes("no clear speech") ||
     lower.includes("no discernible speech") ||
     lower.includes("there is no discernible speech") ||
-    lower.includes("silence") ||
+    reportsSilence ||
     lower.includes("no speech detected") ||
     clean.includes("មិនមានសំឡេង") ||
     clean.includes("មិនច្បាស់ទាំងអស់")
