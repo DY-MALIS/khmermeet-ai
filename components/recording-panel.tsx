@@ -84,6 +84,7 @@ export function RecordingPanel() {
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
   const maxMicLevelRef = useRef(0);
+  const maxRawMicLevelRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [supported, setSupported] = useState(true);
   const [state, setState] = useState<"idle" | "recording" | "paused" | "stopped">("idle");
@@ -98,6 +99,8 @@ export function RecordingPanel() {
   const [bluetoothNotice, setBluetoothNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [activeMicLabel, setActiveMicLabel] = useState("");
   const [micLevel, setMicLevel] = useState(0);
+  const [rawMicLevel, setRawMicLevel] = useState(0);
+  const [micDiagnostics, setMicDiagnostics] = useState<string[]>([]);
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -351,6 +354,27 @@ export function RecordingPanel() {
   // voice processing, which is much louder and is the only thing a phone in
   // that state can usefully record. A browser that reports no settings at all
   // is left alone - there is nothing to act on.
+  // A phone cannot be inspected from here, so it has to be able to say what it
+  // is doing. Everything below comes from the track the device actually
+  // handed over, not from what was asked for.
+  function describeMicTrack(track: MediaStreamTrack | undefined, processed: boolean, voiceProcessing: boolean) {
+    const lines: string[] = [];
+    lines.push(`ឧបករណ៍៖ ${track?.label || "(គ្មានឈ្មោះ)"}`);
+    const settings = (track?.getSettings?.() ?? {}) as MediaTrackSettings & {
+      autoGainControl?: boolean;
+      noiseSuppression?: boolean;
+      echoCancellation?: boolean;
+    };
+    const yesNo = (value: boolean | undefined) => (value === undefined ? "មិនបានប្រាប់" : value ? "បើក" : "បិទ");
+    lines.push(`បង្កើនសំឡេងស្វ័យប្រវត្តិ៖ ${yesNo(settings.autoGainControl)}`);
+    lines.push(`កាត់សំឡេងរំខាន៖ ${yesNo(settings.noiseSuppression)}`);
+    lines.push(`កាត់អេកូ៖ ${yesNo(settings.echoCancellation)}`);
+    lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
+    lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
+    lines.push(`ការកែសំឡេងក្នុង browser៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
+    return lines;
+  }
+
   function automaticGainWasGranted(track: MediaStreamTrack | undefined) {
     if (!track || typeof track.getSettings !== "function") return true;
     const settings = track.getSettings() as MediaTrackSettings & { autoGainControl?: boolean };
@@ -412,6 +436,7 @@ export function RecordingPanel() {
       micMonitorFrameRef.current = null;
     }
     setMicLevel(0);
+    setRawMicLevel(0);
   }
 
   async function analyzeRecordedAudio(blob: Blob) {
@@ -432,21 +457,30 @@ export function RecordingPanel() {
     }
   }
 
-  function startMicMonitor(analyser: AnalyserNode) {
+  function startMicMonitor(analyser: AnalyserNode, rawAnalyser?: AnalyserNode) {
     stopMicMonitor();
     maxMicLevelRef.current = 0;
 
-    const data = new Uint8Array(analyser.fftSize);
-    const updateLevel = () => {
-      analyser.getByteTimeDomainData(data);
+    const data = new Uint8Array(new ArrayBuffer(analyser.fftSize));
+    const rawData = rawAnalyser ? new Uint8Array(new ArrayBuffer(rawAnalyser.fftSize)) : null;
+    const rmsOf = (node: AnalyserNode, into: Uint8Array<ArrayBuffer>) => {
+      node.getByteTimeDomainData(into);
       let sum = 0;
-      for (const value of data) {
+      for (const value of into) {
         const centered = (value - 128) / 128;
         sum += centered * centered;
       }
-      const rms = Math.sqrt(sum / data.length);
+      return Math.sqrt(sum / into.length);
+    };
+    const updateLevel = () => {
+      const rms = rmsOf(analyser, data);
       maxMicLevelRef.current = Math.max(maxMicLevelRef.current, rms);
       setMicLevel(Math.min(1, rms * 12));
+      if (rawAnalyser && rawData) {
+        const rawRms = rmsOf(rawAnalyser, rawData);
+        maxRawMicLevelRef.current = Math.max(maxRawMicLevelRef.current, rawRms);
+        setRawMicLevel(Math.min(1, rawRms * 12));
+      }
       micMonitorFrameRef.current = requestAnimationFrame(updateLevel);
     };
     updateLevel();
@@ -485,13 +519,21 @@ export function RecordingPanel() {
     makeupGain.gain.value = 5;
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 1024;
+    // A second tap on the microphone before any processing. The on-screen
+    // meter reads the processed signal, so if this graph ever weakens or
+    // silences the audio on a device, the meter would look healthy while the
+    // recording was not - the failure would be invisible. Comparing the two
+    // is what makes that visible.
+    const rawAnalyser = audioContext.createAnalyser();
+    rawAnalyser.fftSize = 1024;
     const destination = audioContext.createMediaStreamDestination();
+    source.connect(rawAnalyser);
     source.connect(highpass);
     highpass.connect(compressor);
     compressor.connect(makeupGain);
     makeupGain.connect(analyser);
     makeupGain.connect(destination);
-    return { analyser, recordingStream: destination.stream };
+    return { analyser, rawAnalyser, recordingStream: destination.stream };
   }
 
   async function buildLevelAnalyserFallback(microphoneStream: MediaStream) {
@@ -547,15 +589,18 @@ export function RecordingPanel() {
       await loadAudioDevices();
       let recordingStream = rawStream;
       let analyser: AnalyserNode;
+      let rawAnalyser: AnalyserNode | undefined;
       try {
         const audioGraph = await buildRecordingAudioGraph(rawStream);
         recordingStream = audioGraph.recordingStream;
         processedStreamRef.current = recordingStream;
         analyser = audioGraph.analyser;
+        rawAnalyser = audioGraph.rawAnalyser;
       } catch {
         analyser = await buildLevelAnalyserFallback(rawStream);
       }
-      startMicMonitor(analyser);
+      setMicDiagnostics(describeMicTrack(track, Boolean(rawAnalyser), usedVoiceProcessing));
+      startMicMonitor(analyser, rawAnalyser);
       const mimeType = getMimeType();
       const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
       chunks.current = [];
@@ -1011,6 +1056,31 @@ export function RecordingPanel() {
                 ? "ការថតត្រូវបានផ្អាក"
                 : "ចាប់ផ្តើមថត ដើម្បីពិនិត្យកម្រិត microphone"}
           </p>
+          {/* A phone cannot be inspected from a laptop. These are the numbers
+              the device itself reports, so a "it is quiet on my phone" report
+              can be answered with measurements instead of guesses. The raw
+              figure is the microphone before any processing; the processed one
+              is what actually gets recorded. */}
+          {state === "recording" || state === "paused" ? (
+            <details className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+              <summary className="cursor-pointer font-semibold">ព័ត៌មានបច្ចេកទេស (សម្រាប់រាយការណ៍បញ្ហា)</summary>
+              <div className="mt-2 space-y-1">
+                <p className="tabular-nums">
+                  សំឡេងឆៅពីមីក្រូហ្វូន៖ <strong>{Math.round(rawMicLevel * 100)}%</strong>
+                  {"  →  "}
+                  ក្រោយកែ៖ <strong>{Math.round(micLevel * 100)}%</strong>
+                </p>
+                {rawMicLevel > 0.02 && micLevel < rawMicLevel * 0.8 ? (
+                  <p className="font-semibold text-amber-700">
+                    ការកែសំឡេងកំពុងធ្វើឱ្យសំឡេង​ខ្សោយជាងមុន — សូមប្រាប់ខ្ញុំលេខទាំងពីរនេះ។
+                  </p>
+                ) : null}
+                {micDiagnostics.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </div>
       </div>
       <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-inner sm:p-5">
