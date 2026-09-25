@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, Sun, X } from "lucide-react";
+import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -141,6 +141,7 @@ export function RecordingPanel() {
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [voiceProcessingActive, setVoiceProcessingActive] = useState(false);
   const [quietScreenActive, setQuietScreenActive] = useState(false);
+  const [quietScreenControlsVisible, setQuietScreenControlsVisible] = useState(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
   const [transcriptionLanguage, setTranscriptionLanguage] = useState<"km" | "en" | "km-en">("km-en");
@@ -232,14 +233,6 @@ export function RecordingPanel() {
     setQuietScreenActive(false);
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
   }, [state]);
-
-  useEffect(() => {
-    const syncQuietScreen = () => {
-      if (!document.fullscreenElement) setQuietScreenActive(false);
-    };
-    document.addEventListener("fullscreenchange", syncQuietScreen);
-    return () => document.removeEventListener("fullscreenchange", syncQuietScreen);
-  }, []);
 
   function getMimeType() {
     const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
@@ -912,6 +905,7 @@ export function RecordingPanel() {
   }
 
   async function enterQuietScreen() {
+    setQuietScreenControlsVisible(false);
     setQuietScreenActive(true);
     void requestRecordingWakeLock();
     try {
@@ -925,6 +919,7 @@ export function RecordingPanel() {
 
   async function exitQuietScreen() {
     setQuietScreenActive(false);
+    setQuietScreenControlsVisible(false);
     void requestRecordingWakeLock();
     if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
   }
@@ -1237,46 +1232,40 @@ export function RecordingPanel() {
       ) : null}
       </div>
       {quietScreenActive && state === "recording" ? (
-        <div className="fixed inset-0 z-[100] flex min-h-dvh flex-col items-center justify-between bg-black px-6 py-8 text-center text-white">
-          <div className="flex w-full justify-end">
-            <button
-              aria-label="ត្រឡប់ពីអេក្រង់ងងឹត"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 text-white/70 transition hover:bg-white/10 hover:text-white"
-              onClick={() => void exitQuietScreen()}
-              title="ត្រឡប់ទៅផ្ទាំងថត"
-              type="button"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div>
-            <div className="mb-5 flex items-center justify-center gap-3 text-sm font-semibold text-white/70">
-              <span className="h-3 w-3 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
-              កំពុងថតសំឡេង
+        <div className="fixed inset-0 z-[100] h-dvh w-screen bg-black" role="group" aria-label="អេក្រង់ងងឹត ខណៈកំពុងថតសំឡេង">
+          {quietScreenControlsVisible ? (
+            <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center text-white">
+              <p className="text-sm text-white/70">កំពុងថតសំឡេង · {formatTime(seconds)}</p>
+              <div className="flex w-full max-w-sm gap-3">
+                <button
+                  className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-lg border border-white/30 px-4 font-semibold text-white"
+                  onClick={() => void exitQuietScreen()}
+                  type="button"
+                >
+                  <Sun className="h-4 w-4" />
+                  អេក្រង់ភ្លឺ
+                </button>
+                <button
+                  className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-lg border border-red-400/50 px-4 font-semibold text-red-200"
+                  onClick={stop}
+                  type="button"
+                >
+                  <Square className="h-4 w-4" />
+                  ឈប់ថត
+                </button>
+              </div>
+              <button className="text-sm text-white/70 underline" onClick={() => setQuietScreenControlsVisible(false)} type="button">
+                បិទពន្លឺវិញ
+              </button>
             </div>
-            <p className="text-5xl font-semibold tabular-nums text-white/80 sm:text-6xl">{formatTime(seconds)}</p>
-            <p className="mt-5 max-w-sm text-sm leading-6 text-white/45">
-              អេក្រង់ត្រូវបានបន្ថយពន្លឺ ដើម្បីកុំឱ្យរំខានការប្រជុំ។ សូមកុំចាក់សោទូរស័ព្ទ។
-            </p>
-          </div>
-          <div className="flex w-full max-w-sm gap-3">
+          ) : (
             <button
-              className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/10 px-4 font-semibold text-white/80"
-              onClick={() => void exitQuietScreen()}
+              aria-label="ប៉ះអេក្រង់ ដើម្បីបង្ហាញប៊ូតុងឈប់ថត និងអេក្រង់ភ្លឺ"
+              className="block h-full w-full bg-black"
+              onClick={() => setQuietScreenControlsVisible(true)}
               type="button"
-            >
-              <Sun className="h-4 w-4" />
-              អេក្រង់ភ្លឺ
-            </button>
-            <button
-              className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-950/50 px-4 font-semibold text-red-100"
-              onClick={stop}
-              type="button"
-            >
-              <Square className="h-4 w-4" />
-              ឈប់ថត
-            </button>
-          </div>
+            />
+          )}
         </div>
       ) : null}
     </div>
