@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, X } from "lucide-react";
+import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, Sun, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
@@ -913,6 +913,7 @@ export function RecordingPanel() {
 
   async function enterQuietScreen() {
     setQuietScreenActive(true);
+    void requestRecordingWakeLock();
     try {
       if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -924,6 +925,7 @@ export function RecordingPanel() {
 
   async function exitQuietScreen() {
     setQuietScreenActive(false);
+    void requestRecordingWakeLock();
     if (document.fullscreenElement) await document.exitFullscreen().catch(() => undefined);
   }
 
@@ -948,7 +950,7 @@ export function RecordingPanel() {
         ពេលកំពុងថត app នឹងព្យាយាមរក្សាអេក្រង់ឱ្យភ្លឺ ដើម្បីកុំឱ្យ browser ផ្អាកមីក្រូហ្វូន។ សូមទុកទំព័រនេះបើករហូតដល់ចុចបញ្ឈប់ ព្រោះការចាក់សោ ឬបិទអេក្រង់អាចធ្វើឱ្យការថតឈប់នៅលើទូរស័ព្ទ/Browser មួយចំនួន។
         {state === "recording" ? (
           <span className={`mt-2 block font-semibold ${wakeLockActive ? "text-leaf" : "text-amber-700"}`}>
-            {wakeLockActive ? "រក្សាអេក្រង់ឱ្យភ្លឺ៖ កំពុងដំណើរការ" : "Browser នេះមិនអនុញ្ញាត wake lock ទេ - សូមកុំចាក់សោអេក្រង់។"}
+            {wakeLockActive ? "រក្សាអេក្រង់មិនឱ្យរលត់៖ កំពុងដំណើរការ" : "មិនទាន់អាចរក្សាអេក្រង់មិនឱ្យរលត់បានទេ។ សូមចុចជម្រើសអេក្រង់ម្តងទៀត និងកុំចាក់សោអេក្រង់។"}
           </span>
         ) : null}
       </div>
@@ -1180,14 +1182,25 @@ export function RecordingPanel() {
         </div>
       </div>
       {state === "recording" ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <button
-          className="mt-4 flex min-h-14 w-full items-center justify-center gap-3 rounded-lg bg-slate-950 px-4 font-semibold text-white shadow-sm transition hover:bg-black"
+          className="flex min-h-14 w-full items-center justify-center gap-3 rounded-lg bg-slate-950 px-4 font-semibold text-white shadow-sm transition hover:bg-black"
           onClick={() => void enterQuietScreen()}
           type="button"
         >
           <Moon className="h-5 w-5" />
-          បិទពន្លឺអេក្រង់ ខណៈកំពុងថត
+          អេក្រង់ងងឹត ខណៈកំពុងថត
         </button>
+        <button
+          className="kh-button-secondary min-h-14 w-full"
+          onClick={() => void exitQuietScreen()}
+          aria-pressed={!quietScreenActive && wakeLockActive}
+          type="button"
+        >
+          <Sun className="h-5 w-5" />
+          រក្សាអេក្រង់ភ្លឺ មិនឱ្យរលត់
+        </button>
+        </div>
       ) : null}
       </div>
       {state === "stopped" ? (
@@ -1252,7 +1265,8 @@ export function RecordingPanel() {
               onClick={() => void exitQuietScreen()}
               type="button"
             >
-              ត្រឡប់
+              <Sun className="h-4 w-4" />
+              អេក្រង់ភ្លឺ
             </button>
             <button
               className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-950/50 px-4 font-semibold text-red-100"
@@ -1260,7 +1274,7 @@ export function RecordingPanel() {
               type="button"
             >
               <Square className="h-4 w-4" />
-              បញ្ឈប់
+              ឈប់ថត
             </button>
           </div>
         </div>
