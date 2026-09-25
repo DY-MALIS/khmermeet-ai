@@ -12,10 +12,19 @@ const PUBLIC_API_PREFIXES = [
   "/api/livekit-token",
   "/api/uploads/direct-init"
 ];
+const PUBLIC_APP_ASSETS = new Set([
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png"
+]);
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isApi = pathname.startsWith("/api/");
+
+  if (PUBLIC_APP_ASSETS.has(pathname)) return NextResponse.next();
 
   if (isApi && PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
