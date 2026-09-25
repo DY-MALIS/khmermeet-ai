@@ -111,7 +111,6 @@ export function RecordingPanel() {
   const maxMicLevelRef = useRef(0);
   const maxRawMicLevelRef = useRef(0);
   const inputGainRef = useRef<GainNode | null>(null);
-  const appliedGainRef = useRef(1);
   const recentRawPeakRef = useRef(0);
   const lastGainAdjustRef = useRef(0);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -130,6 +129,11 @@ export function RecordingPanel() {
   const [micLevel, setMicLevel] = useState(0);
   const [rawMicLevel, setRawMicLevel] = useState(0);
   const [micDiagnostics, setMicDiagnostics] = useState<string[]>([]);
+  // Live, not part of micDiagnostics: those lines are a snapshot taken when
+  // the microphone opens, and the gain is 1x at that moment by definition -
+  // it is only worked out from the sound once someone speaks. Reported as
+  // state so the panel shows what the app actually settled on.
+  const [appliedGain, setAppliedGain] = useState(1);
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -394,7 +398,6 @@ export function RecordingPanel() {
     lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
     lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
     lines.push(`ការកែសំឡេងក្នុងកម្មវិធីរុករក៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
-    lines.push(`ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់កម្មវិធី៖ x${appliedGainRef.current.toFixed(1)}`);
     return lines;
   }
 
@@ -473,7 +476,7 @@ export function RecordingPanel() {
     if (peak < SPEECH_FLOOR_RMS) return;
 
     const wanted = Math.min(MAX_INPUT_GAIN, Math.max(MIN_INPUT_GAIN, TARGET_INPUT_RMS / peak));
-    appliedGainRef.current = wanted;
+    setAppliedGain(wanted);
     try {
       gainNode.gain.setTargetAtTime(wanted, gainNode.context.currentTime, 1.5);
     } catch {
@@ -489,7 +492,7 @@ export function RecordingPanel() {
     setMicLevel(0);
     setRawMicLevel(0);
     inputGainRef.current = null;
-    appliedGainRef.current = 1;
+    setAppliedGain(1);
     recentRawPeakRef.current = 0;
     lastGainAdjustRef.current = 0;
   }
@@ -1192,6 +1195,9 @@ export function RecordingPanel() {
                 {micDiagnostics.map((line) => (
                   <p key={line}>{line}</p>
                 ))}
+                <p className="tabular-nums">
+                  ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់កម្មវិធី៖ <strong>x{appliedGain.toFixed(1)}</strong>
+                </p>
               </div>
             </details>
           ) : null}
