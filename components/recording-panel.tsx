@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
@@ -1231,7 +1232,7 @@ export function RecordingPanel() {
         </div>
       ) : null}
       </div>
-      {quietScreenActive && state === "recording" ? (
+      {typeof document !== "undefined" && quietScreenActive && state === "recording" ? createPortal(
         <div className="fixed inset-0 z-[100] h-dvh w-screen bg-black" role="group" aria-label="អេក្រង់ងងឹត ខណៈកំពុងថតសំឡេង">
           {quietScreenControlsVisible ? (
             <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center text-white">
@@ -1266,7 +1267,8 @@ export function RecordingPanel() {
               type="button"
             />
           )}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
