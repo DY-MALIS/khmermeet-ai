@@ -101,11 +101,60 @@ function parseErrorContext(status: number, detail: string): OpenRouterErrorConte
 }
 
 function errorMessage(status: number) {
-  if (status === 401 || status === 403) return "OpenRouter API key is invalid or does not have access.";
+  // 403 is also what OpenRouter returns once a key has spent its own limit
+  // ("Key limit exceeded"), which is a different thing to fix than a key that
+  // was typed wrong or revoked - confirmed live on this account, where the
+  // old wording sent everyone checking whether the key was valid while the
+  // account was simply out of allowance.
+  if (status === 401 || status === 403) {
+    return "OpenRouter refused the request: the API key is either wrong or has spent its limit. Check the key's spending limit and the account's credits.";
+  }
   if (status === 402) return "OpenRouter credits are not available. Please add credits to the OpenRouter account.";
   if (status === 408 || status === 504) return "OpenRouter request timed out.";
   if (status === 429) return "OpenRouter rate limit was reached. Please try again shortly.";
   return `OpenRouter API error ${status}.`;
+}
+
+export type OpenRouterKeyStatus = {
+  limit: number | null;
+  usage: number | null;
+  remaining: number | null;
+  exhausted: boolean;
+};
+
+// What OpenRouter itself says about this key: its spending limit, what has
+// been spent, and what is left. Free to ask (no model runs), so it is worth
+// asking whenever transcription has come back with nothing - an exhausted
+// key produces exactly the same empty result as a model that heard nothing,
+// and confirmed live that those two were indistinguishable to the person
+// pressing the button, who was told to press it again.
+export async function checkOpenRouterKeyStatus(timeoutMs = 8000): Promise<OpenRouterKeyStatus | null> {
+  if (!hasOpenRouterKey()) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/key", {
+      headers: requestHeaders(),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      // 401/403 here means the key itself is refused rather than spent out.
+      return response.status === 401 || response.status === 403
+        ? { limit: null, usage: null, remaining: null, exhausted: true }
+        : null;
+    }
+    const payload = (await response.json()) as {
+      data?: { limit?: number | null; usage?: number | null; limit_remaining?: number | null };
+    };
+    const limit = payload.data?.limit ?? null;
+    const usage = payload.data?.usage ?? null;
+    const remaining = payload.data?.limit_remaining ?? null;
+    return { limit, usage, remaining, exhausted: remaining !== null && remaining <= 0 };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function textModel() {

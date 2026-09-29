@@ -15,6 +15,7 @@ import {
 } from "@/lib/storage";
 import type { StoredChunkTranscripts } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { checkOpenRouterKeyStatus } from "@/lib/ai/openrouter";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
@@ -236,6 +237,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // succeeds, so that is what to tell people first. The old wording sent
       // the owner (and me) checking the microphone, the key and the credits
       // for a recording where none of those were the problem.
+      // Ask OpenRouter about the key before blaming the audio. A key that has
+      // spent its limit fails every call with a 403, and every one of those
+      // failures is swallowed on the way back up here (each attempt falls
+      // back to "no text" so that one bad window cannot lose a whole
+      // meeting), so an exhausted account and a model that heard nothing
+      // arrive looking exactly alike. Confirmed live: this account's key hit
+      // its limit and every recording came back with this message telling
+      // the owner to press the button again, which could never have worked.
+      const keyStatus = await checkOpenRouterKeyStatus();
+      if (keyStatus?.exhausted) {
+        const spent =
+          keyStatus.limit !== null && keyStatus.usage !== null
+            ? ` (បានប្រើ $${keyStatus.usage.toFixed(2)} ពីកម្រិតកំណត់ $${keyStatus.limit.toFixed(2)})`
+            : "";
+        return NextResponse.json(
+          {
+            error:
+              `គណនី OpenRouter អស់កម្រិតកំណត់ហើយ${spent} ដូច្នេះ AI មិនអាចដំណើរការបានទេ។ សំឡេងរបស់អ្នកត្រូវបានរក្សាទុកពេញលេញ។ សូមបញ្ចូលទឹកប្រាក់ ឬដំឡើងកម្រិតកំណត់របស់ key នៅ openrouter.ai រួចចុច «បំលែងសំឡេងជាអក្សរឡើងវិញ»។ ការចុចឡើងវិញមុនពេលនោះ នឹងមិនអាចជោគជ័យឡើយ។`
+          },
+          { status: 402 }
+        );
+      }
+
       const durationHint =
         meeting.duration && meeting.duration < 10
           ? " This recording is only a few seconds long, so there may not be enough speech in it."
