@@ -957,8 +957,8 @@ export async function synthesizeGeminiSpeech(text: string, gender: "female" | "m
       body: JSON.stringify({
         model: ttsModel(),
         input: clean,
-        // Kore and Charon had no misheard letters in the Khmer comparison.
-        voice: gender === "male" ? "Charon" : "Kore",
+        // Chosen by the owner by ear from the Khmer samples.
+        voice: gender === "male" ? "Achird" : "Aoede",
         response_format: "pcm"
       })
     });
