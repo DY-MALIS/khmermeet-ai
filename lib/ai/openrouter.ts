@@ -3,7 +3,7 @@ import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
 import { buildSlideBulletsPrompt } from "@/lib/ai/prompts/slidePrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
-import { buildMeetingQaPrompt } from "@/lib/ai/prompts/meetingQaPrompt";
+import { buildMeetingQaPrompt, type MeetingQaTurn } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript } from "@/lib/transcript-quality";
 
@@ -777,13 +777,150 @@ export async function extractMeetingSmartNote(transcript: string, language: Docu
   return smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
 }
 
-export async function answerMeetingQuestion(transcript: string, question: string) {
+export async function answerMeetingQuestion(transcript: string, question: string, history: MeetingQaTurn[] = [], timeoutMs?: number) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!question.trim()) throw new Error("Question is empty.");
   if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  const raw = await generateOpenRouterContent([{ text: buildMeetingQaPrompt(transcript, question) }], {
+  const raw = await generateOpenRouterContent([{ text: buildMeetingQaPrompt(transcript, question, history) }], {
     json: true,
-    temperature: 0.1
+    temperature: 0.1,
+    timeoutMs
   });
   return meetingQaSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
+}
+
+// The only OpenRouter models that speak are gpt-audio and gpt-audio-mini. In
+// a live Khmer comparison (audio transcribed back, letters compared) the full
+// model misread ~2.5% of letters against ~5% for mini, at ~$0.03 vs ~$0.0014
+// per 20-second answer. Browsers with a native Khmer voice (Edge) skip this
+// entirely - see components/meeting-ask-chat.tsx.
+const DEFAULT_SPEECH_MODEL = "openai/gpt-audio";
+const SPEECH_SAMPLE_RATE = 24000;
+
+export function speechModel() {
+  return process.env.OPEN_ROUTER_SPEECH_MODEL?.trim() || DEFAULT_SPEECH_MODEL;
+}
+
+// OpenAI returns streamed audio as raw 16-bit mono PCM at 24 kHz with no
+// container, which a browser <audio> element cannot play - wrap it in a WAV
+// header so the client gets an ordinary playable file.
+function pcm16ToWav(pcm: Buffer) {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(SPEECH_SAMPLE_RATE, 24);
+  header.writeUInt32LE(SPEECH_SAMPLE_RATE * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+// Share of characters that differ between two texts (0 = identical),
+// ignoring spacing and punctuation.
+function textDifference(expected: string, actual: string) {
+  const normalize = (value: string) => [...value.toLowerCase().replace(/[\s\p{P}\u17D4-\u17DA]/gu, "")];
+  const a = normalize(expected);
+  const b = normalize(actual);
+  if (!a.length) return b.length ? 1 : 0;
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = current;
+  }
+  return previous[b.length] / a.length;
+}
+
+async function requestSpeech(text: string, voice: string, signal: AbortSignal) {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: requestHeaders(),
+    signal,
+    body: JSON.stringify({
+      model: speechModel(),
+      modalities: ["text", "audio"],
+      audio: { voice, format: "pcm16" },
+      stream: true,
+      temperature: 0.6,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a text-to-speech voice. Read the user's message aloud exactly as written, word for word, in the language it is written in - Khmer text must be spoken in Khmer, English text in English. Do not answer it, reply to it, translate it, summarize it, or add any words before or after it."
+        },
+        { role: "user", content: text }
+      ]
+    })
+  });
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => "");
+    throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, detail));
+  }
+
+  const chunks: Buffer[] = [];
+  let spoken = "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      const data = line.trim().replace(/^data:\s*/, "");
+      if (!data || data === "[DONE]" || data.startsWith(":")) continue;
+      try {
+        const event = JSON.parse(data) as { choices?: Array<{ delta?: { audio?: { data?: string; transcript?: string } } }> };
+        const audio = event.choices?.[0]?.delta?.audio;
+        if (audio?.data) chunks.push(Buffer.from(audio.data, "base64"));
+        if (audio?.transcript) spoken += audio.transcript;
+      } catch {
+        // Keep-alive comments and partial frames are not audio.
+      }
+    }
+  }
+  return { pcm: Buffer.concat(chunks), spoken };
+}
+
+// Reads an answer aloud. Browser speechSynthesis has no Khmer voice on
+// Windows, iPhone, or most Android phones, so a Khmer answer would be silent
+// for nearly everyone - the audio is generated server-side instead.
+//
+// The voice model is a chat model, not a pure reader: in live testing it
+// sometimes added sentences of its own or replied to the text in English
+// ("Sure, I understand..."). It also returns a transcript of what it said,
+// so audio whose words do not match the answer is retried once and then
+// refused rather than played.
+export async function synthesizeSpeech(text: string, timeoutMs = 50000, gender: "female" | "male" = "female") {
+  // marin and cedar read Khmer most clearly on gpt-audio; alloy and cedar
+  // were the clearest pair on gpt-audio-mini, and mini has no marin voice.
+  const voice = gender === "male" ? "cedar" : speechModel().endsWith("-mini") ? "alloy" : "marin";
+  const clean = text.trim();
+  if (!clean) throw new Error("Nothing to read aloud.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
+  try {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const { pcm, spoken } = await requestSpeech(clean, voice, controller.signal);
+      if (!pcm.length) throw new Error("The voice model returned no audio.");
+      if (!spoken.trim() || textDifference(clean, spoken) <= 0.3) return pcm16ToWav(pcm);
+    }
+    throw new Error("The voice did not read the answer as written.");
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new Error("OpenRouter request timed out.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
