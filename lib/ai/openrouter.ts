@@ -930,3 +930,49 @@ export async function synthesizeSpeech(text: string, timeoutMs = 50000, gender: 
     clearTimeout(timeout);
   }
 }
+
+// Google's Gemini TTS through OpenRouter's text-to-speech endpoint. The owner
+// judged every gpt-audio voice and Edge's Microsoft voices unclear or flat;
+// Gemini read the test answers with no misheard letters for most voices, an
+// independent OpenAI model rated it native Khmer, 9-10/10 human, and the
+// owner confirmed it speaks clearly. ~$0.001 per sentence. It only returns
+// raw 24 kHz PCM, and style instructions in the text get read out loud, so
+// the answer's own wording carries the conversational tone.
+const DEFAULT_TTS_MODEL = "google/gemini-3.8-flash-tts";
+
+export function ttsModel() {
+  return process.env.OPEN_ROUTER_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
+}
+
+export async function synthesizeGeminiSpeech(text: string, gender: "female" | "male" = "female", timeoutMs = 30000) {
+  const clean = text.trim();
+  if (!clean) throw new Error("Nothing to read aloud.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/audio/speech", {
+      method: "POST",
+      headers: requestHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: ttsModel(),
+        input: clean,
+        // Kore and Charon had no misheard letters in the Khmer comparison.
+        voice: gender === "male" ? "Charon" : "Kore",
+        response_format: "pcm"
+      })
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, detail));
+    }
+    const pcm = Buffer.from(await response.arrayBuffer());
+    if (pcm.length < 4800) throw new Error("The voice model returned no audio.");
+    return pcm16ToWav(pcm);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new Error("OpenRouter request timed out.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

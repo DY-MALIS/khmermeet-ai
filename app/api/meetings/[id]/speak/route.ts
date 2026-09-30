@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { synthesizeSpeech } from "@/lib/ai/openrouter";
+import { synthesizeGeminiSpeech, synthesizeSpeech } from "@/lib/ai/openrouter";
 import { splitIntoSpokenPieces } from "@/lib/ai/spoken-pieces";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -36,7 +36,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!text) return NextResponse.json({ error: "Text is required." }, { status: 400 });
     const gender = body?.voice === "male" ? "male" : "female";
 
-    const voiced = splitIntoSpokenPieces(text).map((piece) => synthesizeSpeech(piece, 45000, gender));
+    // Gemini is the voice; gpt-audio only steps in if Gemini fails for a
+    // sentence, so one bad request never leaves the answer silent.
+    const voiced = splitIntoSpokenPieces(text).map((piece) =>
+      synthesizeGeminiSpeech(piece, gender, 25000).catch((error) => {
+        console.warn("Gemini voice failed, using gpt-audio:", error instanceof Error ? error.message : error);
+        return synthesizeSpeech(piece, 30000, gender);
+      })
+    );
     // An unobserved rejection would crash the function if the stream stops
     // early; each promise is still awaited in order below.
     voiced.forEach((promise) => promise.catch(() => undefined));

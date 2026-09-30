@@ -195,14 +195,6 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     const gender = voiceGenderRef.current;
     setTurns((current) => current.map((item) => (item.id === turn.id ? { ...item, voiceError: false } : item)));
 
-    const naturalVoice = findDeviceVoice(turn.answer, gender, true);
-    if (naturalVoice) {
-      setSpeakingId(turn.id);
-      await speakWithDevice(turn.answer, naturalVoice);
-      if (isCurrent()) setSpeakingId(null);
-      return;
-    }
-
     setVoiceLoadingId(turn.id);
     try {
       const response = await fetch(`/api/meetings/${meetingId}/speak`, {
