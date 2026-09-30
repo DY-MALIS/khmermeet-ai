@@ -9,6 +9,12 @@
 const INPUT_RATE = 16000; // what Gemini Live expects from the microphone
 const OUTPUT_RATE = 24000; // what it sends back
 const SEND_EVERY_MS = 100;
+// After the AI stops, keep the microphone closed this much longer so the
+// tail of its own voice (and the room's echo of it) is not sent back.
+const ECHO_TAIL_S = 0.35;
+// Extra delay before the first chunk of a reply, so chunks that arrive a
+// little late on a phone connection still play back to back without gaps.
+const JITTER_BUFFER_S = 0.15;
 
 // Collects raw microphone samples off the audio thread.
 const RECORDER_WORKLET = `
@@ -98,6 +104,28 @@ export async function startGeminiLiveCall(options: {
   let source: MediaStreamAudioSourceNode | null = null;
   let sendTimer: ReturnType<typeof setInterval> | null = null;
 
+  // The owner heard the voice go loud and soft on the phone. All playback
+  // goes through a compressor that evens out the loudness, then a little
+  // make-up gain so the levelled voice is not quieter overall.
+  const leveller = audio.createDynamicsCompressor();
+  leveller.threshold.value = -24;
+  leveller.knee.value = 24;
+  leveller.ratio.value = 4;
+  leveller.attack.value = 0.003;
+  leveller.release.value = 0.25;
+  const makeUp = audio.createGain();
+  makeUp.gain.value = 1.6;
+  leveller.connect(makeUp);
+  makeUp.connect(audio.destination);
+
+  // On a phone the speaker is next to the microphone: while the AI talks,
+  // the microphone hears it, Gemini takes that as the person interrupting
+  // (choppy, loud-then-soft speech) and the next question arrives mixed
+  // with the AI's own voice, heard badly and answered in the wrong
+  // language. So the microphone is only sent while the AI is silent - one
+  // side talks at a time, like a walkie-talkie; tapping interrupts.
+  const aiIsTalking = () => playing.length > 0 || audio.currentTime < nextStart + ECHO_TAIL_S;
+
   const stopTalking = () => {
     playing.splice(0).forEach((node) => {
       try {
@@ -118,6 +146,7 @@ export async function startGeminiLiveCall(options: {
     recorder?.disconnect();
     source?.disconnect();
     stopTalking();
+    makeUp.disconnect();
     try {
       socket.close();
     } catch {
@@ -139,6 +168,10 @@ export async function startGeminiLiveCall(options: {
     source.connect(recorder);
     sendTimer = setInterval(() => {
       if (!pending.length || socket.readyState !== WebSocket.OPEN) return;
+      if (aiIsTalking()) {
+        pending = [];
+        return;
+      }
       const total = pending.reduce((sum, chunk) => sum + chunk.length, 0);
       const joined = new Float32Array(total);
       let offset = 0;
@@ -165,8 +198,8 @@ export async function startGeminiLiveCall(options: {
     for (let index = 0; index < samples.length; index++) channel[index] = samples[index] / 0x8000;
     const node = audio.createBufferSource();
     node.buffer = buffer;
-    node.connect(audio.destination);
-    const startAt = Math.max(audio.currentTime + 0.03, nextStart);
+    node.connect(leveller);
+    const startAt = Math.max(audio.currentTime + (playing.length ? 0.03 : JITTER_BUFFER_S), nextStart);
     node.start(startAt);
     nextStart = startAt + buffer.duration;
     playing.push(node);
