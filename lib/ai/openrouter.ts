@@ -3,7 +3,7 @@ import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
 import { buildSlideBulletsPrompt } from "@/lib/ai/prompts/slidePrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
-import { buildMeetingQaPrompt, type MeetingQaTurn } from "@/lib/ai/prompts/meetingQaPrompt";
+import { buildMeetingQaPrompt, type AnswerVoice, type MeetingQaTurn } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript } from "@/lib/transcript-quality";
 
@@ -777,11 +777,17 @@ export async function extractMeetingSmartNote(transcript: string, language: Docu
   return smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
 }
 
-export async function answerMeetingQuestion(transcript: string, question: string, history: MeetingQaTurn[] = [], timeoutMs?: number) {
+export async function answerMeetingQuestion(
+  transcript: string,
+  question: string,
+  history: MeetingQaTurn[] = [],
+  timeoutMs?: number,
+  voice: AnswerVoice = "female"
+) {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
   if (!question.trim()) throw new Error("Question is empty.");
   if (!hasOpenRouterKey()) throw new Error("OPEN_ROUTER_API_KEY is missing.");
-  const raw = await generateOpenRouterContent([{ text: buildMeetingQaPrompt(transcript, question, history) }], {
+  const raw = await generateOpenRouterContent([{ text: buildMeetingQaPrompt(transcript, question, history, voice) }], {
     json: true,
     temperature: 0.1,
     timeoutMs

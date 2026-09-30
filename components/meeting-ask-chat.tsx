@@ -77,6 +77,8 @@ function findDeviceVoice(text: string, gender: VoiceGender, naturalOnly: boolean
   return voices.find((voice) => MALE_VOICE.test(voice.name) === (gender === "male")) ?? voices[0] ?? null;
 }
 
+const SENTENCE_PITCHES = [1.06, 0.97, 1.03, 0.99];
+
 // Long single utterances are cut off after ~15 seconds by some browsers, so
 // the answer is queued sentence by sentence. Resolves when reading ends.
 function speakWithDevice(text: string, voice: SpeechSynthesisVoice) {
@@ -87,6 +89,11 @@ function speakWithDevice(text: string, voice: SpeechSynthesisVoice) {
       const utterance = new SpeechSynthesisUtterance(sentence);
       utterance.voice = voice;
       utterance.lang = voice.lang;
+      // One flat pitch for every sentence is part of what sounded robotic;
+      // a slightly quicker pace and small pitch changes per sentence were
+      // preferred in the owner's side-by-side listening test.
+      utterance.rate = 1.08;
+      utterance.pitch = SENTENCE_PITCHES[index % SENTENCE_PITCHES.length];
       if (index === sentences.length - 1) utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
       window.speechSynthesis.speak(utterance);
@@ -268,7 +275,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     if (voiceAnswers) unlockAnswerAudio();
     setQuestion("");
     const turn = await ask(
-      JSON.stringify({ question: cleanQuestion, history: historyForRequest() }),
+      JSON.stringify({ question: cleanQuestion, history: historyForRequest(), voice: voiceGenderRef.current }),
       { "Content-Type": "application/json" },
       cleanQuestion
     );
@@ -298,6 +305,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     const form = new FormData();
     form.append("audio", recording, recording.type.includes("mp4") ? "question.m4a" : "question.webm");
     form.append("history", JSON.stringify(historyForRequest()));
+    form.append("voice", voiceGenderRef.current);
     const turn = await ask(form, undefined, "");
     if (liveIsOff()) return;
     if (turn === null) {

@@ -79,9 +79,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const isSpoken = (request.headers.get("content-type") ?? "").includes("multipart/form-data");
     const parallelStart = Date.now();
     const inputPromise = isSpoken
-      ? request.formData().then(async (form) => ({ history: parseHistory(form.get("history")), question: await hearQuestion(form) }))
+      ? request.formData().then(async (form) => ({
+          history: parseHistory(form.get("history")),
+          voice: form.get("voice"),
+          question: await hearQuestion(form)
+        }))
       : request.json().catch(() => ({})).then((body) => ({
           history: parseHistory(body?.history),
+          voice: body?.voice,
           question: typeof body?.question === "string" ? body.question.trim().slice(0, 500) : ""
         }));
     inputPromise.catch(() => undefined);
@@ -95,12 +100,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!meeting.transcript?.trim() || !hasUsableTranscript(meeting.transcript)) {
       return NextResponse.json({ error: "Transcript has no clear speech text yet." }, { status: 400 });
     }
-    const { question, history } = await inputPromise;
+    const { question, history, voice } = await inputPromise;
     mark(isSpoken ? "db+hear" : "db", parallelStart);
     if (!question) return NextResponse.json({ error: "Question is required." }, { status: 400 });
 
     const answerStart = Date.now();
-    const result = await answerMeetingQuestion(meeting.transcript, question, history, 32000);
+    const result = await answerMeetingQuestion(meeting.transcript, question, history, 32000, voice === "male" ? "male" : "female");
     mark("answer", answerStart);
 
     // The model has been seen returning its own answer as the "quote" -
