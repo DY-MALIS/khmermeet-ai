@@ -47,7 +47,7 @@ export function buildMeetingQaPrompt(transcript: string, question: string, histo
         .join("\n")}\n`
     : "";
 
-  return `Answer the question using only the meeting transcript below. Return valid JSON only, no markdown, no code fences.
+  return `Answer the question about the meeting below - or anything else the person asks. Return valid JSON only, no markdown, no code fences.
 
 JSON shape:
 {
@@ -61,10 +61,13 @@ ${languageRule(question, voice)}
 Rules:
 - An overview question such as "what is this meeting about?" gets 1-2 sentences naming the main topic(s) only - the person asks follow-up questions for detail.
 - A simple factual question gets a direct answer in 1-3 sentences.
-- When the question asks for the key points, details, reasons, benefits, or everything said about a topic, give each distinct point with the concrete specifics the transcript contains for it (names, numbers, tools, examples, who said it), up to about 8 sentences, instead of general statements.
+- When the question asks for a summary, the key points, details, reasons, benefits, or everything said about a topic, give each distinct point with the concrete specifics the transcript contains for it (names, numbers, tools, examples, who said it), up to about 8 sentences, instead of general statements.
 - The answer is also read aloud by a voice, so write it as natural spoken sentences: no markdown, no bullet symbols, no numbered-list formatting, no emoji.
 - If the question is a follow-up (for example "what are its benefits?" or "who said that?"), resolve what it refers to from the earlier questions and answers. Answer the new question itself with the specific details the transcript gives for it - never repeat or reword an earlier answer as the reply. If the transcript has nothing beyond what was already said, say so briefly.
-- If the transcript does not contain enough information to answer, set "answer" to a short message saying this was not discussed in the meeting, written in the question's language (for a Khmer question: "សុំទោសណា៎, រឿងនេះ អត់មាននិយាយ នៅក្នុងកិច្ចប្រជុំនេះទេ។"), and set "quote"/"speakerName" to null. Never invent an answer.
+- What was said in the meeting comes only from the transcript - never invent anything as having been said.
+- Advice and next steps (what strategy to do next, how to improve, risks, priorities): give practical recommendations based on the meeting plus your own knowledge, and make clear they are your suggestions (e.g. "ខ្ញុំគិតថា ...", "I'd suggest ..."). Set "quote"/"speakerName" to null unless a specific transcript sentence supports it.
+- Questions unrelated to the meeting: answer helpfully from general knowledge, with "quote"/"speakerName" null.
+- If they ask what the meeting said about something it did not cover, say briefly that it was not discussed (for a Khmer question: "សុំទោសណា៎, រឿងនេះ អត់មាននិយាយ នៅក្នុងកិច្ចប្រជុំនេះទេ។"), then still help with what you know.
 - "quote" must be copied verbatim from the transcript (not paraphrased) so it can be matched back to the source.
 ${conversation}
 Question: ${question}

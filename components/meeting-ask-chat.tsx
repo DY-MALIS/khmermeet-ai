@@ -6,7 +6,7 @@ import { readJsonResponse } from "@/lib/read-json-response";
 import { seekAudioPlayer } from "@/lib/audio-player";
 import { readSavedMicrophoneId } from "@/lib/audio-devices";
 import { describeMicError } from "@/lib/mic-permission-error";
-import { playVoiceStream, unlockAnswerAudio, type VoicePlayback } from "@/lib/client/answer-voice";
+import { playFiller, playLiveAnswer, playVoiceStream, prepareFiller, stopFiller, unlockAnswerAudio } from "@/lib/client/answer-voice";
 import { createLiveListener, type LiveListener } from "@/lib/client/live-listener";
 import { useUiText } from "@/components/localized-text";
 
@@ -113,7 +113,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
   const [voiceAnswers, setVoiceAnswers] = useState(true);
   const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
 
-  const playbackRef = useRef<VoicePlayback | null>(null);
+  const playbackRef = useRef<{ stop: () => void } | null>(null);
   const listenerRef = useRef<LiveListener | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextIdRef = useRef(1);
@@ -171,6 +171,8 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
 
   function changeVoiceGender(next: VoiceGender) {
     setVoiceGender(next);
+    voiceGenderRef.current = next;
+    if (liveRef.current !== "off") void prepareFiller(meetingId, next);
     try {
       window.localStorage.setItem(VOICE_GENDER_KEY, next);
     } catch {
@@ -182,6 +184,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     speakRequestRef.current += 1;
     playbackRef.current?.stop();
     playbackRef.current = null;
+    stopFiller();
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     setSpeakingId(null);
     setVoiceLoadingId(null);
@@ -291,22 +294,52 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     listenerRef.current?.listen();
   }
 
+  // One request per spoken exchange: the server hears the question, streams
+  // the answer and its voice sentence by sentence (see /live-answer). A short
+  // acknowledgement plays at once so the wait never feels like a hang.
   async function handleSpokenQuestion(recording: Blob) {
     if (liveIsOff()) return;
     setLiveState("thinking");
+    setError("");
+    const gender = voiceGenderRef.current;
+    const fillerEnd = playFiller(gender);
     const form = new FormData();
     form.append("audio", recording, recording.type.includes("mp4") ? "question.m4a" : "question.webm");
     form.append("history", JSON.stringify(historyForRequest()));
-    form.append("voice", voiceGenderRef.current);
-    const turn = await ask(form, undefined, "");
-    if (liveIsOff()) return;
-    if (turn === null) {
-      endLive();
-      return;
-    }
-    if (turn !== "retry" && voiceAnswersRef.current) {
-      setLiveState("speaking");
-      await speak(turn);
+    form.append("voice", gender);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/live-answer`, { method: "POST", body: form });
+      if (!response.ok) {
+        const data = await readJsonResponse(response);
+        setError(data.error ?? "Ask Meeting failed.");
+        endLive();
+        return;
+      }
+      if (liveIsOff()) return;
+      let heard = "";
+      const playback = playLiveAnswer(
+        response,
+        {
+          onQuestion: (question) => {
+            heard = question;
+          },
+          onFirstSound: () => {
+            if (!liveIsOff()) setLiveState("speaking");
+          },
+          onAnswer: (question, answer) => {
+            const turn: Turn = { id: nextIdRef.current++, question: question || heard, answer, quote: null, speakerName: null, startMs: null };
+            turnsRef.current = [...turnsRef.current, turn];
+            setTurns((current) => [...current, turn]);
+          },
+          onError: (message) => setError(message)
+        },
+        fillerEnd
+      );
+      playbackRef.current = playback;
+      await playback.done;
+      if (playbackRef.current === playback) playbackRef.current = null;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Ask Meeting failed.");
     }
     listenAgain();
   }
@@ -338,6 +371,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       });
       setLiveState("listening");
       listenerRef.current.listen();
+      void prepareFiller(meetingId, voiceGenderRef.current);
     } catch (error) {
       endLive();
       setError(describeMicError(error));

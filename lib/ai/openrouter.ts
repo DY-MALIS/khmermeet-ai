@@ -73,7 +73,7 @@ function getOpenRouterKey() {
   return key;
 }
 
-function requestHeaders() {
+export function requestHeaders() {
   return {
     Authorization: `Bearer ${getOpenRouterKey()}`,
     "Content-Type": "application/json",
