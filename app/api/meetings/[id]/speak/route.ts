@@ -64,7 +64,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
 
     return new Response(stream, {
-      headers: { "Content-Type": "application/octet-stream", "Cache-Control": "no-store" }
+      // Vercel brotli-compressed this stream, and compression waits for the
+      // whole body - the first sentence arrived only when the last was done
+      // (~6s instead of ~2s on production). Marking it already-encoded and
+      // no-transform keeps every sentence flowing as soon as it is ready.
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Encoding": "identity",
+        "Cache-Control": "no-store, no-transform",
+        "X-Accel-Buffering": "no"
+      }
     });
   } catch (error) {
     const publicError = publicAiTranscriptionError(error);

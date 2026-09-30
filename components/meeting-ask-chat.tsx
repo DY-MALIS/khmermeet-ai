@@ -420,7 +420,9 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         </div>
       </div>
 
-      {turns.length || loading ? (
+      {/* A live conversation is voice only - the owner asked for no text on
+          screen while talking; the exchange shows once the call ends. */}
+      {!liveOn && (turns.length || loading) ? (
         <div className="mb-4 max-h-[28rem] space-y-3 overflow-y-auto">
           {turns.map((turn) => (
             <div key={turn.id} className="space-y-2">
