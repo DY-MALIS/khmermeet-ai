@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, MessageCircleQuestion, Mic, PlayCircle, RotateCcw, Send, Square, Volume2 } from "lucide-react";
+import { Loader2, MessageCircleQuestion, Mic, PhoneOff, PlayCircle, RotateCcw, Send, Square, Volume2 } from "lucide-react";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { seekAudioPlayer } from "@/lib/audio-player";
 import { readSavedMicrophoneId } from "@/lib/audio-devices";
 import { describeMicError } from "@/lib/mic-permission-error";
+import { playVoiceStream, unlockAnswerAudio, type VoicePlayback } from "@/lib/client/answer-voice";
+import { createLiveListener, type LiveListener } from "@/lib/client/live-listener";
 import { useUiText } from "@/components/localized-text";
 
 type Turn = {
@@ -27,25 +29,15 @@ type AskResponse = {
   error?: string;
 };
 
-const MAX_QUESTION_SECONDS = 60;
+type VoiceGender = "female" | "male";
+// off: no conversation running. listening: waiting for the person to talk.
+// hearing: they are talking. thinking: question sent. speaking: answer playing.
+type LiveState = "off" | "listening" | "hearing" | "thinking" | "speaking";
+
 const VOICE_PREF_KEY = "khmermeet-ask-voice-answers";
 const VOICE_GENDER_KEY = "khmermeet-ask-voice-gender";
-// A zero-length WAV. Playing it inside the tap that starts a question
-// unlocks the audio element on iPhone/Safari, which otherwise refuses to
-// play the answer because it arrives after an await, outside the tap.
-const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
-// Wall-clock time for the question timer, kept outside the component body.
-function elapsedClock() {
-  return Date.now();
-}
-
-function recorderMimeType() {
-  const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
-  return types.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
-}
-
-function readVoiceGender(): "female" | "male" {
+function readVoiceGender(): VoiceGender {
   try {
     return window.localStorage.getItem(VOICE_GENDER_KEY) === "male" ? "male" : "female";
   } catch {
@@ -74,7 +66,7 @@ function answerLanguage(text: string) {
   return /[ក-៿]/.test(text) ? "km" : "en";
 }
 
-function findDeviceVoice(text: string, gender: "female" | "male", naturalOnly: boolean) {
+function findDeviceVoice(text: string, gender: VoiceGender, naturalOnly: boolean) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
   const lang = answerLanguage(text);
   const voices = window.speechSynthesis
@@ -86,17 +78,19 @@ function findDeviceVoice(text: string, gender: "female" | "male", naturalOnly: b
 }
 
 // Long single utterances are cut off after ~15 seconds by some browsers, so
-// the answer is queued sentence by sentence.
-function speakWithDevice(text: string, voice: SpeechSynthesisVoice, onEnd: () => void) {
-  const sentences = text.match(/[^។?!.\n]+[។?!.]*/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
-  window.speechSynthesis.cancel();
-  sentences.forEach((sentence, index) => {
-    const utterance = new SpeechSynthesisUtterance(sentence);
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-    if (index === sentences.length - 1) utterance.onend = onEnd;
-    utterance.onerror = onEnd;
-    window.speechSynthesis.speak(utterance);
+// the answer is queued sentence by sentence. Resolves when reading ends.
+function speakWithDevice(text: string, voice: SpeechSynthesisVoice) {
+  return new Promise<void>((resolve) => {
+    const sentences = text.match(/[^។?!.\n]+[។?!.]*/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
+    window.speechSynthesis.cancel();
+    sentences.forEach((sentence, index) => {
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+      if (index === sentences.length - 1) utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      window.speechSynthesis.speak(utterance);
+    });
   });
 }
 
@@ -106,25 +100,34 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
   const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [live, setLive] = useState<LiveState>("off");
   const [speakingId, setSpeakingId] = useState<number | null>(null);
   const [voiceLoadingId, setVoiceLoadingId] = useState<number | null>(null);
   const [voiceAnswers, setVoiceAnswers] = useState(true);
-  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>("female");
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const playbackRef = useRef<VoicePlayback | null>(null);
+  const listenerRef = useRef<LiveListener | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordStartRef = useRef(0);
   const nextIdRef = useRef(1);
   const speakRequestRef = useRef(0);
   const turnsEndRef = useRef<HTMLDivElement | null>(null);
+  // The live listener calls back long after it was created, so it reads the
+  // current conversation and voice settings through refs.
+  const turnsRef = useRef<Turn[]>([]);
+  const voiceGenderRef = useRef<VoiceGender>("female");
+  const voiceAnswersRef = useRef(true);
+  const liveRef = useRef<LiveState>("off");
 
-  const busy = loading || recording;
+  const liveOn = live !== "off";
   const suggestedQuestions = [text.askSuggestion1, text.askSuggestion2, text.askSuggestion3];
+
+  useEffect(() => {
+    turnsRef.current = turns;
+    voiceGenderRef.current = voiceGender;
+    voiceAnswersRef.current = voiceAnswers;
+    liveRef.current = live;
+  }, [turns, voiceGender, voiceAnswers, live]);
 
   useEffect(() => {
     setVoiceAnswers(readVoicePreference());
@@ -132,16 +135,14 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     // The voice list loads asynchronously; asking once starts the load so it
     // is ready by the time the first answer arrives.
     if ("speechSynthesis" in window) window.speechSynthesis.getVoices();
-    const timer = timerRef;
+    const listener = listenerRef;
     const stream = streamRef;
-    const audio = audioRef;
-    const audioUrl = audioUrlRef;
+    const playback = playbackRef;
     // Leaving the page must release the microphone and silence any answer.
     return () => {
-      if (timer.current) clearInterval(timer.current);
+      listener.current?.dispose();
       stream.current?.getTracks().forEach((track) => track.stop());
-      audio.current?.pause();
-      if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+      playback.current?.stop();
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     };
   }, []);
@@ -161,7 +162,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     }
   }
 
-  function changeVoiceGender(next: "female" | "male") {
+  function changeVoiceGender(next: VoiceGender) {
     setVoiceGender(next);
     try {
       window.localStorage.setItem(VOICE_GENDER_KEY, next);
@@ -170,89 +171,77 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     }
   }
 
-  function audioElement() {
-    if (!audioRef.current) audioRef.current = new Audio();
-    return audioRef.current;
-  }
-
-  function unlockAudio() {
-    const audio = audioElement();
-    audio.src = SILENT_WAV;
-    void audio.play().catch(() => undefined);
-  }
-
   function stopSpeaking() {
     speakRequestRef.current += 1;
-    audioRef.current?.pause();
+    playbackRef.current?.stop();
+    playbackRef.current = null;
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(audioUrlRef.current);
-      audioUrlRef.current = null;
-    }
     setSpeakingId(null);
     setVoiceLoadingId(null);
   }
 
+  // Reads one answer aloud and resolves when it has finished (or was stopped).
   async function speak(turn: Turn) {
     stopSpeaking();
     const request = speakRequestRef.current;
+    const isCurrent = () => request === speakRequestRef.current;
+    const gender = voiceGenderRef.current;
     setTurns((current) => current.map((item) => (item.id === turn.id ? { ...item, voiceError: false } : item)));
-    const onDeviceEnd = () => {
-      if (request === speakRequestRef.current) setSpeakingId(null);
-    };
-    const naturalVoice = findDeviceVoice(turn.answer, voiceGender, true);
+
+    const naturalVoice = findDeviceVoice(turn.answer, gender, true);
     if (naturalVoice) {
       setSpeakingId(turn.id);
-      speakWithDevice(turn.answer, naturalVoice, onDeviceEnd);
+      await speakWithDevice(turn.answer, naturalVoice);
+      if (isCurrent()) setSpeakingId(null);
       return;
     }
+
     setVoiceLoadingId(turn.id);
-    const markFailed = () => setTurns((current) => current.map((item) => (item.id === turn.id ? { ...item, voiceError: true } : item)));
     try {
       const response = await fetch(`/api/meetings/${meetingId}/speak`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: turn.answer, voice: voiceGender })
+        body: JSON.stringify({ text: turn.answer, voice: gender })
       });
       if (!response.ok) throw new Error((await readJsonResponse(response)).error ?? "Voice failed.");
-      const blob = await response.blob();
-      if (request !== speakRequestRef.current) return;
-      const url = URL.createObjectURL(blob);
-      audioUrlRef.current = url;
-      const audio = audioElement();
-      audio.src = url;
-      audio.onended = () => {
-        if (request === speakRequestRef.current) setSpeakingId(null);
-      };
+      if (!isCurrent()) return;
+      const playback = playVoiceStream(response);
+      playbackRef.current = playback;
       setVoiceLoadingId(null);
       setSpeakingId(turn.id);
-      await audio.play();
+      if ((await playback.done) === "failed" && isCurrent()) throw new Error("Voice failed.");
     } catch {
-      if (request !== speakRequestRef.current) return;
+      if (!isCurrent()) return;
       setVoiceLoadingId(null);
       // Server voice failed: any device voice for the language beats silence.
-      const fallbackVoice = findDeviceVoice(turn.answer, voiceGender, false);
+      const fallbackVoice = findDeviceVoice(turn.answer, gender, false);
       if (fallbackVoice) {
         setSpeakingId(turn.id);
-        speakWithDevice(turn.answer, fallbackVoice, onDeviceEnd);
+        await speakWithDevice(turn.answer, fallbackVoice);
       } else {
+        setTurns((current) => current.map((item) => (item.id === turn.id ? { ...item, voiceError: true } : item)));
+      }
+    } finally {
+      if (isCurrent()) {
         setSpeakingId(null);
-        markFailed();
+        setVoiceLoadingId(null);
       }
     }
   }
 
   function historyForRequest() {
-    return turns.map((turn) => ({ question: turn.question, answer: turn.answer }));
+    return turnsRef.current.map((turn) => ({ question: turn.question, answer: turn.answer }));
   }
 
-  async function submit(body: BodyInit, headers: HeadersInit | undefined, typedQuestion: string, readAloud: boolean) {
+  // Sends a question and adds the answer to the conversation. Returns the new
+  // turn, or null when it failed (the error is already shown).
+  async function ask(body: BodyInit, headers: HeadersInit | undefined, typedQuestion: string) {
     setLoading(true);
     setError("");
     try {
       const response = await fetch(`/api/meetings/${meetingId}/ask`, { method: "POST", headers, body });
       const data = await readJsonResponse<AskResponse>(response);
-      if (!response.ok) throw new Error(data.error ?? "Ask Meeting failed.");
+      if (!response.ok) throw Object.assign(new Error(data.error ?? "Ask Meeting failed."), { status: response.status });
       const turn: Turn = {
         id: nextIdRef.current++,
         question: data.question || typedQuestion,
@@ -262,41 +251,76 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         startMs: data.startMs ?? null
       };
       setTurns((current) => [...current, turn]);
-      setQuestion("");
-      if (readAloud) void speak(turn);
+      return turn;
     } catch (error) {
       setError(error instanceof Error ? error.message : "Ask Meeting failed.");
+      // 422 = nothing audible in the recording: worth just listening again.
+      return (error as { status?: number }).status === 422 ? ("retry" as const) : null;
     } finally {
       setLoading(false);
     }
   }
 
-  function askTyped(nextQuestion = question) {
+  async function askTyped(nextQuestion = question) {
     const cleanQuestion = nextQuestion.trim();
-    if (!cleanQuestion || !hasTranscript || busy) return;
+    if (!cleanQuestion || !hasTranscript || loading || liveOn) return;
     stopSpeaking();
-    if (voiceAnswers) unlockAudio();
-    void submit(
+    if (voiceAnswers) unlockAnswerAudio();
+    setQuestion("");
+    const turn = await ask(
       JSON.stringify({ question: cleanQuestion, history: historyForRequest() }),
       { "Content-Type": "application/json" },
-      cleanQuestion,
-      voiceAnswers
+      cleanQuestion
     );
+    if (turn && turn !== "retry" && voiceAnswersRef.current) void speak(turn);
   }
 
-  function stopRecordingTracks() {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+  // A function rather than an inline check: the state changes across awaits,
+  // which TypeScript narrowing does not see.
+  function liveIsOff() {
+    return liveRef.current === "off";
   }
 
-  async function startRecording() {
-    if (!hasTranscript || busy) return;
+  function setLiveState(next: LiveState) {
+    liveRef.current = next;
+    setLive(next);
+  }
+
+  function listenAgain() {
+    if (liveIsOff()) return;
+    setLiveState("listening");
+    listenerRef.current?.listen();
+  }
+
+  async function handleSpokenQuestion(recording: Blob) {
+    if (liveIsOff()) return;
+    setLiveState("thinking");
+    const form = new FormData();
+    form.append("audio", recording, recording.type.includes("mp4") ? "question.m4a" : "question.webm");
+    form.append("history", JSON.stringify(historyForRequest()));
+    const turn = await ask(form, undefined, "");
+    if (liveIsOff()) return;
+    if (turn === null) {
+      endLive();
+      return;
+    }
+    if (turn !== "retry" && voiceAnswersRef.current) {
+      setLiveState("speaking");
+      await speak(turn);
+    }
+    listenAgain();
+  }
+
+  async function startLive() {
+    if (!hasTranscript || loading || liveOn) return;
     stopSpeaking();
-    // Unlock playback now, inside the tap, so the spoken answer can play later.
-    unlockAudio();
+    // Unlock playback now, inside the tap, so every answer can play by itself.
+    const audio = unlockAnswerAudio();
     setError("");
+    if (!audio) {
+      setError(describeMicError(null));
+      return;
+    }
     try {
       const savedMic = readSavedMicrophoneId();
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -308,45 +332,33 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         }
       });
       streamRef.current = stream;
-      const mimeType = recorderMimeType();
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 });
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onstop = () => {
-        const seconds = (elapsedClock() - recordStartRef.current) / 1000;
-        stopRecordingTracks();
-        setRecording(false);
-        // An accidental double-tap records nothing worth sending.
-        if (seconds < 0.7 || chunks.length === 0) return;
-        const type = recorder.mimeType || mimeType || "audio/webm";
-        const blob = new Blob(chunks, { type });
-        const form = new FormData();
-        form.append("audio", blob, type.includes("mp4") ? "question.m4a" : "question.webm");
-        form.append("history", JSON.stringify(historyForRequest()));
-        void submit(form, undefined, "", voiceAnswers);
-      };
-      recorderRef.current = recorder;
-      recordStartRef.current = elapsedClock();
-      setRecordSeconds(0);
-      recorder.start();
-      setRecording(true);
-      timerRef.current = setInterval(() => {
-        const seconds = Math.floor((elapsedClock() - recordStartRef.current) / 1000);
-        setRecordSeconds(seconds);
-        if (seconds >= MAX_QUESTION_SECONDS && recorder.state === "recording") recorder.stop();
-      }, 250);
+      listenerRef.current = createLiveListener(stream, audio, {
+        onHearing: () => setLiveState("hearing"),
+        onQuestion: (recording) => void handleSpokenQuestion(recording)
+      });
+      setLiveState("listening");
+      listenerRef.current.listen();
     } catch (error) {
-      stopRecordingTracks();
-      setRecording(false);
+      endLive();
       setError(describeMicError(error));
     }
   }
 
-  function stopRecording() {
-    const recorder = recorderRef.current;
-    if (recorder && recorder.state === "recording") recorder.stop();
+  function endLive() {
+    setLiveState("off");
+    listenerRef.current?.dispose();
+    listenerRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    stopSpeaking();
+  }
+
+  // The big button: starts the conversation, sends a question early, or
+  // interrupts the answer to ask the next one.
+  function handleMainButton() {
+    if (live === "off") void startLive();
+    else if (live === "listening" || live === "hearing") listenerRef.current?.sendNow();
+    else if (live === "speaking") stopSpeaking();
   }
 
   function resetConversation() {
@@ -354,6 +366,19 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     setTurns([]);
     setError("");
   }
+
+  const liveStatus =
+    live === "listening"
+      ? text.liveListening
+      : live === "hearing"
+        ? text.liveHearing
+        : live === "thinking"
+          ? text.liveThinking
+          : live === "speaking"
+            ? text.liveSpeaking
+            : hasTranscript
+              ? text.liveIdleHint
+              : text.askMeetingNeedsTranscript;
 
   return (
     <section className="kh-card p-5">
@@ -385,7 +410,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
               type="button"
               className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:text-leaf disabled:opacity-50"
               onClick={resetConversation}
-              disabled={busy}
+              disabled={loading || liveOn}
               title={text.newConversation}
               aria-label={text.newConversation}
             >
@@ -408,8 +433,15 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
                   <p className="flex-1 whitespace-pre-line text-sm leading-6 text-ink">{turn.answer}</p>
                   <button
                     type="button"
-                    className="shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:text-leaf"
-                    onClick={() => (speakingId === turn.id || voiceLoadingId === turn.id ? stopSpeaking() : void speak(turn))}
+                    className="shrink-0 rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:text-leaf disabled:opacity-50"
+                    onClick={() => {
+                      if (speakingId === turn.id || voiceLoadingId === turn.id) stopSpeaking();
+                      else {
+                        unlockAnswerAudio();
+                        void speak(turn);
+                      }
+                    }}
+                    disabled={liveOn && speakingId !== turn.id}
                     title={speakingId === turn.id ? text.stopReading : text.readAloud}
                     aria-label={speakingId === turn.id ? text.stopReading : text.readAloud}
                   >
@@ -455,24 +487,46 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       ) : null}
 
       <div className="flex flex-col items-center gap-2 py-2">
-        <button
-          type="button"
-          onClick={() => (recording ? stopRecording() : void startRecording())}
-          disabled={!hasTranscript || loading}
-          className={`flex h-16 w-16 items-center justify-center rounded-full text-white shadow-md transition disabled:opacity-50 ${
-            recording ? "animate-pulse bg-red-600" : "bg-leaf hover:brightness-110"
-          }`}
-          aria-label={recording ? text.stopAndAsk : text.askByVoice}
-          title={recording ? text.stopAndAsk : text.askByVoice}
-        >
-          {recording ? <Square className="h-6 w-6 fill-current" /> : <Mic className="h-7 w-7" />}
-        </button>
-        <p className="text-xs font-semibold text-slate-500">
-          {recording
-            ? `${text.askListening} ${recordSeconds}s · ${text.stopAndAsk}`
-            : hasTranscript
-              ? text.askByVoice
-              : text.askMeetingNeedsTranscript}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleMainButton}
+            disabled={!hasTranscript || live === "thinking" || (!liveOn && loading)}
+            className={`flex h-16 w-16 items-center justify-center rounded-full text-white shadow-md transition disabled:opacity-50 ${
+              live === "hearing"
+                ? "animate-pulse bg-red-600"
+                : live === "listening"
+                  ? "bg-red-500 ring-4 ring-red-200"
+                  : "bg-leaf hover:brightness-110"
+            }`}
+            aria-label={liveOn ? liveStatus : text.liveStart}
+            title={liveOn ? liveStatus : text.liveStart}
+          >
+            {live === "thinking" ? (
+              <Loader2 className="h-7 w-7 animate-spin" />
+            ) : live === "speaking" ? (
+              <Volume2 className="h-7 w-7" />
+            ) : live === "hearing" ? (
+              <Send className="h-6 w-6" />
+            ) : (
+              <Mic className="h-7 w-7" />
+            )}
+          </button>
+          {liveOn ? (
+            <button
+              type="button"
+              onClick={endLive}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-700 text-white shadow-md hover:bg-slate-800"
+              aria-label={text.liveEnd}
+              title={text.liveEnd}
+            >
+              <PhoneOff className="h-5 w-5" />
+            </button>
+          ) : null}
+        </div>
+        <p className="max-w-md text-center text-xs font-semibold text-slate-500">
+          {!liveOn && hasTranscript ? <span className="block text-sm text-leaf">{text.liveStart}</span> : null}
+          {liveStatus}
         </p>
       </div>
 
@@ -482,13 +536,18 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") askTyped();
+            if (event.key === "Enter") void askTyped();
           }}
           placeholder={hasTranscript ? text.askMeetingPlaceholder : text.askMeetingNeedsTranscript}
-          disabled={!hasTranscript || busy}
+          disabled={!hasTranscript || loading || liveOn}
         />
-        <button className="kh-button-primary shrink-0 sm:w-auto" type="button" onClick={() => askTyped()} disabled={!hasTranscript || busy || !question.trim()}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        <button
+          className="kh-button-primary shrink-0 sm:w-auto"
+          type="button"
+          onClick={() => void askTyped()}
+          disabled={!hasTranscript || loading || liveOn || !question.trim()}
+        >
+          {loading && !liveOn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -497,8 +556,8 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
             key={suggested}
             type="button"
             className="rounded-full border border-leaf/15 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-leaf/10 hover:text-leaf disabled:opacity-50"
-            disabled={!hasTranscript || busy}
-            onClick={() => askTyped(suggested)}
+            disabled={!hasTranscript || loading || liveOn}
+            onClick={() => void askTyped(suggested)}
           >
             {suggested}
           </button>
