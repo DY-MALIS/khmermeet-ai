@@ -8,6 +8,7 @@ import { readSavedMicrophoneId } from "@/lib/audio-devices";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { playFiller, playLiveAnswer, playVoiceStream, prepareFiller, stopFiller, unlockAnswerAudio } from "@/lib/client/answer-voice";
 import { createLiveListener, type LiveListener } from "@/lib/client/live-listener";
+import { startGeminiLiveCall, type LiveCall } from "@/lib/client/gemini-live-call";
 import { useUiText } from "@/components/localized-text";
 
 type Turn = {
@@ -115,6 +116,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
 
   const playbackRef = useRef<{ stop: () => void } | null>(null);
   const listenerRef = useRef<LiveListener | null>(null);
+  const liveCallRef = useRef<LiveCall | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextIdRef = useRef(1);
   const speakRequestRef = useRef(0);
@@ -143,11 +145,13 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     // is ready by the time the first answer arrives.
     if ("speechSynthesis" in window) window.speechSynthesis.getVoices();
     const listener = listenerRef;
+    const liveCall = liveCallRef;
     const stream = streamRef;
     const playback = playbackRef;
     // Leaving the page must release the microphone and silence any answer.
     return () => {
       listener.current?.dispose();
+      liveCall.current?.end();
       stream.current?.getTracks().forEach((track) => track.stop());
       playback.current?.stop();
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -365,6 +369,37 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         }
       });
       streamRef.current = stream;
+
+      // Realtime Gemini Live first (answers ~1s after the person stops);
+      // null means it is unavailable, so fall back to one request per question.
+      setLiveState("thinking");
+      const call = await startGeminiLiveCall({
+        meetingId,
+        voice: voiceGenderRef.current,
+        audio,
+        stream,
+        handlers: {
+          onState: (state) => {
+            if (!liveIsOff()) setLiveState(state === "connecting" ? "thinking" : state);
+          },
+          onTurn: (heard, answer) => {
+            const turn: Turn = { id: nextIdRef.current++, question: heard, answer, quote: null, speakerName: null, startMs: null };
+            turnsRef.current = [...turnsRef.current, turn];
+            setTurns((current) => [...current, turn]);
+          },
+          onError: (message) => setError(message),
+          onClosed: () => endLive()
+        }
+      });
+      if (liveIsOff()) {
+        call?.end();
+        return;
+      }
+      if (call) {
+        liveCallRef.current = call;
+        return;
+      }
+
       listenerRef.current = createLiveListener(stream, audio, {
         onHearing: () => setLiveState("hearing"),
         onQuestion: (recording) => void handleSpokenQuestion(recording)
@@ -382,6 +417,8 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     setLiveState("off");
     listenerRef.current?.dispose();
     listenerRef.current = null;
+    liveCallRef.current?.end();
+    liveCallRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     stopSpeaking();
@@ -392,7 +429,10 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
   function handleMainButton() {
     if (live === "off") void startLive();
     else if (live === "listening" || live === "hearing") listenerRef.current?.sendNow();
-    else if (live === "speaking") stopSpeaking();
+    else if (live === "speaking") {
+      if (liveCallRef.current) liveCallRef.current.stopTalking();
+      else stopSpeaking();
+    }
   }
 
   function resetConversation() {
