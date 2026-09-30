@@ -21,8 +21,14 @@ export function geminiLiveModel() {
   return process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_LIVE_MODEL;
 }
 
-function liveInstruction(transcript: string) {
-  return `You are the voice assistant of KhmerMeet, talking with the person like a friendly Cambodian colleague on a call.
+function liveInstruction(transcript: string, voice: AnswerVoice) {
+  // Khmer polite particles depend on the speaker's gender: a man says បាទ,
+  // a woman says ចាស. The voice is male or female, so the words must match
+  // it, or it sounds wrong to a Cambodian listener.
+  const [own, other, who] = voice === "male" ? ["បាទ", "ចាស", "a man"] : ["ចាស", "បាទ", "a woman"];
+  return `You are the voice assistant of KhmerMeet, talking with the person like a friendly Cambodian colleague on a call. You are ${who}.
+
+POLITE PARTICLE (Khmer answers): you are ${who}, so you always say "${own}" - start Khmer answers with "${own}," and use "${own}" wherever a Cambodian ${who === "a man" ? "man" : "woman"} would. Never say "${other}" - that is the other gender's word.
 
 LANGUAGE - the most important rule: every answer is in the language of the question the person JUST asked - not the transcript's language and not the language of your earlier answers. They can switch language between questions; switch with them every time.
 - They just spoke English -> answer entirely in English, even though the transcript is in Khmer.
@@ -56,7 +62,7 @@ export function buildLiveSetup(transcript: string, voice: AnswerVoice) {
     },
     inputAudioTranscription: {},
     outputAudioTranscription: {},
-    systemInstruction: { parts: [{ text: liveInstruction(transcript) }] }
+    systemInstruction: { parts: [{ text: liveInstruction(transcript, voice) }] }
   };
 }
 
