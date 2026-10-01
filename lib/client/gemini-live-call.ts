@@ -1,9 +1,11 @@
 "use client";
 
+import { createLiveActivity } from "./live-activity";
+
 // A realtime voice call with Gemini Live: the microphone streams to Google
-// continuously and Gemini's spoken reply streams back, so an answer starts
-// about a second after the person stops talking and they can interrupt it
-// just by speaking. See lib/ai/gemini-live.ts for why this replaced the
+// during each question and Gemini's spoken reply streams back. The client
+// ends a question after 1.1 seconds of silence; tapping stops playback.
+// See lib/ai/gemini-live.ts for why this replaced the
 // request-per-question conversation.
 
 const INPUT_RATE = 16000; // what Gemini Live expects from the microphone
@@ -94,6 +96,9 @@ export async function startGeminiLiveCall(options: {
   }
 
   const socket = new WebSocket(`${session.wsUrl}?access_token=${encodeURIComponent(session.token)}`);
+  const activity = createLiveActivity((realtimeInput) => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ realtimeInput }));
+  });
   const playing: AudioBufferSourceNode[] = [];
   let nextStart = 0;
   let ended = false;
@@ -169,6 +174,7 @@ export async function startGeminiLiveCall(options: {
     sendTimer = setInterval(() => {
       if (!pending.length || socket.readyState !== WebSocket.OPEN) return;
       if (aiIsTalking()) {
+        activity.reset();
         pending = [];
         return;
       }
@@ -180,10 +186,12 @@ export async function startGeminiLiveCall(options: {
         offset += chunk.length;
       }
       pending = [];
-      socket.send(
-        JSON.stringify({
-          realtimeInput: { audio: { data: toBase64(downsampleToPcm16(joined, audio.sampleRate)), mimeType: `audio/pcm;rate=${INPUT_RATE}` } }
-        })
+      let energy = 0;
+      for (const sample of joined) energy += sample * sample;
+      activity.push(
+        toBase64(downsampleToPcm16(joined, audio.sampleRate)),
+        Math.sqrt(energy / joined.length),
+        joined.length / audio.sampleRate * 1000
       );
     }, SEND_EVERY_MS);
     handlers.onState("listening");

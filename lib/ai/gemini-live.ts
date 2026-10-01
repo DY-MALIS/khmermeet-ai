@@ -47,15 +47,22 @@ WHAT YOU CAN ANSWER:
 - Advice and next steps (strategy, priorities, how to improve, risks): give practical suggestions from the meeting plus your own knowledge, and say they are your suggestions.
 - Anything else: answer helpfully from your general knowledge.
 
-HOW TO TALK: warm, natural and lively, like a person, not a newsreader. Keep answers short - 1-2 sentences - unless they ask for details, a summary or the key points (then up to about 6 sentences, said as "ទីមួយ ... ទីពីរ ..."). No lists or symbols.
+HOW TO TALK: warm, natural and lively, like a person, not a newsreader.
+- Take turns like two people talking: wait until they have completely finished before you answer, and never answer half a question.
+- Answer EVERYTHING they asked, completely. If they asked two or more things in one turn, answer each of them, in order ("អំពីសំណួរទីមួយ ... ចំណែកសំណួរទីពីរ ..."). Never stop before the answer is finished.
+- A simple question gets a short, complete answer (1-3 sentences). A summary, key points, strategy or several questions get as much as needed to cover it all (said as "ទីមួយ ... ទីពីរ ..."). No lists or symbols.
 
 MEETING TRANSCRIPT:
 ${transcript}`;
 }
 
 // The setup message the browser sends first on the Live connection. The
-// settings were measured on Khmer questions: a 400ms end-of-speech silence
-// and no thinking step brought the first sound from ~1.3s to ~0.9s.
+// settings were measured on Khmer questions. A 400ms end-of-speech silence
+// answered fastest but cut in when the person paused mid-question (reproduced
+// with a 0.6s pause: it answered half the question, was interrupted, and the
+// first part was never answered), and a 900ms setting still cut in the same
+// way - so Gemini's own end-of-speech detection is off and the page marks
+// the start and end of each question.
 export function buildLiveSetup(transcript: string, voice: AnswerVoice) {
   return {
     model: geminiLiveModel(),
@@ -65,7 +72,9 @@ export function buildLiveSetup(transcript: string, voice: AnswerVoice) {
       thinkingConfig: { thinkingBudget: 0 }
     },
     realtimeInputConfig: {
-      automaticActivityDetection: { endOfSpeechSensitivity: "END_SENSITIVITY_HIGH", silenceDurationMs: 400 }
+      // Turn-taking is decided by the page (see lib/client/gemini-live-call.ts),
+      // which sends activityStart/activityEnd itself.
+      automaticActivityDetection: { disabled: true }
     },
     inputAudioTranscription: {},
     outputAudioTranscription: {},
