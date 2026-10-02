@@ -370,8 +370,22 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       });
       streamRef.current = stream;
 
+      // The slower way: one request per question (answers ~5s after the
+      // person stops), used when Gemini Live is unavailable.
+      const startOneRequestPerQuestion = () => {
+        listenerRef.current = createLiveListener(stream, audio, {
+          onHearing: () => setLiveState("hearing"),
+          onQuestion: (recording) => void handleSpokenQuestion(recording)
+        });
+        setLiveState("listening");
+        listenerRef.current.listen();
+        void prepareFiller(meetingId, voiceGenderRef.current);
+      };
+
       // Realtime Gemini Live first (answers ~1s after the person stops);
       // null means it is unavailable, so fall back to one request per question.
+      // If it stops later (e.g. the free daily quota runs out mid-call), the
+      // conversation carries on the slower way instead of ending.
       setLiveState("thinking");
       const call = await startGeminiLiveCall({
         meetingId,
@@ -388,7 +402,10 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
             setTurns((current) => [...current, turn]);
           },
           onError: (message) => setError(message),
-          onClosed: () => endLive()
+          onUnavailable: () => {
+            liveCallRef.current = null;
+            if (!liveIsOff()) startOneRequestPerQuestion();
+          }
         }
       });
       if (liveIsOff()) {
@@ -399,14 +416,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
         liveCallRef.current = call;
         return;
       }
-
-      listenerRef.current = createLiveListener(stream, audio, {
-        onHearing: () => setLiveState("hearing"),
-        onQuestion: (recording) => void handleSpokenQuestion(recording)
-      });
-      setLiveState("listening");
-      listenerRef.current.listen();
-      void prepareFiller(meetingId, voiceGenderRef.current);
+      startOneRequestPerQuestion();
     } catch (error) {
       endLive();
       setError(describeMicError(error));

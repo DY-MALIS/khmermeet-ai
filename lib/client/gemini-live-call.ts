@@ -36,12 +36,20 @@ export type LiveCallHandlers = {
   onState: (state: LiveCallState) => void;
   onTurn: (question: string, answer: string) => void;
   onError: (message: string) => void;
-  onClosed: () => void;
+  // Live cannot carry on (daily free quota used up, or it failed and could
+  // not reconnect): the caller continues the conversation the slower way.
+  onUnavailable: () => void;
 };
 
 export type LiveCall = { end: () => void; stopTalking: () => void };
 
 type LiveSession = { token: string; wsUrl: string; setup: unknown };
+
+// When Google says the free quota is used up (close 1011 "...quota..."), it
+// stays used up for hours, so skip Live for a while instead of making every
+// new conversation wait a second for the same refusal.
+const QUOTA_PAUSE_MS = 15 * 60 * 1000;
+let liveQuotaPausedUntil = 0;
 
 function toBase64(bytes: Uint8Array) {
   let binary = "";
@@ -82,6 +90,7 @@ export async function startGeminiLiveCall(options: {
   handlers: LiveCallHandlers;
 }): Promise<LiveCall | null> {
   const { audio, stream, handlers } = options;
+  if (Date.now() < liveQuotaPausedUntil) return null;
   handlers.onState("connecting");
 
   const requestSession = async (resumeHandle?: string) => {
@@ -240,6 +249,16 @@ export async function startGeminiLiveCall(options: {
     };
   };
 
+  // Hands the conversation over to the caller's slower path; what was said
+  // so far is kept.
+  const unavailable = () => {
+    if (question.trim() || answer.trim()) handlers.onTurn(question.trim(), answer.trim());
+    question = "";
+    answer = "";
+    end();
+    handlers.onUnavailable();
+  };
+
   const reconnect = async () => {
     if (reconnecting || ended) return;
     reconnecting = true;
@@ -268,9 +287,7 @@ export async function startGeminiLiveCall(options: {
       connect(next.session);
     } catch {
       if (ended) return;
-      handlers.onError("The voice conversation lost its connection.");
-      end();
-      handlers.onClosed();
+      unavailable();
     } finally {
       reconnecting = false;
     }
@@ -335,18 +352,15 @@ export async function startGeminiLiveCall(options: {
         if (reconnectAfterTurn) void reconnect();
       }
     };
-    ws.onerror = () => {
-      if (!ended && !resumeHandle) handlers.onError("The voice conversation lost its connection.");
-    };
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       if (ws !== socket || ended) return;
-      if (resumeHandle && attempts < 3) {
+      const quota = event.code === 1011 && /quota/i.test(event.reason);
+      if (quota) liveQuotaPausedUntil = Date.now() + QUOTA_PAUSE_MS;
+      if (!quota && resumeHandle && attempts < 3) {
         void reconnect();
         return;
       }
-      if (attempts) handlers.onError("The voice conversation lost its connection.");
-      end();
-      handlers.onClosed();
+      unavailable();
     };
   };
 
