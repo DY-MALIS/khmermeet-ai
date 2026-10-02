@@ -26,9 +26,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Transcript has no clear speech text yet." }, { status: 400 });
     }
     const voice = body?.voice === "male" ? "male" : "female";
+    // Set when the page reconnects after Google closed the connection.
+    const resumeHandle =
+      typeof body?.resumeHandle === "string" && body.resumeHandle.length <= 4096 ? body.resumeHandle : undefined;
     const { token, wsUrl } = await createLiveToken();
     return NextResponse.json(
-      { token, wsUrl, setup: buildLiveSetup(meeting.transcript, voice) },
+      { token, wsUrl, setup: buildLiveSetup(meeting.transcript, voice, resumeHandle) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

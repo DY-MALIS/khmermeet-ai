@@ -63,7 +63,12 @@ ${transcript}`;
 // first part was never answered), and a 900ms setting still cut in the same
 // way - so Gemini's own end-of-speech detection is off and the page marks
 // the start and end of each question.
-export function buildLiveSetup(transcript: string, voice: AnswerVoice) {
+//
+// Google ends a Live connection after about 10 minutes, and an audio session
+// after 15 unless its context is compressed. With compression and resumption
+// on, the page reconnects with the latest handle (resumeHandle) and the
+// conversation carries on where it was.
+export function buildLiveSetup(transcript: string, voice: AnswerVoice, resumeHandle?: string) {
   return {
     model: geminiLiveModel(),
     generationConfig: {
@@ -76,8 +81,11 @@ export function buildLiveSetup(transcript: string, voice: AnswerVoice) {
       // which sends activityStart/activityEnd itself.
       automaticActivityDetection: { disabled: true }
     },
-    inputAudioTranscription: {},
-    outputAudioTranscription: {},
+    // Without a hint, short Khmer questions were written down as Malay.
+    inputAudioTranscription: { languageCodes: ["km-KH", "en-US"] },
+    outputAudioTranscription: { languageCodes: ["km-KH", "en-US"] },
+    contextWindowCompression: { slidingWindow: {} },
+    sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
     systemInstruction: { parts: [{ text: liveInstruction(transcript, voice) }] }
   };
 }

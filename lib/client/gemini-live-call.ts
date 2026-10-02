@@ -41,6 +41,8 @@ export type LiveCallHandlers = {
 
 export type LiveCall = { end: () => void; stopTalking: () => void };
 
+type LiveSession = { token: string; wsUrl: string; setup: unknown };
+
 function toBase64(bytes: Uint8Array) {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) {
@@ -82,22 +84,36 @@ export async function startGeminiLiveCall(options: {
   const { audio, stream, handlers } = options;
   handlers.onState("connecting");
 
-  const response = await fetch(`/api/meetings/${options.meetingId}/live-session`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ voice: options.voice })
-  });
+  const requestSession = async (resumeHandle?: string) => {
+    const response = await fetch(`/api/meetings/${options.meetingId}/live-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voice: options.voice, resumeHandle })
+    });
+    const session = (await response.json().catch(() => ({}))) as LiveSession & { error?: string };
+    return { status: response.status, ok: response.ok && !!session.token && !!session.wsUrl, session };
+  };
+
+  const first = await requestSession();
   // 503 = realtime voice not available; the caller falls back.
-  if (response.status === 503) return null;
-  const session = (await response.json().catch(() => ({}))) as { token?: string; wsUrl?: string; setup?: unknown; error?: string };
-  if (!response.ok || !session.token || !session.wsUrl) {
-    handlers.onError(session.error ?? "Could not start the voice conversation.");
+  if (first.status === 503) return null;
+  if (!first.ok) {
+    handlers.onError(first.session.error ?? "Could not start the voice conversation.");
     return null;
   }
 
-  const socket = new WebSocket(`${session.wsUrl}?access_token=${encodeURIComponent(session.token)}`);
+  // Google closes a Live connection after about 10 minutes (it warns first
+  // with goAway). The page then reconnects on a new token with the latest
+  // resumption handle, so the conversation carries on where it was.
+  let socket: WebSocket | null = null;
+  let resumeHandle = "";
+  let reconnectAfterTurn = false;
+  let reconnecting = false;
+  // Attempts since the last connection that came up; stops a resume that
+  // keeps failing from looping (each attempt mints a token).
+  let attempts = 0;
   const activity = createLiveActivity((realtimeInput) => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ realtimeInput }));
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ realtimeInput }));
   });
   const playing: AudioBufferSourceNode[] = [];
   let nextStart = 0;
@@ -153,7 +169,7 @@ export async function startGeminiLiveCall(options: {
     stopTalking();
     makeUp.disconnect();
     try {
-      socket.close();
+      socket?.close();
     } catch {
       // Already closed.
     }
@@ -172,7 +188,12 @@ export async function startGeminiLiveCall(options: {
     recorder.port.onmessage = (event: MessageEvent<Float32Array>) => pending.push(event.data);
     source.connect(recorder);
     sendTimer = setInterval(() => {
-      if (!pending.length || socket.readyState !== WebSocket.OPEN) return;
+      if (!pending.length) return;
+      if (socket?.readyState !== WebSocket.OPEN) {
+        // Reconnecting: drop what was said in between rather than send it late.
+        pending = [];
+        return;
+      }
       if (aiIsTalking()) {
         activity.reset();
         pending = [];
@@ -219,53 +240,116 @@ export async function startGeminiLiveCall(options: {
     };
   };
 
-  socket.onopen = () => socket.send(JSON.stringify({ setup: session.setup }));
-  socket.onmessage = async (event) => {
-    const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
-    let message: {
-      setupComplete?: unknown;
-      goAway?: unknown;
-      serverContent?: {
-        modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
-        inputTranscription?: { text?: string };
-        outputTranscription?: { text?: string };
-        interrupted?: boolean;
-        turnComplete?: boolean;
-      };
-    };
+  const reconnect = async () => {
+    if (reconnecting || ended) return;
+    reconnecting = true;
+    attempts++;
+    reconnectAfterTurn = false;
+    activity.reset();
+    // Keep whatever was said before the connection went.
+    if (question.trim() || answer.trim()) handlers.onTurn(question.trim(), answer.trim());
+    question = "";
+    answer = "";
+    const old = socket;
+    socket = null;
+    if (old) {
+      old.onclose = null;
+      try {
+        old.close();
+      } catch {
+        // Already closed.
+      }
+    }
+    handlers.onState("connecting");
     try {
-      message = JSON.parse(text);
+      const next = await requestSession(resumeHandle);
+      if (ended) return;
+      if (!next.ok) throw new Error(next.session.error);
+      connect(next.session);
     } catch {
-      return;
+      if (ended) return;
+      handlers.onError("The voice conversation lost its connection.");
+      end();
+      handlers.onClosed();
+    } finally {
+      reconnecting = false;
     }
-    if (message.setupComplete !== undefined) {
-      void startMicrophone().catch(() => {
-        handlers.onError("Could not start the microphone for the conversation.");
-        end();
-      });
-      return;
-    }
-    const content = message.serverContent;
-    if (!content) return;
-    if (content.inputTranscription?.text) question += content.inputTranscription.text;
-    if (content.outputTranscription?.text) answer += content.outputTranscription.text;
-    // The person started talking over the answer - stop it at once.
-    if (content.interrupted) stopTalking();
-    for (const part of content.modelTurn?.parts ?? []) if (part.inlineData?.data) playChunk(part.inlineData.data);
-    if (content.turnComplete) {
-      if (question.trim() || answer.trim()) handlers.onTurn(question.trim(), answer.trim());
-      question = "";
-      answer = "";
-    }
-  };
-  socket.onerror = () => {
-    if (!ended) handlers.onError("The voice conversation lost its connection.");
-  };
-  socket.onclose = () => {
-    const wasOpen = !ended;
-    end();
-    if (wasOpen) handlers.onClosed();
   };
 
+  const connect = (session: LiveSession) => {
+    const ws = new WebSocket(`${session.wsUrl}?access_token=${encodeURIComponent(session.token)}`);
+    socket = ws;
+    ws.onopen = () => ws.send(JSON.stringify({ setup: session.setup }));
+    ws.onmessage = async (event) => {
+      const text = typeof event.data === "string" ? event.data : await (event.data as Blob).text();
+      if (ws !== socket) return;
+      let message: {
+        setupComplete?: unknown;
+        goAway?: unknown;
+        sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
+        serverContent?: {
+          modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
+          inputTranscription?: { text?: string };
+          outputTranscription?: { text?: string };
+          interrupted?: boolean;
+          turnComplete?: boolean;
+        };
+      };
+      try {
+        message = JSON.parse(text);
+      } catch {
+        return;
+      }
+      const update = message.sessionResumptionUpdate;
+      if (update?.resumable && update.newHandle) resumeHandle = update.newHandle;
+      // Finish the answer in progress, then move to a fresh connection;
+      // if the connection closes first, onclose reconnects.
+      if (message.goAway !== undefined) {
+        if (question || answer || aiIsTalking()) reconnectAfterTurn = true;
+        else void reconnect();
+        return;
+      }
+      if (message.setupComplete !== undefined) {
+        attempts = 0;
+        if (recorder) {
+          handlers.onState("listening");
+          return;
+        }
+        void startMicrophone().catch(() => {
+          handlers.onError("Could not start the microphone for the conversation.");
+          end();
+        });
+        return;
+      }
+      const content = message.serverContent;
+      if (!content) return;
+      if (content.inputTranscription?.text) question += content.inputTranscription.text;
+      if (content.outputTranscription?.text) answer += content.outputTranscription.text;
+      // The person started talking over the answer - stop it at once.
+      if (content.interrupted) stopTalking();
+      for (const part of content.modelTurn?.parts ?? []) if (part.inlineData?.data) playChunk(part.inlineData.data);
+      if (content.turnComplete) {
+        if (question.trim() || answer.trim()) handlers.onTurn(question.trim(), answer.trim());
+        question = "";
+        answer = "";
+        if (reconnectAfterTurn) void reconnect();
+      }
+    };
+    ws.onerror = () => {
+      if (!ended && !resumeHandle) handlers.onError("The voice conversation lost its connection.");
+    };
+    ws.onclose = () => {
+      if (ws !== socket || ended) return;
+      if (resumeHandle && attempts < 3) {
+        void reconnect();
+        return;
+      }
+      if (attempts) handlers.onError("The voice conversation lost its connection.");
+      end();
+      handlers.onClosed();
+    };
+  };
+
+  connect(first.session);
   return { end, stopTalking };
 }
