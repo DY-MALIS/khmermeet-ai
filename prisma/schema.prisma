@@ -13,6 +13,7 @@ model User {
   email     String    @unique
   createdAt DateTime  @default(now())
   meetings  Meeting[]
+  voiceSamples VoiceSample[]
 }
 
 model Meeting {
@@ -172,4 +173,27 @@ model MeetingAudioChunk {
 
   @@unique([meetingId, chunkIndex])
   @@index([meetingId])
+}
+
+// Voice memory: one voiceprint (how someone sounds, as numbers - no audio is
+// kept here) per person per meeting it was learned from. A person's voice is
+// the combination of all their samples under the same name; renaming or
+// forgetting someone updates or deletes these rows. See lib/voice.
+model VoiceSample {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name       String
+  meetingId  String?
+  // "call" (a call participant's own track), "intro" or "named".
+  source     String
+  // What it was learned from (e.g. "segment:<id>"), so learning twice from
+  // the same recording updates the sample instead of adding a duplicate.
+  sourceKey  String
+  voiceprint Float[]
+  seconds    Float
+  createdAt  DateTime @default(now())
+
+  @@unique([ownerId, sourceKey])
+  @@index([ownerId])
 }

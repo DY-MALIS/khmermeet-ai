@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
+import { AudioLines, BarChart3, Bot, CalendarPlus, CheckSquare, FileText, History, Settings, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/components/ui";
@@ -16,6 +16,7 @@ type NavigationLabelKey =
   | "aiSummary"
   | "tasks"
   | "history"
+  | "voices"
   | "settings";
 
 const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarChart3 }> = [
@@ -26,6 +27,7 @@ const nav: Array<{ href: string; labelKey: NavigationLabelKey; icon: typeof BarC
   { href: "/summaries", labelKey: "aiSummary", icon: Bot },
   { href: "/tasks", labelKey: "tasks", icon: CheckSquare },
   { href: "/meetings", labelKey: "history", icon: History },
+  { href: "/voices", labelKey: "voices", icon: AudioLines },
   { href: "/settings", labelKey: "settings", icon: Settings }
 ];
 

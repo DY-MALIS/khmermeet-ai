@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, requireUser } from "@/lib/session";
 import { normalizeTranscriptionLanguageMode, transcribeStoredTrackRecording } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { learnCallParticipantVoice } from "@/lib/voice/memory";
 
 export const dynamic = "force-dynamic";
 // A participant's stored recording is one continuous file for the whole
@@ -71,6 +72,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await prisma.meetingTranscriptSegment.update({
       where: { id: segment.id },
       data: { text: transcript.trim() }
+    });
+
+    // This track is one known person talking - remember their voice so a
+    // later meeting can name them without them saying who they are. After
+    // the response, so it never delays the transcript.
+    after(async () => {
+      const learned = await learnCallParticipantVoice(segment.id).catch((error) => {
+        console.warn("Voice memory: could not learn from segment", segment.id, error instanceof Error ? error.message : error);
+        return null;
+      });
+      if (learned) console.log("Voice memory:", JSON.stringify(learned));
     });
 
     return NextResponse.json({ transcript, index });

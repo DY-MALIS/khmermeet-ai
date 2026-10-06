@@ -464,3 +464,26 @@ export async function prepareAudioVariantForTranscription(
   }
 }
 
+
+// Decodes a stored recording to 16 kHz mono samples in [-1, 1] - what the
+// voice model (lib/voice) reads. maxSeconds bounds the work and memory on a
+// long recording: a voiceprint only needs a minute or so of someone's speech.
+export async function decodeToPcm16k(bytes: Buffer, maxSeconds: number): Promise<Float32Array> {
+  if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
+  await ensureFfmpegExecutable();
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-voice-"));
+  try {
+    const inputPath = path.join(tmpDir, "input");
+    await writeFile(inputPath, bytes);
+    const { stdout } = await execFileAsync(
+      ffmpegPath,
+      ["-v", "error", "-i", inputPath, "-t", String(maxSeconds), "-ac", "1", "-ar", "16000", "-f", "s16le", "pipe:1"],
+      { encoding: "buffer", maxBuffer: Math.ceil(maxSeconds * 32000) + 1024 * 1024 }
+    );
+    const samples = new Float32Array(Math.floor(stdout.length / 2));
+    for (let i = 0; i < samples.length; i++) samples[i] = stdout.readInt16LE(i * 2) / 32768;
+    return samples;
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
