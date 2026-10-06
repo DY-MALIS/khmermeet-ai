@@ -1,4 +1,5 @@
 import type { AnswerVoice } from "@/lib/ai/prompts/meetingQaPrompt";
+import { VOICE_NOTES } from "@/lib/client/voice-pitch";
 
 // Google's Gemini Live is a realtime voice model: it listens and talks over
 // one open connection, so an answer starts ~1s after the person stops
@@ -21,6 +22,13 @@ export function geminiLiveModel() {
   return process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_LIVE_MODEL;
 }
 
+// The page measures the asker's voice pitch and sends one of these notes
+// with each question (lib/client/voice-pitch.ts). Gemini's own guess by ear
+// was not trusted: it called a lower female voice "លោក" every time.
+const VOICE_NOTE_MALE = VOICE_NOTES.male;
+const VOICE_NOTE_FEMALE = VOICE_NOTES.female;
+const VOICE_NOTE_UNSURE = VOICE_NOTES.unsure;
+
 function liveInstruction(transcript: string, voice: AnswerVoice) {
   // Khmer polite particles depend on the speaker's gender: a man says បាទ,
   // a woman says ចាស. The voice is male or female, so the words must match
@@ -39,8 +47,9 @@ function liveInstruction(transcript: string, voice: AnswerVoice) {
 - បើស្តាប់សំណួរមិនច្បាស់ (សំឡេងរំខាន សំឡេងលាយគ្នា ឬមិនប្រាកដ) កុំទាយ ហើយកុំប្តូរទៅអង់គ្លេស។ សូមនិយាយខ្លីៗថា «សុំទោស ខ្ញុំស្តាប់មិនច្បាស់ទេ សូមនិយាយម្តងទៀតបានទេ?» ហើយរង់ចាំ។
 - អ្នកប្រើនិយាយតែខ្មែរ ឬអង់គ្លេសប៉ុណ្ណោះ មិនមែនចិន ថៃ ឬឡាវទេ។ ភាសាខ្មែរត្រូវតែជាខ្មែរសុទ្ធ។
 - ពាក្យគួរសម: អ្នកជា${gender} ដូច្នេះត្រូវនិយាយ «${own}» ជានិច្ច (ចាប់ផ្តើមចម្លើយខ្មែរដោយ «${own},») ហើយកុំនិយាយ «${other}» ដាច់ខាត។
+- ហៅអ្នកសួរ: app ផ្ញើកំណត់ចំណាំ «${VOICE_NOTE_MALE}» «${VOICE_NOTE_FEMALE}» ឬ «${VOICE_NOTE_UNSURE}» ជាមួយសំណួរ។ បើ «បុរស» ហៅគាត់ថា «លោក»។ បើ «ស្ត្រី» ហៅគាត់ថា «អ្នកស្រី»។ បើ «មិនប្រាកដ» ឬគ្មានកំណត់ចំណាំ ហៅថា «អ្នក» ហើយកុំទាយភេទពីសំឡេងខ្លួនឯងដាច់ខាត។ កុំនិយាយពីកំណត់ចំណាំនេះ ហើយកុំឆ្លើយវា។ បើគាត់ប្រាប់ពីរបៀបហៅគាត់ ធ្វើតាមគាត់។ ពាក្យ «${own}» របស់អ្នក មិនប្តូរតាមអ្នកសួរទេ។
 
-(Summary of the rules above in English: your default language is Khmer; answer in English only when the question just asked was clearly and entirely English; if you did not hear clearly, ask in Khmer to repeat instead of guessing; you are ${who} and always say "${own}", never "${other}".)
+(Summary of the rules above in English: your default language is Khmer; answer in English only when the question just asked was clearly and entirely English; if you did not hear clearly, ask in Khmer to repeat instead of guessing; you are ${who} and always say "${own}", never "${other}" - whoever is asking; address the person as "លោក" when the app's note says ${VOICE_NOTE_MALE}, "អ្នកស្រី" when it says ${VOICE_NOTE_FEMALE}, and "អ្នក" when it says ${VOICE_NOTE_UNSURE} or there is no note - never guess their gender yourself, never mention or answer the note, and if they say how to address them, follow that.)
 
 WHAT YOU CAN ANSWER:
 - About the meeting below (what it was about, a summary, key points, decisions, who said what, tasks): the transcript is the only source of what was said - never invent anything as having been said.

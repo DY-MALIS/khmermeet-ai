@@ -1,6 +1,7 @@
 "use client";
 
 import { createLiveActivity } from "./live-activity";
+import { createPitchTracker, VOICE_NOTES } from "./voice-pitch";
 
 // A realtime voice call with Gemini Live: the microphone streams to Google
 // during each question and Gemini's spoken reply streams back. The client
@@ -121,8 +122,20 @@ export async function startGeminiLiveCall(options: {
   // Attempts since the last connection that came up; stops a resume that
   // keeps failing from looping (each attempt mints a token).
   let attempts = 0;
+  // The asker's voice pitch over each question decides how the assistant
+  // addresses them (លោក / អ្នកស្រី / អ្នក) - see lib/client/voice-pitch.ts.
+  const pitch = createPitchTracker();
   const activity = createLiveActivity((realtimeInput) => {
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ realtimeInput }));
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    if (realtimeInput.activityEnd) {
+      // Context for the answer, sent just before the question is closed;
+      // turnComplete false so it is not taken as a question of its own.
+      socket.send(
+        JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: VOICE_NOTES[pitch.verdict()] }] }], turnComplete: false } })
+      );
+      pitch.reset();
+    }
+    socket.send(JSON.stringify({ realtimeInput }));
   });
   const playing: AudioBufferSourceNode[] = [];
   let nextStart = 0;
@@ -205,6 +218,7 @@ export async function startGeminiLiveCall(options: {
       }
       if (aiIsTalking()) {
         activity.reset();
+        pitch.reset();
         pending = [];
         return;
       }
@@ -218,8 +232,11 @@ export async function startGeminiLiveCall(options: {
       pending = [];
       let energy = 0;
       for (const sample of joined) energy += sample * sample;
+      const pcm16 = downsampleToPcm16(joined, audio.sampleRate);
+      const voice = new Int16Array(pcm16.buffer, pcm16.byteOffset, pcm16.length / 2);
+      pitch.push(Float32Array.from(voice, (sample) => sample / 0x8000));
       activity.push(
-        toBase64(downsampleToPcm16(joined, audio.sampleRate)),
+        toBase64(pcm16),
         Math.sqrt(energy / joined.length),
         joined.length / audio.sampleRate * 1000
       );

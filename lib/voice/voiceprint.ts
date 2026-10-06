@@ -10,7 +10,8 @@ import { fbankFeatures, MEL_BINS, SAMPLE_RATE } from "./fbank";
 // https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM).
 // Two voiceprints of the same person point the same way (cosine near 1).
 //
-// Measured with this code (2026-10-06): 16 Khmer men (OpenSLR 42), 10 of them
+// Measured with this code (2026-10-06): 16 Khmer voices (OpenSLR 42 - labelled
+// "male" but they are women, by pitch and by ear), 10 of them
 // remembered from ~30 s in one room, then different sentences through a
 // phone-quality, echoing, noisy "second meeting", over 4 random splits and
 // 2 noise levels. With the threshold and margin below: remembered people
@@ -18,8 +19,8 @@ import { fbankFeatures, MEL_BINS, SAMPLE_RATE } from "./fbank";
 // remembered got someone's name 2/48 times - both a look-alike voice that
 // phone-quality audio pushed up to 0.76-0.78 (the same pair scores 0.55 on
 // clean audio). Raising the threshold to 0.75 did not remove those two and
-// left 10/80 remembered people unnamed. Malis's real third call matched him
-// at 0.72. A smaller model (wavlm-base-plus-sv) could not separate these
+// left 10/80 remembered people unnamed. Malis's real third call matched
+// Malis at 0.72. Men's voices have not been measured yet. A smaller model (wavlm-base-plus-sv) could not separate these
 // voices at all, so do not swap the model without re-measuring.
 
 const MODEL_URL =
