@@ -76,6 +76,23 @@ export function framePitchHz(frame: Float32Array): number | null {
   return RATE / exact;
 }
 
+// Whether a block (16 kHz, any level) contains a voice: a pitch in the human
+// range in at least one 50 ms frame. Normalised first, so a distant, quiet
+// voice counts as much as a near one. Used by the live turn detector so that
+// noise which swells and fades (a fan, traffic) - loud but without pitch -
+// never opens a question: on a 3-minute fluctuating-noise test, loudness
+// alone opened 23 questions, and none of its loud blocks had a pitch.
+export function isVoicedBlock(block: Float32Array) {
+  let peak = 0;
+  for (const value of block) peak = Math.max(peak, Math.abs(value));
+  if (!peak) return false;
+  const normalised = block.map((value) => (value / peak) * 0.5);
+  for (let offset = 0; offset + FRAME <= normalised.length; offset += FRAME) {
+    if (framePitchHz(normalised.subarray(offset, offset + FRAME))) return true;
+  }
+  return false;
+}
+
 // Collects pitch over one spoken question (16 kHz samples, any chunk size).
 export function createPitchTracker() {
   let pending = new Float32Array(0);

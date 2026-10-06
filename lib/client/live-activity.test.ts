@@ -6,7 +6,7 @@ test("keeps a two-part question together across a 600 ms pause", () => {
   const sent: Record<string, unknown>[] = [];
   const activity = createLiveActivity((input) => sent.push(input));
   const frames = (count: number, level: number) => {
-    for (let i = 0; i < count; i++) activity.push("pcm", level, 100);
+    for (let i = 0; i < count; i++) activity.push("pcm", level, 100, true);
   };
   frames(10, 0);
   assert.equal(sent.length, 0);
@@ -30,12 +30,12 @@ test("keeps a two-part question together across a 600 ms pause", () => {
 test("rejects isolated noise and clears buffered audio on playback", () => {
   const sent: Record<string, unknown>[] = [];
   const activity = createLiveActivity((input) => sent.push(input));
-  activity.push("click", 0.1, 100);
-  activity.push("silence", 0, 100);
+  activity.push("click", 0.1, 100, true);
+  activity.push("silence", 0, 100, false);
   assert.equal(sent.length, 0);
   activity.reset();
-  activity.push("speech1", 0.1, 100);
-  activity.push("speech2", 0.1, 100);
+  activity.push("speech1", 0.1, 100, true);
+  activity.push("speech2", 0.1, 100, true);
   assert.deepEqual(sent.slice(1).map((item) => (item.audio as { data: string }).data), ["speech1", "speech2"]);
   activity.reset();
   activity.reset();

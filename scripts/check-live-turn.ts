@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { buildLiveSetup, createLiveToken } from "../lib/ai/gemini-live";
 import { createLiveActivity } from "../lib/client/live-activity";
+import { createLeveler } from "../lib/client/live-leveler";
+import { isVoicedBlock } from "../lib/client/voice-pitch";
 
 // Optional live integration check: pass a raw mono 16 kHz PCM16 recording.
 async function main() {
@@ -30,6 +32,7 @@ async function main() {
       console.log(JSON.stringify({ starts, ends, completedTurns, heard, said, audioBytes, firstAudioAfterEndMs, interrupted }));
       finish(!interrupted && completedTurns === 1 && starts === 1 && ends === 1 && audioBytes > 0 && said.trim() ? undefined : new Error("Incomplete or prematurely split answer"));
     }
+    const leveler = createLeveler();
     const activity = createLiveActivity((realtimeInput) => {
       if (realtimeInput.activityStart) starts++;
       if (realtimeInput.activityEnd) { ends++; endedAt = Date.now(); }
@@ -50,9 +53,17 @@ async function main() {
         const tick = () => {
           const chunk = pcm.subarray(offset, offset + 3200);
           if (!chunk.length) { sentAllAudio = true; checkResult(); return; }
+          // Same path as the page (lib/client/gemini-live-call.ts): judge
+          // speech on the raw level, send the levelled audio.
+          const raw = new Float32Array(chunk.length >> 1);
+          for (let i = 0; i < raw.length; i++) raw[i] = chunk.readInt16LE(i * 2) / 32768;
           let energy = 0;
-          for (let i = 0; i + 1 < chunk.length; i += 2) energy += (chunk.readInt16LE(i) / 32768) ** 2;
-          activity.push(chunk.toString("base64"), Math.sqrt(energy / (chunk.length / 2)), chunk.length / 32);
+          for (const sample of raw) energy += sample * sample;
+          const rms = Math.sqrt(energy / Math.max(1, raw.length));
+          const levelled = leveler.process(raw, rms, rms > activity.threshold());
+          const out = Buffer.alloc(levelled.length * 2);
+          levelled.forEach((value, i) => out.writeInt16LE(Math.round(Math.max(-1, Math.min(1, value)) * 32767), i * 2));
+          activity.push(out.toString("base64"), rms, chunk.length / 32, isVoicedBlock(raw));
           offset += chunk.length;
           timer = setTimeout(tick, 100);
         };

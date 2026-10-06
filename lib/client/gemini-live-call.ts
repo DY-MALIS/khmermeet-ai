@@ -1,7 +1,8 @@
 "use client";
 
 import { createLiveActivity } from "./live-activity";
-import { createPitchTracker, VOICE_NOTES } from "./voice-pitch";
+import { createLeveler } from "./live-leveler";
+import { createPitchTracker, isVoicedBlock, VOICE_NOTES } from "./voice-pitch";
 
 // A realtime voice call with Gemini Live: the microphone streams to Google
 // during each question and Gemini's spoken reply streams back. The client
@@ -67,17 +68,26 @@ function fromBase64(data: string) {
   return bytes;
 }
 
-// Averages groups of samples down to 16 kHz and packs them as 16-bit PCM.
-function downsampleToPcm16(samples: Float32Array, fromRate: number) {
+// Averages groups of samples down to 16 kHz.
+function downsampleTo16k(samples: Float32Array, fromRate: number) {
   const ratio = fromRate / INPUT_RATE;
   const length = Math.floor(samples.length / ratio);
-  const out = new Int16Array(length);
+  const out = new Float32Array(length);
   for (let index = 0; index < length; index++) {
     const start = Math.floor(index * ratio);
     const end = Math.min(samples.length, Math.floor((index + 1) * ratio));
     let sum = 0;
     for (let cursor = start; cursor < end; cursor++) sum += samples[cursor];
-    const value = Math.max(-1, Math.min(1, sum / Math.max(1, end - start)));
+    out[index] = sum / Math.max(1, end - start);
+  }
+  return out;
+}
+
+// Packs samples as 16-bit PCM, what Gemini Live expects.
+function toPcm16(samples: Float32Array) {
+  const out = new Int16Array(samples.length);
+  for (let index = 0; index < samples.length; index++) {
+    const value = Math.max(-1, Math.min(1, samples[index]));
     out[index] = value < 0 ? value * 0x8000 : value * 0x7fff;
   }
   return new Uint8Array(out.buffer);
@@ -125,6 +135,7 @@ export async function startGeminiLiveCall(options: {
   // The asker's voice pitch over each question decides how the assistant
   // addresses them (លោក / អ្នកស្រី / អ្នក) - see lib/client/voice-pitch.ts.
   const pitch = createPitchTracker();
+  const leveler = createLeveler();
   const activity = createLiveActivity((realtimeInput) => {
     if (socket?.readyState !== WebSocket.OPEN) return;
     if (realtimeInput.activityEnd) {
@@ -230,16 +241,16 @@ export async function startGeminiLiveCall(options: {
         offset += chunk.length;
       }
       pending = [];
+      // Judge speech on the raw sound (how far above the room, and whether it
+      // has a voice's pitch), then send Gemini the levelled sound so someone
+      // a few metres away is heard at a normal level.
+      const raw = downsampleTo16k(joined, audio.sampleRate);
       let energy = 0;
-      for (const sample of joined) energy += sample * sample;
-      const pcm16 = downsampleToPcm16(joined, audio.sampleRate);
-      const voice = new Int16Array(pcm16.buffer, pcm16.byteOffset, pcm16.length / 2);
-      pitch.push(Float32Array.from(voice, (sample) => sample / 0x8000));
-      activity.push(
-        toBase64(pcm16),
-        Math.sqrt(energy / joined.length),
-        joined.length / audio.sampleRate * 1000
-      );
+      for (const sample of raw) energy += sample * sample;
+      const rms = Math.sqrt(energy / Math.max(1, raw.length));
+      const levelled = leveler.process(raw, rms, rms > activity.threshold());
+      pitch.push(levelled);
+      activity.push(toBase64(toPcm16(levelled)), rms, joined.length / audio.sampleRate * 1000, isVoicedBlock(raw));
     }, SEND_EVERY_MS);
     handlers.onState("listening");
   };

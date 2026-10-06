@@ -363,8 +363,14 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           ...(savedMic ? { deviceId: { ideal: savedMic } } : {}),
+          // Echo cancellation and the device's own gain stay on (the phone's
+          // speaker is next to the microphone). Noise suppression is off: it
+          // treats a person a few metres away as background and erases them.
+          // The page itself judges speech against the room's noise and lifts
+          // a distant voice before Gemini hears it (lib/client/live-activity.ts,
+          // live-leveler.ts).
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true
         }
       });

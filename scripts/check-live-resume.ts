@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { buildLiveSetup, createLiveToken } from "../lib/ai/gemini-live";
 import { createLiveActivity } from "../lib/client/live-activity";
+import { isVoicedBlock } from "../lib/client/voice-pitch";
 
 // Optional live integration check for session resumption: asks the first
 // recording, reconnects on a new token with the resumption handle, then asks
@@ -30,7 +31,9 @@ function askOnce(pcmPath: string, handle?: string) {
           if (!chunk.length) return;
           let energy = 0;
           for (let i = 0; i + 1 < chunk.length; i += 2) energy += (chunk.readInt16LE(i) / 32768) ** 2;
-          activity.push(chunk.toString("base64"), Math.sqrt(energy / (chunk.length / 2)), chunk.length / 32);
+          const raw = new Float32Array(chunk.length >> 1);
+          for (let i = 0; i < raw.length; i++) raw[i] = chunk.readInt16LE(i * 2) / 32768;
+          activity.push(chunk.toString("base64"), Math.sqrt(energy / (chunk.length / 2)), chunk.length / 32, isVoicedBlock(raw));
           offset += chunk.length;
           setTimeout(tick, 100);
         };
