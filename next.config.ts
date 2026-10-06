@@ -19,7 +19,12 @@ if (!process.env.NEXTAUTH_URL || process.env.NEXTAUTH_URL.includes("[SENSITIVE]"
 const voiceModelRuntime = [
   "./node_modules/onnxruntime-node/dist/**",
   "./node_modules/onnxruntime-node/package.json",
-  "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/**",
+  // Only the CPU runtime: on Linux the package can also hold ~300 MB of GPU
+  // (CUDA/TensorRT) libraries, which pushed a function to 372 MB.
+  "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node",
+  // The binding links libonnxruntime.so.1; .so.1.21.0 is an identical copy.
+  "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1",
+  "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_shared.so",
   "./node_modules/onnxruntime-common/**"
 ];
 
@@ -45,19 +50,24 @@ const nextConfig: NextConfig = {
   // without this, the Linux binary can get left out of the deployed
   // function entirely. Including the whole package directory covers every
   // platform binary it ships, not just the one this happens to run on.
+  // Keys are globs matched against the route: "[id]" there would mean "the
+  // letter i or d" and silently match nothing, so dynamic segments are "*".
   outputFileTracingIncludes: {
-    "/api/meetings/[id]/transcribe": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
-    "/api/meetings/[id]/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
-    "/api/meetings/[id]/merge-transcript": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
+    "/api/meetings/*/transcribe": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
+    "/api/meetings/*/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
+    "/api/meetings/*/merge-transcript": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
     "/api/voices/selftest": [...voiceModelRuntime]
   },
   // onnxruntime-node ships binaries for every platform (208 MB); Vercel runs
   // Linux x64, so only that one (43 MB) is deployed.
   outputFileTracingExcludes: {
-    "*": [
+    "/**": [
       "./node_modules/onnxruntime-node/bin/napi-v3/win32/**",
       "./node_modules/onnxruntime-node/bin/napi-v3/darwin/**",
-      "./node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**"
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/arm64/**",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime.so.1.21.0",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda.so",
+      "./node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_tensorrt.so"
     ]
   },
   async headers() {
