@@ -54,6 +54,7 @@ const nextConfig: NextConfig = {
   // letter i or d" and silently match nothing, so dynamic segments are "*".
   outputFileTracingIncludes: {
     "/api/meetings/*/transcribe": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
+    "/api/meetings/*/recognize-speakers": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
     "/api/meetings/*/transcribe-stored-segment": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
     "/api/meetings/*/merge-transcript": ["./node_modules/ffmpeg-static/**", ...voiceModelRuntime],
     "/api/voices/selftest": [...voiceModelRuntime]

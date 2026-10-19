@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { decodeToPcm16k } from "@/lib/ffmpeg";
+import { voiceRecognitionExcerpt } from "@/lib/ffmpeg";
+import { locateSpeakerVoiceExcerpts } from "@/lib/ai/openrouter";
 import { isPlaceholderParticipantName, loadStoredAudioBytes } from "@/lib/storage";
 import { combineVoiceprints, cosine, matchVoice, MIN_SPEECH_SECONDS, speechOnly, speechSeconds, voiceprint } from "./voiceprint";
 
@@ -95,6 +97,50 @@ export async function recogniseVoice(ownerId: string, speech: Float32Array) {
   return matchVoice(await voiceprint(speech), people);
 }
 
+export async function recogniseVoiceFromRecording(ownerId: string, audioUrl: string) {
+  const { bytes } = await loadStoredAudioBytes(audioUrl);
+  return recogniseVoice(ownerId, speechOnly(await decodeToPcm16k(bytes, DECODE_SECONDS)));
+}
+
+export async function recogniseMixedRecordingSpeakers(ownerId: string, audioUrl: string, transcript: string) {
+  const labels = [...new Set(transcript.match(/^\s*Speaker\s+\d+(?=\s*:)/gim)?.map((label) => label.trim()) ?? [])].slice(0, 12);
+  if (!labels.length) return new Map<string, string>();
+  const people = await rememberedVoices(ownerId);
+  if (!people.length) return new Map<string, string>();
+
+  const { bytes } = await loadStoredAudioBytes(audioUrl);
+  const excerpt = await voiceRecognitionExcerpt(bytes);
+  const ranges = await locateSpeakerVoiceExcerpts(excerpt, labels, transcript);
+  const pcm = await decodeToPcm16k(excerpt, 15 * 60);
+  const names = new Map<string, string>();
+  const usedNames = new Set<string>();
+  for (const label of labels) {
+    const intervals = Array.isArray(ranges[label]) ? ranges[label].slice(0, 3) : [];
+    const pieces: Float32Array[] = [];
+    let total = 0;
+    for (const interval of intervals) {
+      const start = Number(interval.start);
+      const end = Number(interval.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end - start < 4 || end - start > 30 || end * 16000 > pcm.length) continue;
+      const piece = pcm.subarray(Math.floor(start * 16000), Math.floor(end * 16000));
+      pieces.push(piece);
+      total += piece.length;
+    }
+    if (!pieces.length) continue;
+    const combined = new Float32Array(total);
+    let offset = 0;
+    for (const piece of pieces) { combined.set(piece, offset); offset += piece.length; }
+    const speech = speechOnly(combined);
+    if (speechSeconds(speech) < MIN_SPEECH_SECONDS) continue;
+    const match = matchVoice(await voiceprint(speech), people);
+    if (match && !usedNames.has(personKey(match.name))) {
+      names.set(label, match.name);
+      usedNames.add(personKey(match.name));
+    }
+  }
+  return names;
+}
+
 // After a call, each participant's own microphone track is a clean sample of
 // one known person (the name they joined with). Learned in the background;
 // a failure here never affects the call's transcript.
@@ -113,4 +159,26 @@ export async function learnCallParticipantVoice(segmentId: string) {
     source: "call",
     sourceKey: `segment:${segment.id}`
   });
+}
+
+export async function backfillVoicesFromEarlierCalls(ownerId: string, excludeMeetingId: string) {
+  const segments = await prisma.meetingTranscriptSegment.findMany({
+    where: {
+      meeting: { createdById: ownerId },
+      meetingId: { not: excludeMeetingId },
+      audioUrl: { not: null },
+      speakerName: { not: null }
+    },
+    select: { id: true, speakerName: true },
+    orderBy: { createdAt: "desc" },
+    take: 20
+  });
+  const attempted = new Set<string>();
+  for (const segment of segments) {
+    const name = segment.speakerName?.trim();
+    if (!name || isPlaceholderParticipantName(name) || attempted.has(personKey(name))) continue;
+    attempted.add(personKey(name));
+    await learnCallParticipantVoice(segment.id).catch(() => null);
+    if (attempted.size >= 4) break;
+  }
 }

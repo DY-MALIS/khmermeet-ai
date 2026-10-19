@@ -18,6 +18,7 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { checkOpenRouterKeyStatus } from "@/lib/ai/openrouter";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { recogniseVoiceFromRecording } from "@/lib/voice/memory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -63,6 +64,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const savedSpeakerNames = sanitizeKnownSpeakerNames(Array.isArray(meeting.speakerNames) ? meeting.speakerNames : []);
     const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
+    const recognisedTrackNames = new Map<string, string>();
+    const trackMatches = await Promise.all(participantAudioSegments.map(async (segment) => {
+      const identity = segment.speakerIdentity;
+      if (!identity || !isPlaceholderParticipantName(segment.speakerName || identity)) return null;
+      const match = await recogniseVoiceFromRecording(user.id, segment.audioUrl as string).catch(() => null);
+      return match ? { identity, name: match.name } : null;
+    }));
+    const conflictingTrackNames = new Set<string>();
+    for (const match of trackMatches) {
+      if (!match) continue;
+      const earlier = recognisedTrackNames.get(match.identity);
+      if (earlier && earlier !== match.name) conflictingTrackNames.add(match.identity);
+      recognisedTrackNames.set(match.identity, match.name);
+    }
+    for (const identity of conflictingTrackNames) recognisedTrackNames.delete(identity);
+    const segmentSpeakerName = (segment: { speakerName: string | null; speakerIdentity: string }) =>
+      recognisedTrackNames.get(segment.speakerIdentity) || segment.speakerName || segment.speakerIdentity;
     const chronologicalSpeakerSegments = meeting.transcriptSegments.filter(
       (segment) => segment.text.trim() && !segment.audioUrl && segment.endMs > segment.startMs
     );
@@ -95,12 +113,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (chronologicalSpeakerSegments.length) {
       rawTranscript = chronologicalSpeakerSegments
         .sort((a, b) => a.startMs - b.startMs || a.segmentIndex - b.segmentIndex)
-        .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
+        .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segmentSpeakerName(segment), segment.speakerIdentity)))
         .join("\n");
       transcriptSpeakerNames = [
         ...new Set(
           chronologicalSpeakerSegments
-            .map((segment) => segment.speakerName || segment.speakerIdentity)
+            .map(segmentSpeakerName)
             .filter((name) => !isPlaceholderParticipantName(name))
         )
       ];
@@ -130,7 +148,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } else if (participantAudioSegments.length) {
       const parts = [];
       for (const segment of participantAudioSegments) {
-        const speakerHint = segment.speakerName || segment.speakerIdentity;
+        const speakerHint = segmentSpeakerName(segment);
         let text = segment.text.trim();
         const attemptTimeoutMs = transcriptionBudget(workDeadline);
         if (!text && attemptTimeoutMs >= MINIMUM_ATTEMPT_MS) {
@@ -151,7 +169,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text } }).catch(() => undefined);
           }
         }
-        const speakerName = resolveSegmentLabel(segment.speakerName, segment.speakerIdentity);
+        const speakerName = resolveSegmentLabel(speakerHint, segment.speakerIdentity);
         parts.push({
           startMs: segment.startMs,
           text: text.trim() ? forceSingleSpeakerLabel(text, speakerName) : ""
@@ -165,7 +183,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       transcriptSpeakerNames = [
         ...new Set(
           participantAudioSegments
-            .map((segment) => segment.speakerName || segment.speakerIdentity)
+            .map(segmentSpeakerName)
             .filter((name) => !isPlaceholderParticipantName(name))
         )
       ];
@@ -266,6 +284,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           : "";
       return NextResponse.json(
         {
+          code: "EMPTY_TRANSCRIPT",
           error:
             `The AI did not return any text for this recording this time.${durationHint} Your audio is saved - please press Re-transcribe audio again, as this usually works on the next attempt. If it keeps failing, check that the recording actually has audible speech.`
         },
@@ -309,8 +328,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({
         transcript,
         partial: true,
+        code: "SPEAKER_LABELS_MISSING",
         message:
           "Saved every transcript segment captured so far. Some speaker audio may still need another pass; click Re-transcribe audio again to continue from the saved recording."
+      });
+    }
+
+    if (
+      transcript.length >= 400 &&
+      !chronologicalSpeakerSegments.length &&
+      !participantAudioSegments.length &&
+      !/^\s*[^:\n]{1,60}:\s+\S/m.test(transcript)
+    ) {
+      return NextResponse.json({
+        transcript,
+        partial: true,
+        message:
+          "The speech was saved, but the AI did not separate speaker turns. Re-transcribe the saved audio to try speaker identification again. Real names require known participant names or clear self-introductions in the recording."
       });
     }
 

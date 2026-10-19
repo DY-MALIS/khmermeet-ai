@@ -113,6 +113,7 @@ export function MeetingTranscriptPanel({
           <TranscribeAudioButton
             meetingId={meetingId}
             hasTranscript={hasAnyTranscript}
+            currentTranscript={transcript === initialTranscript ? transcript : ""}
             speakerNames={meetingSpeakerNames}
             autoStart={autoStartTranscription}
             onTranscribed={handleTranscribed}

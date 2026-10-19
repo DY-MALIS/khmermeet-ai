@@ -559,6 +559,36 @@ export async function transcribeOpenRouterAudioViaChat(
   );
 }
 
+export async function locateSpeakerVoiceExcerpts(audio: Buffer, labels: string[], transcript: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: requestHeaders(),
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: multimodalTranscriptionModel(),
+        temperature: 0,
+        max_tokens: 1500,
+        reasoning: { effort: "minimal", exclude: true },
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content: [
+          { type: "text", text: `Find clean, uninterrupted speech from each of these speaker labels in the attached audio: ${labels.join(", ")}. The transcript below uses those labels in chronological order. Return JSON only: {"speakers":{"Speaker 1":[{"start":12.0,"end":25.0}]}}. Times are seconds from the start of this audio. Give up to three nonoverlapping intervals per label, each 4-30 seconds, containing only that person's voice. Aim for at least 10 seconds of total speech per label. Omit a label if uncertain; never guess based on speaking order alone. Transcript excerpt:\n${transcript.slice(0, 8000)}` },
+          { type: "input_audio", input_audio: { data: audio.toString("base64"), format: "m4a" } }
+        ] }]
+      })
+    });
+    if (!response.ok) throw new OpenRouterApiError(errorMessage(response.status), parseErrorContext(response.status, await response.text().catch(() => "")));
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = payload.choices?.[0]?.message?.content ?? "";
+    const parsed = JSON.parse(content) as { speakers?: Record<string, Array<{ start?: number; end?: number }>> };
+    return parsed.speakers ?? {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function refineOpenRouterTranscript(
   transcript: string,
   language: "km" | "en" | "km-en",

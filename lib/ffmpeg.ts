@@ -487,3 +487,25 @@ export async function decodeToPcm16k(bytes: Buffer, maxSeconds: number): Promise
     await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+// A bounded, timeline-preserving excerpt for matching generic speaker labels
+// to remembered voices. The timestamps returned by the audio model refer to
+// this file, so no silence removal or speed change is allowed here.
+export async function voiceRecognitionExcerpt(bytes: Buffer, maxSeconds = 15 * 60): Promise<Buffer> {
+  if (!ffmpegPath) throw new Error("ffmpeg binary not found.");
+  await ensureFfmpegExecutable();
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-voice-excerpt-"));
+  try {
+    const inputPath = path.join(tmpDir, "input");
+    const outputPath = path.join(tmpDir, "excerpt.m4a");
+    await writeFile(inputPath, bytes);
+    await execFileAsync(
+      ffmpegPath,
+      ["-y", "-v", "error", "-i", inputPath, "-t", String(maxSeconds), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "48000", outputPath],
+      { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
+    );
+    return await readFile(outputPath);
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}

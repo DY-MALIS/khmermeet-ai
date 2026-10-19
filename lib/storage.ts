@@ -364,7 +364,9 @@ function looksLikeCollapsedMultiSpeaker(transcript: string, singleSpeaker: boole
   if (clean.length < 400) return false;
 
   const turns = transcriptTurns(clean);
-  if (!turns.length) return false;
+  // A long, entirely unlabeled result is also a diarization failure. The
+  // model was explicitly asked to label even a single voice in mixed audio.
+  if (!turns.length) return true;
 
   const labels = new Set(turns.map((turn) => turn.label));
   if (labels.size <= 1) return true;
@@ -1022,10 +1024,11 @@ export async function transcribeStoredTrackRecording(
   // Held in one object rather than as separate `let`s: these are assigned
   // inside the async IIFE below, and TypeScript's narrowing would otherwise
   // read them back out here as their initial values.
-  const wholeAudioAttempt: { buffer: Buffer | null; durationSeconds: number | null; looksIncomplete: boolean } = {
+  const wholeAudioAttempt: { buffer: Buffer | null; durationSeconds: number | null; looksIncomplete: boolean; missingSpeakerLabels: boolean } = {
     buffer: null,
     durationSeconds: null,
-    looksIncomplete: false
+    looksIncomplete: false,
+    missingSpeakerLabels: false
   };
   // Try the complete enhanced recording first because it gives the model the
   // best speaker and sentence context. If it comes back empty or implausibly
@@ -1126,16 +1129,14 @@ export async function transcribeStoredTrackRecording(
               break;
             }
           }
-          // Only the truncation signal forces the chunked fallback below.
-          // looksBroken also covers a transcript that came back under a
-          // single speaker label - but that text is complete, and cutting it
-          // into windows cannot add speaker labels that were not there, so
-          // falling through buys a whole second pass over the recording for
-          // nothing. Measured on a real 148-second single-voice recording
-          // (transcribed end to end, every one of 30 checkpoints present):
-          // gating on looksBroken took 5 OpenRouter calls, gating on
-          // truncation alone takes 3, and both return the same transcript.
-          wholeAudioAttempt.looksIncomplete = looksSeverelyTruncated(transcript, durationSeconds);
+          // Truncation and a completely unlabeled mixed recording need a
+          // fresh audio-grounded pass. A single label alone is not enough:
+          // one person may genuinely speak throughout, and retrying windows
+          // cannot prove otherwise.
+          wholeAudioAttempt.missingSpeakerLabels =
+            !(options.singleSpeaker ?? true) && transcript.length >= 400 && transcriptTurns(transcript).length === 0;
+          wholeAudioAttempt.looksIncomplete =
+            looksSeverelyTruncated(transcript, durationSeconds) || wholeAudioAttempt.missingSpeakerLabels;
           return transcript;
         })().catch(() => "")
       : "";
@@ -1329,6 +1330,21 @@ export async function transcribeStoredTrackRecording(
   await Promise.all(Array.from({ length: workerCount }, worker));
   await split.dispose().catch(() => undefined);
   const chunkTranscript = cleanTranscriptionText(transcripts.filter(Boolean).join("\n"));
+  if (wholeAudioAttempt.missingSpeakerLabels && hasUsableTranscript(wholeTranscript)) {
+    // A text-only refine pass cannot reconstruct who said which words. Use
+    // the fresh audio-grounded pass only when it covered the full recording
+    // and actually separated turns without losing much speech.
+    if (
+      completed.every(Boolean) &&
+      hasUsableTranscript(chunkTranscript) &&
+      transcriptTurns(chunkTranscript).length > 0 &&
+      chunkTranscript.length >= wholeTranscript.length * 0.65
+    ) {
+      return chunkTranscript;
+    }
+    options.onIncomplete?.();
+    return cleanTranscriptionText(wholeTranscript);
+  }
   if (completed.some((done) => !done)) {
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
     const best = wholeAudioAttempt.looksIncomplete && hasUsableTranscript(chunkTranscript)
@@ -1578,6 +1594,9 @@ function chooseBetterSavedTranscript(
 
   const rawTurns = countTranscriptTurns(rawTranscript);
   const refinedTurns = countTranscriptTurns(refinedTranscript);
+  // Proofreading has no audio access. Never accept a rewrite that removes
+  // all speaker turns the audio transcription already identified.
+  if (transcriptTurns(rawTranscript).length && !transcriptTurns(refinedTranscript).length) return rawTranscript;
   if (rawTurns >= 4 && refinedTurns < rawTurns * 0.75) return rawTranscript;
 
   // The refine pass is a text-only proofreading step with no access to the

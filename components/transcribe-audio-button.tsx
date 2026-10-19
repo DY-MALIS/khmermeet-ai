@@ -10,6 +10,7 @@ type LanguageMode = "km" | "en" | "km-en";
 type TranscribeAudioButtonProps = {
   meetingId: string;
   hasTranscript?: boolean;
+  currentTranscript?: string;
   speakerNames?: string[];
   autoStart?: boolean;
   onTranscribed?: (transcript: string) => void;
@@ -31,12 +32,14 @@ const progressSteps = [
 export function TranscribeAudioButton({
   meetingId,
   hasTranscript = false,
+  currentTranscript = "",
   speakerNames = [],
   autoStart = false,
   onTranscribed
 }: TranscribeAudioButtonProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [progressStep, setProgressStep] = useState(0);
@@ -62,13 +65,22 @@ export function TranscribeAudioButton({
       let previousLength = 0;
       let nextTranscript = "";
       let stillPartial = false;
+      let partialMessage = "";
+      let recognitionNote = "";
+      let retriedEmptyTranscript = false;
       for (;;) {
         const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ languageMode })
         });
-        const data = await readJsonResponse<{ transcript?: string; error?: string; message?: string; partial?: boolean }>(response);
+        const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean }>(response);
+        if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
+          retriedEmptyTranscript = true;
+          setProgressStep(0);
+          setMessage("The AI returned no text. Trying the saved audio once more automatically...");
+          continue;
+        }
         if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
         nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
         if (!nextTranscript) {
@@ -77,6 +89,11 @@ export function TranscribeAudioButton({
         onTranscribed?.(nextTranscript);
         if (!data.partial) {
           stillPartial = false;
+          break;
+        }
+        partialMessage = data.message ?? "";
+        if (data.code === "SPEAKER_LABELS_MISSING") {
+          stillPartial = true;
           break;
         }
         // A pass that adds nothing means continuing would only spend the same
@@ -90,12 +107,26 @@ export function TranscribeAudioButton({
         pass += 1;
         setMessage(`Long recording - continuing, part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`);
       }
+      if (!stillPartial && /^\s*Speaker\s+\d+\s*:/im.test(nextTranscript)) {
+        setMessage("Matching speakers against remembered voices...");
+        const recognitionResponse = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" }).catch(() => null);
+        if (recognitionResponse?.ok) {
+          const recognition = await readJsonResponse<{ transcript?: string; matched?: number; message?: string }>(recognitionResponse);
+          recognitionNote = recognition.message ?? "";
+          if (recognition.matched && recognition.transcript) {
+            nextTranscript = recognition.transcript;
+            onTranscribed?.(nextTranscript);
+          }
+        } else {
+          recognitionNote = "Could not check remembered voices this time; speaker labels were kept.";
+        }
+      }
       setMessage(
         stillPartial
-          ? "This recording is long and some of it is still not transcribed. The audio is saved in full. Click Re-transcribe audio again - it carries on from where it stopped rather than starting over."
+          ? partialMessage || "Some of this recording is still not transcribed. The audio is saved in full. Click Re-transcribe audio again to continue."
           : hasTranscript
-            ? "Transcript replaced below. Refreshing meeting data..."
-            : "Transcription saved below. Refreshing meeting data..."
+            ? `Transcript replaced below. Refreshing meeting data...${recognitionNote ? ` ${recognitionNote}` : ""}`
+            : `Transcription saved below. Refreshing meeting data...${recognitionNote ? ` ${recognitionNote}` : ""}`
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
@@ -110,6 +141,28 @@ export function TranscribeAudioButton({
       setPending(false);
     }
   }, [hasTranscript, languageMode, meetingId, onTranscribed, router]);
+
+  const matchRememberedVoices = useCallback(async () => {
+    setRecognizing(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" });
+      const result = await readJsonResponse<{ transcript?: string; matched?: number; message?: string; error?: string }>(response);
+      if (!response.ok) throw new Error(result.error ?? "Could not recognize speakers.");
+      if (result.matched && result.transcript) {
+        onTranscribed?.(result.transcript);
+        setMessage(`Matched ${result.matched} remembered speaker${result.matched === 1 ? "" : "s"}.`);
+        router.refresh();
+      } else {
+        setMessage(result.message ?? "No remembered voice matched confidently; speaker labels were kept.");
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not recognize speakers.");
+    } finally {
+      setRecognizing(false);
+    }
+  }, [meetingId, onTranscribed, router]);
 
   useEffect(() => {
     if (!autoStart || autoStartedRef.current || pending || hasTranscript) return;
@@ -149,10 +202,16 @@ export function TranscribeAudioButton({
           <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
           <option value="en">English only (translate all to English)</option>
         </select>
-        <button className="kh-button-primary sm:w-auto" disabled={pending} onClick={transcribe} type="button">
+        <button className="kh-button-primary sm:w-auto" disabled={pending || recognizing} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
         </button>
+        {/^\s*Speaker\s+\d+\s*:/im.test(currentTranscript) ? (
+          <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing} onClick={matchRememberedVoices} type="button">
+            {recognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {recognizing ? "Matching voices..." : "Match remembered voices"}
+          </button>
+        ) : null}
       </div>
 
       {pending ? (
