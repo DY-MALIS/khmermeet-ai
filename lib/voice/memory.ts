@@ -103,7 +103,7 @@ export async function recogniseVoiceFromRecording(ownerId: string, audioUrl: str
 }
 
 export async function recogniseMixedRecordingSpeakers(ownerId: string, audioUrl: string, transcript: string) {
-  const labels = [...new Set(transcript.match(/^\s*Speaker\s+\d+(?=\s*:)/gim)?.map((label) => label.trim()) ?? [])].slice(0, 12);
+  const labels = [...new Set(transcript.match(/^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)(?=\s*:)/gim)?.map((label) => label.trim()) ?? [])].slice(0, 12);
   if (!labels.length) return new Map<string, string>();
   const people = await rememberedVoices(ownerId);
   if (!people.length) return new Map<string, string>();

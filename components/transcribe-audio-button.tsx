@@ -107,7 +107,7 @@ export function TranscribeAudioButton({
         pass += 1;
         setMessage(`Long recording - continuing, part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`);
       }
-      if (!stillPartial && /^\s*Speaker\s+\d+\s*:/im.test(nextTranscript)) {
+      if (!stillPartial && /^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(nextTranscript)) {
         setMessage("Matching speakers against remembered voices...");
         const recognitionResponse = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" }).catch(() => null);
         if (recognitionResponse?.ok) {
@@ -206,7 +206,7 @@ export function TranscribeAudioButton({
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
         </button>
-        {/^\s*Speaker\s+\d+\s*:/im.test(currentTranscript) ? (
+        {/^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(currentTranscript) ? (
           <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing} onClick={matchRememberedVoices} type="button">
             {recognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {recognizing ? "Matching voices..." : "Match remembered voices"}

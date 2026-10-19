@@ -43,8 +43,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     const matches = await recogniseMixedRecordingSpeakers(user.id, meeting.audioUrl, meeting.transcript);
     if (!matches.size) return NextResponse.json({ transcript: meeting.transcript, matched: 0, message: "No remembered voice matched confidently; generic speaker labels were kept." });
-    const transcript = meeting.transcript.replace(/^(\s*)Speaker\s+(\d+)\s*:/gim, (line, leading: string, number: string) =>
-      matches.has(`Speaker ${number}`) ? `${leading}${matches.get(`Speaker ${number}`)}:` : line
+    const transcript = meeting.transcript.replace(/^(\s*)(Speaker\s+\d+|Woman|Man|Female|Male)\s*:/gim, (line, leading: string, label: string) =>
+      matches.has(label) ? `${leading}${matches.get(label)}:` : line
     );
     // A user may edit the transcript while recognition runs. Never overwrite
     // newer text with a result based on the earlier version.

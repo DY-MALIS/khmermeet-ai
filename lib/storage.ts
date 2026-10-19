@@ -211,7 +211,7 @@ export function applyKnownSpeakerLabels(transcript: string, speakerNames: string
 }
 
 const genericSpeakerLabelPattern =
-  /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?$/i;
+  /^(?:Unknown\s+Speaker|Unknown|Speaker|Participant|User|Woman|Man|Female|Male|អ្នកនិយាយមិនស្គាល់|អ្នកនិយាយ|អ្នកចូលរួម)\s*(?:[0-9០-៩]+)?$/i;
 
 // Confirmed live: a leaked reasoning pass ("Speaker 1 (cartoon character
 // female/kid):", "Let's double-check all Khmer segments carefully.Speaker
@@ -280,7 +280,7 @@ export function createSegmentSpeakerLabelResolver() {
 export function sanitizeKnownSpeakerNames(names: string[]) {
   return names.filter((name) => {
     const trimmed = name.trim();
-    return trimmed && !looksLikeLeakedSpeakerLabel(trimmed) && !isPlaceholderParticipantName(trimmed);
+    return trimmed && !genericSpeakerLabelPattern.test(trimmed) && !looksLikeLeakedSpeakerLabel(trimmed) && !isPlaceholderParticipantName(trimmed);
   });
 }
 
@@ -900,15 +900,10 @@ function audioExtensionFromMime(mimeType: string) {
 // incomplete. Fewer, larger pieces here means fewer separate OpenRouter
 // transactions on the recordings that do need it.
 //
-// Briefly lowered to 2 minutes to make it harder for a provider to skip a
-// distant speaker inside one window, then reverted: the budget arithmetic
-// doesn't allow it. By the measured numbers just below (~60s per piece, 10 in
-// parallel, and only the ~90s left after the whole-audio attempt), 2-minute
-// windows cover ~20 minutes of audio in the one round there is time for, so
-// any longer meeting reaching this fallback would be returned truncated -
-// and the fallback now fires more often, because a whole-audio transcript
-// that merely looks short is enough to trigger it. 15-minute windows cover
-// ~2.5 hours in that same single round.
+// Two-minute windows fit within one parallel round for recordings up to
+// about 20 minutes. Use them below only after a severely truncated whole-
+// audio result; longer recordings still need 15-minute windows to finish
+// within one request's time budget.
 //
 // An earlier attempt at 30-45s (tried before splitAudioIntoChunks' silence-
 // aware cut fix existed) found real content loss on a long 727s recording
@@ -1165,11 +1160,21 @@ export async function transcribeStoredTrackRecording(
   const chunkSourceBuffer = preparedWholeAudio ?? buffer;
   const chunkSourceExt = reusePreparedWholeAudio ? "m4a" : ext;
   const chunkSourceMimeType = reusePreparedWholeAudio ? "audio/mp4" : sourceMimeType;
+  // A short recording that yielded only a tiny fraction of expected speech
+  // must be retried in genuinely smaller windows. Re-sending the same 7- or
+  // 20-minute file as a single "chunk" repeats the truncation failure.
+  // Keep 15-minute windows for longer meetings so they still fit one server
+  // request's time budget.
+  const knownDuration = wholeAudioAttempt.durationSeconds ?? options.durationSeconds;
+  const fallbackSegmentSeconds =
+    knownDuration && knownDuration <= 20 * 60 && looksSeverelyTruncated(wholeTranscript, knownDuration)
+      ? 2 * 60
+      : STORED_TRANSCRIPTION_SEGMENT_SECONDS;
   const split = await splitAudioIntoChunks(
     chunkSourceBuffer,
     chunkSourceExt,
     openRouterAudioLimit,
-    STORED_TRANSCRIPTION_SEGMENT_SECONDS
+    fallbackSegmentSeconds
   );
   const chunks = split.chunks;
   // The windows now hold their own copy of the audio, so every reference to
