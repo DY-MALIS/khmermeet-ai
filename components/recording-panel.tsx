@@ -3,6 +3,8 @@
 import { CheckCircle2, Mic, Moon, Pause, Play, RotateCcw, Square, Sun } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useDisplayLanguage } from "@/lib/display-language";
+import { uiText } from "@/lib/ui-translations";
 import { uploadRecordingDirect } from "@/lib/client/direct-upload";
 import { describeMicError } from "@/lib/mic-permission-error";
 import { clampMeetingDurationSeconds, MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
@@ -93,11 +95,13 @@ function formatTime(seconds: number) {
   return h ? `${h}:${m}:${s}` : `${m}:${s}`;
 }
 
-function defaultMeetingTitle() {
-  return `ការថតសំឡេង ${new Date().toLocaleString()}`;
+function defaultMeetingTitle(prefix: string) {
+  return `${prefix} ${new Date().toLocaleString()}`;
 }
 
 export function RecordingPanel() {
+  const [language] = useDisplayLanguage();
+  const text = uiText[language];
   const recorder = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const processedStreamRef = useRef<MediaStream | null>(null);
@@ -277,7 +281,7 @@ export function RecordingPanel() {
       await findMicrophones();
       setBluetoothNotice({
         tone: "warn",
-        text: "កម្មវិធីរុករកនេះមិនអាចបើកផ្ទាំង Bluetooth បានទេ។ សូមភ្ជាប់ឧបករណ៍ក្នុងការកំណត់ Bluetooth រួចចុច «រកមីក្រូហ្វូន»។"
+        text: text.bluetoothUnsupported
       });
       return;
     }
@@ -289,7 +293,7 @@ export function RecordingPanel() {
       if (chooserError instanceof DOMException && chooserError.name === "NotFoundError") return;
       setBluetoothNotice({
         tone: "warn",
-        text: `មិនអាចបើកផ្ទាំង Bluetooth បានទេ៖ ${chooserError instanceof Error ? chooserError.message : String(chooserError)}`
+        text: text.bluetoothOpenFailed.replace("{error}", chooserError instanceof Error ? chooserError.message : String(chooserError))
       });
       return;
     }
@@ -297,12 +301,12 @@ export function RecordingPanel() {
     const match = name ? findInputForBluetoothName(await listAudioInputs(), name) : null;
     if (match) {
       rememberMicrophone(match.deviceId);
-      setBluetoothNotice({ tone: "ok", text: `បានជ្រើស ${name} ជាមីក្រូហ្វូនសម្រាប់ថតរួច។` });
+      setBluetoothNotice({ tone: "ok", text: text.bluetoothSelected.replace("{name}", name ?? text.unnamedDevice) });
       return;
     }
     setBluetoothNotice({
       tone: "warn",
-        text: `${name ?? "ឧបករណ៍នេះ"} មិនទាន់បង្ហាញជាមីក្រូហ្វូនទេ។ សូមភ្ជាប់វាក្នុងការកំណត់ Bluetooth របស់ឧបករណ៍ រួចចុច «រកមីក្រូហ្វូន»។`
+        text: text.bluetoothNotMicrophone.replace("{name}", name ?? text.unnamedDevice)
     });
   }
 
@@ -322,7 +326,7 @@ export function RecordingPanel() {
         inputs.filter((device) => !isVirtualAliasDevice(device)).map((device, index) => describeAudioDevice(device, index))
       );
     } catch (deviceError) {
-      setError(describeMicError(deviceError));
+      setError(describeMicError(deviceError, language));
     } finally {
       setFindingDevices(false);
     }
@@ -385,19 +389,19 @@ export function RecordingPanel() {
   // handed over, not from what was asked for.
   function describeMicTrack(track: MediaStreamTrack | undefined, processed: boolean, voiceProcessing: boolean) {
     const lines: string[] = [];
-    lines.push(`ឧបករណ៍៖ ${track?.label || "(គ្មានឈ្មោះ)"}`);
+    lines.push(`${text.diagnosticDevice}: ${track?.label || text.diagnosticUnnamed}`);
     const settings = (track?.getSettings?.() ?? {}) as MediaTrackSettings & {
       autoGainControl?: boolean;
       noiseSuppression?: boolean;
       echoCancellation?: boolean;
     };
-    const yesNo = (value: boolean | undefined) => (value === undefined ? "មិនបានប្រាប់" : value ? "បើក" : "បិទ");
-    lines.push(`បង្កើនសំឡេងស្វ័យប្រវត្តិ៖ ${yesNo(settings.autoGainControl)}`);
-    lines.push(`កាត់សំឡេងរំខាន៖ ${yesNo(settings.noiseSuppression)}`);
-    lines.push(`កាត់អេកូ៖ ${yesNo(settings.echoCancellation)}`);
-    lines.push(`អត្រាគំរូ៖ ${settings.sampleRate ?? "មិនបានប្រាប់"} Hz, ឆានែល ${settings.channelCount ?? "?"}`);
-    lines.push(`ប្រើប្រព័ន្ធសំឡេងឧបករណ៍៖ ${voiceProcessing ? "បាទ" : "ទេ"}`);
-    lines.push(`ការកែសំឡេងក្នុងកម្មវិធីរុករក៖ ${processed ? "ដំណើរការ" : "មិនដំណើរការ (ប្រើសំឡេងឆៅ)"}`);
+    const yesNo = (value: boolean | undefined) => (value === undefined ? text.diagnosticUnknown : value ? text.diagnosticOn : text.diagnosticOff);
+    lines.push(`${text.diagnosticAutoGain}: ${yesNo(settings.autoGainControl)}`);
+    lines.push(`${text.diagnosticNoiseSuppression}: ${yesNo(settings.noiseSuppression)}`);
+    lines.push(`${text.diagnosticEchoCancellation}: ${yesNo(settings.echoCancellation)}`);
+    lines.push(`${text.diagnosticSampleRate}: ${settings.sampleRate ?? text.diagnosticUnknown} Hz, ${text.diagnosticChannels} ${settings.channelCount ?? "?"}`);
+    lines.push(`${text.diagnosticDeviceProcessing}: ${voiceProcessing ? text.diagnosticYes : text.diagnosticNo}`);
+    lines.push(`${text.diagnosticBrowserProcessing}: ${processed ? text.diagnosticActive : text.diagnosticInactive}`);
     return lines;
   }
 
@@ -635,11 +639,11 @@ export function RecordingPanel() {
     setTranscriptionProgress("");
     cleanupRecording();
     if (!supported) {
-      setError("កម្មវិធីរុករកនេះមិនគាំទ្រការថតសំឡេងទេ។ សូមប្រើ Chrome, Edge ឬ Firefox កំណែថ្មី។");
+      setError(text.browserRecordingUnsupported);
       return;
     }
     if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      setError("មីក្រូហ្វូនមិនដំណើរការតាមតំណ HTTP ទេ។ សូមបើកគេហទំព័រតាមតំណ HTTPS។");
+      setError(text.secureContextRequired);
       return;
     }
     try {
@@ -696,7 +700,7 @@ export function RecordingPanel() {
       }
       setVoiceProcessingActive(usedVoiceProcessing);
       streamRef.current = rawStream;
-      setActiveMicLabel(track?.label || "មីក្រូហ្វូនលំនាំដើម");
+      setActiveMicLabel(track?.label || text.defaultMicrophone);
       await loadAudioDevices();
       setMicDiagnostics(describeMicTrack(track, Boolean(rawAnalyser), usedVoiceProcessing));
       startMicMonitor(analyser, rawAnalyser);
@@ -722,13 +726,9 @@ export function RecordingPanel() {
         // a save that turns out fine beats a block that turns out wrong.
         const analysis = await analyzeRecordedAudio(blob);
         if (maxMicLevelRef.current < silentInputThreshold) {
-          setQuietWarning(
-            "សំឡេងហាក់ស្ងាត់ខ្លាំងពេលថត។ សូមស្តាប់សំឡេងដែលបានថតខាងក្រោម។ ការថតនេះនៅតែត្រូវបានរក្សាទុក។"
-          );
+          setQuietWarning(text.quietRecordingWarning);
         } else if (!("decodeError" in analysis) && analysis.peak < silentInputThreshold) {
-          setQuietWarning(
-            "ឯកសារសំឡេងហាក់ស្ងាត់ខ្លាំង។ សូមស្តាប់សំឡេងដែលបានថតខាងក្រោម។ ការថតនេះនៅតែត្រូវបានរក្សាទុក។"
-          );
+          setQuietWarning(text.quietFileWarning);
         }
         setUploading(true);
         try {
@@ -751,8 +751,8 @@ export function RecordingPanel() {
               throw new Error(
                 data.error ??
                   (response.status === 413
-                    ? "ឯកសារសំឡេងធំពេក មិនអាចផ្ទុកឡើងបានទេ។ សូមថតឱ្យខ្លីជាងនេះ។"
-                    : "មិនអាចរក្សាទុកសំឡេងបានទេ។")
+                    ? text.audioTooLarge
+                    : text.saveAudioFailed)
               );
             }
             uploadedAudioUrl = data.audioUrl;
@@ -762,7 +762,7 @@ export function RecordingPanel() {
           await saveMeetingAuto(uploadedAudioUrl);
         } catch (error) {
           setError(
-            error instanceof Error ? error.message : "មិនអាចផ្ទុកសំឡេងឡើងបានទេ។ សូមពិនិត្យការតភ្ជាប់ ហើយសាកល្បងម្តងទៀត។"
+            error instanceof Error ? error.message : text.uploadAudioFailed
           );
         } finally {
           setUploading(false);
@@ -784,7 +784,7 @@ export function RecordingPanel() {
       setState("recording");
       await requestRecordingWakeLock();
     } catch (error) {
-      setError(describeMicError(error));
+      setError(describeMicError(error, language));
     }
   }
 
@@ -805,7 +805,7 @@ export function RecordingPanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || defaultMeetingTitle(),
+          title: title.trim() || defaultMeetingTitle(text.recordingDefaultTitlePrefix),
           audioUrl: savedAudioUrl,
           transcript: "",
           duration: durationSeconds,
@@ -813,11 +813,11 @@ export function RecordingPanel() {
         })
       });
       const data = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(response);
-      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
+      if (!response.ok || !data.meetingId) throw new Error(data.error ?? data.hint ?? text.saveMeetingFailed);
       setSavedMeetingId(data.meetingId);
       void transcribeCompleteRecording(data.meetingId);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "មិនអាចរក្សាទុកប្រជុំបានទេ។ សូមសាកល្បងម្តងទៀត។");
+      setError(error instanceof Error ? error.message : text.saveMeetingFailedRetry);
       // Saving failed before transcription ever started - transcribeCompleteRecording
       // (which normally releases the wake lock once it finishes) never runs.
       void releaseRecordingWakeLock();
@@ -837,7 +837,7 @@ export function RecordingPanel() {
   }
 
   async function transcribeCompleteRecording(meetingId: string, isRetry = false) {
-    setTranscriptionProgress("កំពុងកែលម្អគុណភាពសំឡេង និងបំលែងឯកសារពេញជាអក្សរ...");
+    setTranscriptionProgress(text.improvingAudio);
     try {
       // One request can only transcribe as much of a long recording as fits
       // in the server's own time limit, and a 5-hour meeting needs far more
@@ -856,10 +856,10 @@ export function RecordingPanel() {
         });
         const data = await readJsonResponse<{ transcript?: string; error?: string; partial?: boolean }>(response);
         if (!response.ok || !data.transcript?.trim()) {
-          throw new Error(data.error ?? "រកមិនឃើញសំឡេងនិយាយច្បាស់លាស់ក្នុងការថតនេះទេ។");
+          throw new Error(data.error ?? text.noClearSpeech);
         }
         if (!data.partial) {
-          setTranscriptionProgress("បំលែងសំឡេងជាអក្សរ និងសម្អាតអត្ថបទរួចរាល់។ សូមបើកមើលប្រជុំដើម្បីត្រួតពិនិត្យ។");
+          setTranscriptionProgress(text.transcriptionComplete);
           break;
         }
         // Stop if a pass adds nothing. Continuing then would just spend the
@@ -868,15 +868,11 @@ export function RecordingPanel() {
         const madeProgress = length > previousLength;
         previousLength = length;
         if (!madeProgress || pass >= MAX_TRANSCRIPTION_PASSES) {
-          setTranscriptionProgress(
-            "ការថតនេះវែងណាស់ ហើយនៅមានផ្នែកខ្លះមិនទាន់បំលែងបានទេ។ សំឡេងត្រូវបានរក្សាទុកពេញលេញ។ សូមបើកប្រជុំ រួចចុច «បំលែងសំឡេងជាអក្សរឡើងវិញ» ដើម្បីបន្តពីកន្លែងដែលបានឈប់។"
-          );
+          setTranscriptionProgress(text.recordingPartial);
           break;
         }
         pass += 1;
-        setTranscriptionProgress(
-          `ការថតវែង — កំពុងបន្តផ្នែកទី ${pass}។ អត្ថបទបាន ${length.toLocaleString()} តួរួចហើយ។ សូមទុកទំព័រនេះបើករហូតដល់ចប់។`
-        );
+        setTranscriptionProgress(text.recordingContinuing.replace("{pass}", String(pass)).replace("{length}", length.toLocaleString()));
       }
       void releaseRecordingWakeLock();
     } catch (error) {
@@ -893,8 +889,8 @@ export function RecordingPanel() {
       }
       setTranscriptionProgress(
         isNetworkDropError(error)
-          ? "បានរក្សាទុកសំឡេងរួច ប៉ុន្តែការតភ្ជាប់ដាច់ ប្រហែលមកពីអេក្រង់ទូរស័ព្ទបានចាក់សោ ឬប្តូរទៅកម្មវិធីផ្សេងពេលកំពុងបំលែង។ សូមទុកអេក្រង់បើក និងស្ថិតនៅលើទំព័រនេះ រួចចុច «បំលែងសំឡេងជាអក្សរឡើងវិញ» ដើម្បីសាកម្តងទៀត។"
-          : `បានរក្សាទុកសំឡេងរួច ប៉ុន្តែបំលែងជាអក្សរមិនបានទេ៖ ${error instanceof Error ? error.message : "សូមសាកល្បងម្តងទៀត។"}`
+          ? text.recordingConnectionLost
+          : text.transcriptionFailedAfterSave.replace("{error}", error instanceof Error ? error.message : text.saveMeetingFailedRetry)
       );
       void releaseRecordingWakeLock();
     }
@@ -971,29 +967,29 @@ export function RecordingPanel() {
       <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 px-5 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-leaf">ឧបករណ៍ថតសំឡេង</p>
-            <h2 className="text-xl font-bold text-ink">ថតសំឡេងប្រជុំ</h2>
+            <p className="text-sm font-semibold text-leaf">{text.recorderPanelEyebrow}</p>
+            <h2 className="text-xl font-bold text-ink">{text.recorderPanelTitle}</h2>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm">
-            {state === "recording" ? "កំពុងថត" : state === "paused" ? "បានផ្អាក" : state === "stopped" ? "ថតរួច" : "រួចរាល់"}
+            {state === "recording" ? text.recorderStatusRecording : state === "paused" ? text.paused : state === "stopped" ? text.recorderStatusStopped : text.recorderStatusReady}
           </div>
         </div>
       </div>
       <div className="p-5 sm:p-6">
       <div className="mb-4 rounded-xl border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
-        សូមប្រាកដថាអ្នកចូលរួមទាំងអស់យល់ព្រម មុននឹងចាប់ផ្តើមថតកិច្ចប្រជុំនេះ។
+        {text.recordingConsent}
       </div>
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
-        ពេលកំពុងថត កម្មវិធីនឹងព្យាយាមរក្សាអេក្រង់ឱ្យនៅបើក ដើម្បីកុំឱ្យកម្មវិធីរុករកផ្អាកមីក្រូហ្វូន។ សូមទុកទំព័រនេះបើករហូតដល់ចុច «ឈប់ថត»។ ការចាក់សោទូរស័ព្ទអាចធ្វើឱ្យការថតផ្អាក។
+        {text.recorderScreenHelp}
         {state === "recording" ? (
           <span className={`mt-2 block font-semibold ${wakeLockActive ? "text-leaf" : "text-amber-700"}`}>
-            {wakeLockActive ? "រក្សាអេក្រង់មិនឱ្យរលត់៖ កំពុងដំណើរការ" : "មិនទាន់អាចរក្សាអេក្រង់មិនឱ្យរលត់បានទេ។ សូមចុចជម្រើសអេក្រង់ម្តងទៀត និងកុំចាក់សោអេក្រង់។"}
+            {wakeLockActive ? text.recorderScreenAwake : text.recorderScreenAwakeFailed}
           </span>
         ) : null}
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
-          មិនអាចពិនិត្យការតភ្ជាប់ទិន្នន័យបានទេ។ អ្នកនៅតែអាចថត និងសាកល្បងរក្សាទុកបាន។ កម្មវិធីនឹងបញ្ជាក់ពេលរក្សាទុកជោគជ័យ។
+          {text.databaseBrowserWarning}
         </div>
       ) : null}
       {error ? (
@@ -1005,7 +1001,7 @@ export function RecordingPanel() {
               type="button"
               onClick={() => void saveMeetingAuto(audioUrl)}
             >
-              សាកល្បងរក្សាទុកម្តងទៀត
+              {text.retrySave}
             </button>
           ) : null}
         </div>
@@ -1017,26 +1013,26 @@ export function RecordingPanel() {
       ) : null}
       <div className="mb-4 grid gap-4 sm:grid-cols-2">
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ចំណងជើងប្រជុំ (ស្រេចចិត្ត)</span>
+          <span className="text-sm font-semibold text-slate-600">{text.optionalMeetingTitle}</span>
           <input
             className="kh-input"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder={defaultMeetingTitle()}
+            placeholder={defaultMeetingTitle(text.recordingDefaultTitlePrefix)}
             disabled={state === "recording" || state === "paused"}
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-sm font-semibold text-slate-600">ភាសាបំលែងជាអក្សរ</span>
+          <span className="text-sm font-semibold text-slate-600">{text.transcriptionLanguage}</span>
           <select
             className="kh-input"
             value={transcriptionLanguage}
             onChange={(event) => setTranscriptionLanguage(event.target.value as "km" | "en" | "km-en")}
             disabled={state === "recording" || state === "paused" || uploading}
           >
-            <option value="km-en">ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)</option>
-            <option value="km">ភាសាខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)</option>
-            <option value="en">ភាសាអង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)</option>
+            <option value="km-en">{text.recorderMixedLanguage}</option>
+            <option value="km">{text.recorderKhmerLanguage}</option>
+            <option value="en">{text.recorderEnglishLanguage}</option>
           </select>
         </label>
       </div>
@@ -1044,14 +1040,14 @@ export function RecordingPanel() {
         <div className="mb-5 grid gap-4 sm:grid-cols-[1fr_240px]">
         <div className="block space-y-2">
           <label className="block space-y-1">
-            <span className="text-sm font-semibold text-slate-600">មីក្រូហ្វូន</span>
+            <span className="text-sm font-semibold text-slate-600">{text.microphone}</span>
             <select
               className="kh-input"
               value={selectedDeviceId}
               onChange={(event) => rememberMicrophone(event.target.value)}
               disabled={state === "recording" || state === "paused" || uploading}
             >
-              <option value="">មីក្រូហ្វូនលំនាំដើម</option>
+              <option value="">{text.defaultMicrophone}</option>
               {audioDevices.map((device, index) => (
                 <option key={device.deviceId || index} value={device.deviceId}>
                   {describeAudioDevice(device, index)}
@@ -1066,30 +1062,30 @@ export function RecordingPanel() {
               onClick={() => void findMicrophones()}
               disabled={findingDevices || state === "recording" || state === "paused" || uploading}
             >
-              {findingDevices ? "កំពុងរក..." : "រកមីក្រូហ្វូន"}
+              {findingDevices ? text.findingMicrophones : text.findMicrophones}
             </button>
             <button
               className="kh-button-secondary justify-center px-3"
               type="button"
               onClick={() => void connectBluetoothDevice()}
               disabled={findingDevices || state === "recording" || state === "paused" || uploading}
-              title="បើកផ្ទាំង Bluetooth នៅលើ Chrome ឬ Edge"
+              title={text.bluetoothChooserTitle}
             >
               Bluetooth
             </button>
           </div>
           <p className="text-xs text-slate-500">
-            ដោតមីក្រូហ្វូន ឬឧបករណ៍ទទួល USB រួចចុច <strong>រកមីក្រូហ្វូន</strong>។ បើប្រើកាស Bluetooth សូមភ្ជាប់វាក្នុងការកំណត់ឧបករណ៍ជាមុន រួចជ្រើសពីបញ្ជី។
+            {text.microphoneSetupHelp}
           </p>
           {activeMicLabel && state !== "idle" ? (
             <p className="text-xs text-slate-500">
-              កំពុងប្រើ៖ {activeMicLabel}
-              {voiceProcessingActive ? " (បើកការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់ឧបករណ៍)" : ""}
+              {text.usingMicrophone}: {activeMicLabel}
+              {voiceProcessingActive ? ` ${text.deviceVoiceProcessing}` : ""}
             </p>
           ) : null}
           {audioDevices.length > 0 && !audioDevices.some((device) => device.label) ? (
             <p className="text-xs text-amber-700">
-              ឈ្មោះមីក្រូហ្វូនមិនទាន់បង្ហាញទេ។ ចុច «រកមីក្រូហ្វូន» ដើម្បីអនុញ្ញាតឱ្យប្រើមីក្រូហ្វូន និងបង្ហាញឈ្មោះរបស់វា។
+              {text.microphoneNamesHidden}
             </p>
           ) : null}
           {bluetoothNotice ? (
@@ -1103,14 +1099,14 @@ export function RecordingPanel() {
           ) : null}
           {detectedMics && detectedMics.length > 0 ? (
             <div className="rounded-lg border border-leaf/30 bg-leaf/10 p-3 text-xs leading-6 text-ink">
-              <p className="font-semibold">រកឃើញ {detectedMics.length} មីក្រូហ្វូន។ សូមជ្រើសមួយពីបញ្ជីខាងលើ។</p>
+              <p className="font-semibold">{text.foundMicrophones.replace("{count}", String(detectedMics.length))}</p>
               <ul className="ml-4 list-disc">
                 {detectedMics.map((name, index) => (
                   <li key={`${name}-${index}`}>{name}</li>
                 ))}
               </ul>
               <p className="text-slate-500">
-                បើមិនប្រាកដថាមួយណា សូមជ្រើសម្តងមួយៗ ហើយនិយាយសាក ដោយមើលកម្រិតសំឡេងចូលខាងស្តាំ។
+                {text.microphoneChoiceHelp}
               </p>
               {/* Browsers can only list the microphones the operating system
                   exposes. A Bluetooth speaker has no microphone, and earbuds
@@ -1123,9 +1119,9 @@ export function RecordingPanel() {
                   notice already carries the same guidance. */}
               {!bluetoothNotice && !detectedMics.some((name) => name.startsWith("🎧") || name.startsWith("🎙️")) ? (
                 <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
-                  <p className="font-semibold">មិនឃើញឈ្មោះ Bluetooth របស់អ្នកក្នុងបញ្ជីនេះមែនទេ?</p>
+                  <p className="font-semibold">{text.bluetoothNotListed}</p>
                   <p>
-                    សូមពិនិត្យមីក្រូហ្វូនក្នុងការកំណត់សំឡេងរបស់ឧបករណ៍។ បើមិនមាននៅទីនោះ កម្មវិធីក៏មិនអាចប្រើវាបានដែរ។
+                    {text.bluetoothNotListedHelp}
                   </p>
                 </div>
               ) : null}
@@ -1133,21 +1129,21 @@ export function RecordingPanel() {
           ) : null}
           {detectedMics && detectedMics.length === 0 ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs leading-6 text-amber-900">
-              <p className="font-semibold">រកមិនឃើញមីក្រូហ្វូនណាមួយទេ។</p>
+              <p className="font-semibold">{text.noMicrophonesFound}</p>
               <p>
-                សូមដោតមីក្រូហ្វូន ឬឧបករណ៍ទទួល USB ឬភ្ជាប់កាស Bluetooth ក្នុងការកំណត់ឧបករណ៍ រួចចុច «រកមីក្រូហ្វូន» ម្តងទៀត។
+                {text.noMicrophonesHelp}
               </p>
             </div>
           ) : null}
           {selectedBluetoothLabel ? (
             <p className="text-xs text-slate-500">
-              Bluetooth បានជ្រើស៖ {selectedBluetoothLabel}
+              {text.selectedBluetooth.replace("{name}", selectedBluetoothLabel)}
             </p>
           ) : null}
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-slate-600">កម្រិតសំឡេងចូល</p>
+            <p className="text-sm font-semibold text-slate-600">{text.inputLevel}</p>
             {state === "recording" ? (
               <span className="text-xs font-semibold tabular-nums text-slate-500">
                 {Math.round(micLevel * 100)}%
@@ -1165,13 +1161,13 @@ export function RecordingPanel() {
           <p className="text-xs text-slate-500">
             {state === "recording"
               ? micLevel >= 0.025
-                ? "សំឡេងចូលល្អ"
+                ? text.inputGood
                 : micLevel >= 0.008
-                  ? "មានសំឡេងចូល ប៉ុន្តែនៅខ្សោយ"
-                  : "សំឡេងខ្សោយខ្លាំង — សូមដាក់មីក្រូហ្វូនឱ្យជិតកណ្ដាលតុ"
+                  ? text.inputWeak
+                  : text.inputVeryWeak
               : state === "paused"
-                ? "ការថតត្រូវបានផ្អាក"
-                : "ចាប់ផ្តើមថត ដើម្បីពិនិត្យកម្រិតសំឡេងមីក្រូហ្វូន"}
+                ? text.recordingPaused
+                : text.startRecordingToTestMic}
           </p>
           {/* A phone cannot be inspected from a laptop. These are the numbers
               the device itself reports, so a "it is quiet on my phone" report
@@ -1180,23 +1176,23 @@ export function RecordingPanel() {
               is what actually gets recorded. */}
           {state === "recording" || state === "paused" ? (
             <details className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-              <summary className="cursor-pointer font-semibold">ព័ត៌មានបច្ចេកទេស (សម្រាប់រាយការណ៍បញ្ហា)</summary>
+              <summary className="cursor-pointer font-semibold">{text.technicalInfo}</summary>
               <div className="mt-2 space-y-1">
                 <p className="tabular-nums">
-                  សំឡេងឆៅពីមីក្រូហ្វូន៖ <strong>{Math.round(rawMicLevel * 100)}%</strong>
+                  {text.rawMicLevel} <strong>{Math.round(rawMicLevel * 100)}%</strong>
                   {"  →  "}
-                  ក្រោយកែ៖ <strong>{Math.round(micLevel * 100)}%</strong>
+                  {text.processedMicLevel} <strong>{Math.round(micLevel * 100)}%</strong>
                 </p>
                 {rawMicLevel > 0.02 && micLevel < rawMicLevel * 0.8 ? (
                   <p className="font-semibold text-amber-700">
-                    ការកែសំឡេងកំពុងធ្វើឱ្យសំឡេង​ខ្សោយជាងមុន — សូមប្រាប់ខ្ញុំលេខទាំងពីរនេះ។
+                    {text.processingReducedLevel}
                   </p>
                 ) : null}
                 {micDiagnostics.map((line) => (
                   <p key={line}>{line}</p>
                 ))}
                 <p className="tabular-nums">
-                  ការបង្កើនសំឡេងស្វ័យប្រវត្តិរបស់កម្មវិធី៖ <strong>x{appliedGain.toFixed(1)}</strong>
+                  {text.appAutoGain} <strong>x{appliedGain.toFixed(1)}</strong>
                 </p>
               </div>
             </details>
@@ -1206,19 +1202,19 @@ export function RecordingPanel() {
       <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-inner sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm text-slate-500">ពេលវេលាថតសំឡេង</p>
+          <p className="text-sm text-slate-500">{text.recordingTime}</p>
           <p className="text-4xl font-bold tabular-nums text-ink">{formatTime(seconds)}</p>
           <p className="mt-1 text-sm text-slate-500">
-            {state === "recording" ? "កំពុងថត..." : state === "paused" ? "បានផ្អាក" : state === "stopped" ? "ថតរួចរាល់" : "រួចរាល់សម្រាប់ថត"}
+            {state === "recording" ? text.recordingNow : state === "paused" ? text.paused : state === "stopped" ? text.stopped : text.readyToRecord}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {state === "idle" || state === "stopped" ? (
-            <button className="kh-button-primary min-h-11" onClick={start} type="button"><Mic className="h-4 w-4" />ចាប់ផ្តើមថត</button>
+            <button className="kh-button-primary min-h-11" onClick={start} type="button"><Mic className="h-4 w-4" />{text.startRecording}</button>
           ) : null}
-          {state === "recording" ? <button className="kh-button-secondary min-h-11" onClick={pause} type="button"><Pause className="h-4 w-4" />ផ្អាក</button> : null}
-          {state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={resume} type="button"><Play className="h-4 w-4" />បន្ត</button> : null}
-          {state === "recording" || state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={stop} type="button"><Square className="h-4 w-4" />បញ្ឈប់</button> : null}
+          {state === "recording" ? <button className="kh-button-secondary min-h-11" onClick={pause} type="button"><Pause className="h-4 w-4" />{text.pause}</button> : null}
+          {state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={resume} type="button"><Play className="h-4 w-4" />{text.resume}</button> : null}
+          {state === "recording" || state === "paused" ? <button className="kh-button-secondary min-h-11" onClick={stop} type="button"><Square className="h-4 w-4" />{text.stop}</button> : null}
         </div>
       </div>
       {state === "recording" ? (
@@ -1229,7 +1225,7 @@ export function RecordingPanel() {
           type="button"
         >
           <Moon className="h-5 w-5" />
-          អេក្រង់ងងឹត ខណៈកំពុងថត
+          {text.darkScreen}
         </button>
         <button
           className="kh-button-secondary min-h-14 w-full"
@@ -1238,7 +1234,7 @@ export function RecordingPanel() {
           type="button"
         >
           <Sun className="h-5 w-5" />
-          រក្សាអេក្រង់ភ្លឺ មិនឱ្យរលត់
+          {text.keepScreenBright}
         </button>
         </div>
       ) : null}
@@ -1247,40 +1243,40 @@ export function RecordingPanel() {
         <div className="mt-6 space-y-4">
           {previewUrl ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-2 text-sm font-semibold text-ink">ស្តាប់សំឡេងដែលបានថត</p>
+              <p className="mb-2 text-sm font-semibold text-ink">{text.listenPreview}</p>
               <audio className="w-full" controls src={previewUrl} />
               <a
                 className="kh-button-secondary mt-3 inline-flex"
                 download={`khmermeet-${(title.trim() || "recording").replace(/[^\wក-៿-]+/g, "-")}.webm`}
                 href={previewUrl}
               >
-                ទាញយកឯកសារសំឡេង
+                {text.downloadAudio}
               </a>
             </div>
           ) : null}
           {uploading ? (
-            <p className="text-sm text-slate-500">កំពុងផ្ទុកសំឡេងឡើង...</p>
+            <p className="text-sm text-slate-500">{text.uploadingAudio}</p>
           ) : savingMeeting ? (
-            <p className="text-sm text-slate-500">កំពុងរក្សាទុកប្រជុំដោយស្វ័យប្រវត្តិ...</p>
+            <p className="text-sm text-slate-500">{text.savingMeetingAuto}</p>
           ) : savedMeetingId ? (
             <p className="flex items-center gap-2 text-sm text-leaf">
               <CheckCircle2 className="h-4 w-4" />
-              បានរក្សាទុករួច។ <a className="font-semibold underline" href={`/meetings/${savedMeetingId}`}>មើលប្រជុំ</a>
+              {text.savedDone} <a className="font-semibold underline" href={`/meetings/${savedMeetingId}`}>{text.viewMeeting}</a>
             </p>
           ) : null}
           {transcriptionProgress ? <p className="text-sm text-slate-500">{transcriptionProgress}</p> : null}
           <button className="kh-button-secondary" onClick={start} type="button">
             <RotateCcw className="h-4 w-4" />
-            ថតម្តងទៀត
+            {text.recordAgain}
           </button>
         </div>
       ) : null}
       </div>
       {typeof document !== "undefined" && quietScreenActive && state === "recording" ? createPortal(
-        <div className="fixed inset-0 z-[100] h-dvh w-screen bg-black" role="group" aria-label="អេក្រង់ងងឹត ខណៈកំពុងថតសំឡេង">
+        <div className="fixed inset-0 z-[100] h-dvh w-screen bg-black" role="group" aria-label={text.darkScreen}>
           {quietScreenControlsVisible ? (
             <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center text-white">
-              <p className="text-sm text-white/70">កំពុងថតសំឡេង · {formatTime(seconds)}</p>
+              <p className="text-sm text-white/70">{text.recordingNow} · {formatTime(seconds)}</p>
               <div className="flex w-full max-w-sm gap-3">
                 <button
                   className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-lg border border-white/30 px-4 font-semibold text-white"
@@ -1288,7 +1284,7 @@ export function RecordingPanel() {
                   type="button"
                 >
                   <Sun className="h-4 w-4" />
-                  អេក្រង់ភ្លឺ
+                  {text.brightScreen}
                 </button>
                 <button
                   className="flex min-h-14 flex-1 items-center justify-center gap-2 rounded-lg border border-red-400/50 px-4 font-semibold text-red-200"
@@ -1296,16 +1292,16 @@ export function RecordingPanel() {
                   type="button"
                 >
                   <Square className="h-4 w-4" />
-                  ឈប់ថត
+                  {text.stopRecording}
                 </button>
               </div>
               <button className="text-sm text-white/70 underline" onClick={() => setQuietScreenControlsVisible(false)} type="button">
-                បិទពន្លឺវិញ
+                {text.dimAgain}
               </button>
             </div>
           ) : (
             <button
-              aria-label="ប៉ះអេក្រង់ ដើម្បីបង្ហាញប៊ូតុងឈប់ថត និងអេក្រង់ភ្លឺ"
+              aria-label={text.darkScreenHint}
               className="block h-full w-full bg-black"
               onClick={() => setQuietScreenControlsVisible(true)}
               type="button"

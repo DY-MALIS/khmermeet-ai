@@ -2,7 +2,8 @@
 
 import { AlertCircle, CheckCircle2, FileAudio, Loader2, UploadCloud } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useUiText } from "@/components/localized-text";
 import { uploadMediaDirect } from "@/lib/client/direct-upload";
 import { readJsonResponse } from "@/lib/read-json-response";
 
@@ -37,6 +38,7 @@ function getMediaDuration(file: File) {
 }
 
 export function ExternalMediaUploadPanel() {
+  const text = useUiText();
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -48,10 +50,7 @@ export function ExternalMediaUploadPanel() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
 
-  const fileLabel = useMemo(() => {
-    if (!file) return "ជ្រើសរើសឯកសារសំឡេង ឬវីដេអូ";
-    return `${file.name} - ${formatFileSize(file.size)}`;
-  }, [file]);
+  const fileLabel = file ? `${file.name} - ${formatFileSize(file.size)}` : text.chooseMediaFile;
 
   function selectFile(selectedFile: File | null) {
     setFile(selectedFile);
@@ -63,25 +62,25 @@ export function ExternalMediaUploadPanel() {
 
   async function uploadAndCreateMeeting() {
     if (!file) {
-      setError("សូមជ្រើសរើសឯកសារសំឡេង ឬវីដេអូជាមុនសិន។");
+      setError(text.chooseFileFirst);
       return;
     }
 
     setPending(true);
     setError("");
     setWarning("");
-    setStatus("កំពុងផ្ទុកឯកសារឡើង...");
+    setStatus(text.uploadingFile);
 
     try {
       const duration = await getMediaDuration(file);
       const audioUrl = await uploadMediaDirect(file);
 
-      setStatus("កំពុងរក្សាទុកកំណត់ត្រាប្រជុំ...");
+      setStatus(text.savingMeetingRecord);
       const meetingResponse = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim() || titleFromFile(file) || "កិច្ចប្រជុំពីឯកសារដែលបានផ្ទុកឡើង",
+          title: title.trim() || titleFromFile(file) || text.uploadedMeetingTitle,
           audioUrl,
           transcript: "",
           duration,
@@ -90,15 +89,15 @@ export function ExternalMediaUploadPanel() {
       });
       const meetingJson = await readJsonResponse<{ id?: string; error?: string }>(meetingResponse);
       if (!meetingResponse.ok || !meetingJson.id) {
-        throw new Error(meetingJson.error ?? "មិនអាចរក្សាទុកប្រជុំបានទេ។");
+        throw new Error(meetingJson.error ?? text.saveMeetingFailed);
       }
 
       setWarning("");
-      setStatus("បានរក្សាទុករួច។ កំពុងបើកប្រជុំ និងចាប់ផ្តើមបំលែងសំឡេងជាអក្សរ...");
+      setStatus(text.uploadOpeningMeeting);
       router.push(`/meetings/${meetingJson.id}?transcribe=1#transcript`);
       router.refresh();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "មិនអាចផ្ទុកឯកសារនេះឡើងបានទេ។");
+      setError(uploadError instanceof Error ? uploadError.message : text.uploadFileFailed);
     } finally {
       setPending(false);
     }
@@ -112,11 +111,10 @@ export function ExternalMediaUploadPanel() {
           <UploadCloud className="h-5 w-5" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-leaf">ផ្ទុកឯកសារសំឡេង ឬវីដេអូឡើង</p>
-          <h2 className="text-xl font-bold text-ink">បំលែងការថតសំឡេងពីខាងក្រៅជាអក្សរ</h2>
+          <p className="text-sm font-semibold text-leaf">{text.uploadMediaEyebrow}</p>
+          <h2 className="text-xl font-bold text-ink">{text.uploadMediaTitle}</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            ផ្ទុកឯកសារប្រភេទ MP3, M4A, WebM, MP4 ឬប្រភេទផ្សេងទៀតដែលកម្មវិធីរុករកគាំទ្រ។ កម្មវិធីនឹងរក្សាទុកឯកសារនោះ
-            ជាកំណត់ត្រាប្រជុំ។ សម្រាប់ឯកសារវែង អ្នកអាចបើកប្រជុំ ហើយចុច «បំលែងសំឡេងជាអក្សរ» ពេលក្រោយ។
+            {text.uploadMediaDescription}
           </p>
         </div>
       </div>
@@ -128,7 +126,7 @@ export function ExternalMediaUploadPanel() {
           <FileAudio className="h-5 w-5 shrink-0 text-leaf" />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-ink">{fileLabel}</span>
-            <span className="mt-1 block text-xs text-slate-500">ទទួលយកឯកសារសំឡេង និងវីដេអូ។</span>
+            <span className="mt-1 block text-xs text-slate-500">{text.acceptsAudioVideo}</span>
           </span>
           <input
             accept="audio/*,video/*"
@@ -145,9 +143,9 @@ export function ExternalMediaUploadPanel() {
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           value={languageMode}
         >
-          <option value="km-en">ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)</option>
-          <option value="km">ភាសាខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)</option>
-          <option value="en">ភាសាអង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)</option>
+          <option value="km-en">{text.recorderMixedLanguage}</option>
+          <option value="km">{text.recorderKhmerLanguage}</option>
+          <option value="en">{text.recorderEnglishLanguage}</option>
         </select>
       </div>
 
@@ -156,12 +154,12 @@ export function ExternalMediaUploadPanel() {
           className="kh-input"
           disabled={pending}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="ចំណងជើងប្រជុំ"
+          placeholder={text.uploadMeetingTitlePlaceholder}
           value={title}
         />
         <button className="kh-button-primary" disabled={pending || !file} onClick={uploadAndCreateMeeting} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-          {pending ? "កំពុងដំណើរការ..." : "ផ្ទុកឡើង និងរក្សាទុក"}
+          {pending ? text.processing : text.uploadAndSave}
         </button>
       </div>
 
