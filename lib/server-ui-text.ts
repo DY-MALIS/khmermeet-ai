@@ -5,7 +5,7 @@ import { uiText } from "@/lib/ui-translations";
 const languageStorageKey = "khmermeet-display-language";
 
 function normalizeDisplayLanguage(value: string | undefined): DisplayLanguage {
-  return value === "en" || value === "id" ? value : "km";
+  return value === "en" ? value : "km";
 }
 
 export async function getServerUiText() {

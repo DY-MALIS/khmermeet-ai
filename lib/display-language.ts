@@ -9,7 +9,7 @@ export const languageChangeEvent = "khmermeet-language-change";
 export function readDisplayLanguage(): DisplayLanguage {
   if (typeof window === "undefined") return "km";
   const language = window.localStorage.getItem(languageStorageKey);
-  return language === "en" || language === "id" ? language : "km";
+  return language === "en" ? language : "km";
 }
 
 export function writeDisplayLanguage(language: DisplayLanguage) {
@@ -30,8 +30,8 @@ export function useDisplayLanguage() {
 
     syncLanguage();
 
-    const onLanguageChange = (event: Event) => {
-      syncLanguage((event as CustomEvent<DisplayLanguage>).detail ?? readDisplayLanguage());
+    const onLanguageChange = () => {
+      syncLanguage(readDisplayLanguage());
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key === languageStorageKey) syncLanguage();

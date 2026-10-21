@@ -24,14 +24,14 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
         <Languages className="h-4 w-4" />
         {labels.language}
       </div>
-      <div className="grid grid-cols-3 gap-1.5">
-        {(["km", "en", "id"] as const).map((item) => (
+      <div className="grid grid-cols-2 gap-1.5">
+        {(["km", "en"] as const).map((item) => (
           <button
             key={item}
             type="button"
             onClick={() => changeLanguage(item)}
             className={cn(
-              "min-w-0 rounded-lg px-2 py-2 text-center text-xs font-bold transition sm:text-sm",
+              "min-w-0 rounded-lg px-2 py-2 text-center text-sm font-bold transition",
               language === item ? "bg-leaf text-white shadow-sm shadow-leaf/20" : "bg-slate-50 text-slate-600 hover:bg-leaf/10 hover:text-leaf"
             )}
           >

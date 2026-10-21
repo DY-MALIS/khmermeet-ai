@@ -62,7 +62,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // clean re-transcription attempt that extracts nothing new (every line
     // uses a plain "Speaker N" label) leaves the old garbage untouched.
     const savedSpeakerNames = sanitizeKnownSpeakerNames(Array.isArray(meeting.speakerNames) ? meeting.speakerNames : []);
-    const speakerNames = body.speakerNames.length ? body.speakerNames : savedSpeakerNames;
+    const speakerNames = [
+      ...new Set([...savedSpeakerNames, ...sanitizeKnownSpeakerNames(body.speakerNames)])
+    ].slice(0, 100);
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
     const recognisedTrackNames = new Map<string, string>();
     const trackMatches = await Promise.all(participantAudioSegments.map(async (segment) => {
@@ -116,11 +118,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segmentSpeakerName(segment), segment.speakerIdentity)))
         .join("\n");
       transcriptSpeakerNames = [
-        ...new Set(
-          chronologicalSpeakerSegments
+        ...new Set([
+          ...speakerNames,
+          ...chronologicalSpeakerSegments
             .map(segmentSpeakerName)
             .filter((name) => !isPlaceholderParticipantName(name))
-        )
+        ])
       ];
     } else if (shouldUseMixedAudio && meeting.audioUrl) {
       const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
@@ -181,11 +184,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         .map((part) => part.text)
         .join("\n");
       transcriptSpeakerNames = [
-        ...new Set(
-          participantAudioSegments
+        ...new Set([
+          ...speakerNames,
+          ...participantAudioSegments
             .map(segmentSpeakerName)
             .filter((name) => !isPlaceholderParticipantName(name))
-        )
+        ])
       ];
     } else if (meeting.audioUrl) {
       const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);

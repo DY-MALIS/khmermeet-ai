@@ -87,13 +87,12 @@ export function MeetingTranscriptPanel({
         </div>
       ) : null}
 
-      {audioUrl ? (
+      {(audioUrl || meetingSpeakerNames.length) ? (
         <div className="mb-4 space-y-3">
           <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-sky-50/40 p-4 shadow-sm">
-            <p className="text-sm font-semibold text-ink">Meeting speakers</p>
+            <p className="text-sm font-semibold text-ink">អ្នកចូលរួមដែលបានរក្សាទុក ({meetingSpeakerNames.length})</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              KhmerMeet uses the participant names saved from the video meeting and attaches each name to the matching
-              participant audio track when available.
+              បញ្ជីនេះជាឈ្មោះអ្នកចូលរួមដែលបានរក្សាទុក។ អ្នកដែលមិនបាននិយាយ បិទមីក្រូហ្វូន ឬសំឡេងមិនច្បាស់ អាចមិនមានឈ្មោះក្នុងអត្ថបទប្រជុំ។
             </p>
             {meetingSpeakerNames.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -105,19 +104,20 @@ export function MeetingTranscriptPanel({
               </div>
             ) : (
               <p className="mt-3 rounded-lg bg-saffron/10 p-3 text-sm leading-6 text-slate-600">
-                No participant names were saved for this recording. New video meetings will save participant names
-                automatically when users join with their display name.
+                មិនមានឈ្មោះអ្នកចូលរួមដែលបានរក្សាទុកសម្រាប់ការថតនេះទេ។
               </p>
             )}
           </div>
-          <TranscribeAudioButton
-            meetingId={meetingId}
-            hasTranscript={hasAnyTranscript}
-            currentTranscript={transcript === initialTranscript ? transcript : ""}
-            speakerNames={meetingSpeakerNames}
-            autoStart={autoStartTranscription}
-            onTranscribed={handleTranscribed}
-          />
+          {audioUrl ? (
+            <TranscribeAudioButton
+              meetingId={meetingId}
+              hasTranscript={hasAnyTranscript}
+              currentTranscript={transcript === initialTranscript ? transcript : ""}
+              speakerNames={meetingSpeakerNames}
+              autoStart={autoStartTranscription}
+              onTranscribed={handleTranscribed}
+            />
+          ) : null}
         </div>
       ) : null}
 

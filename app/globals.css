@@ -19,6 +19,7 @@ html {
 body {
   min-height: 100%;
   margin: 0;
+  font-size: 1.0625rem;
   background:
     radial-gradient(circle at 8% 8%, rgba(15, 138, 112, 0.24), transparent 28rem),
     radial-gradient(circle at 88% 6%, rgba(229, 154, 35, 0.22), transparent 24rem),
@@ -42,19 +43,17 @@ select {
 }
 
 .kh-input {
-  @apply w-full rounded-xl border border-leaf/15 bg-white/85 px-3 py-2 text-sm text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
+  @apply w-full rounded-xl border border-leaf/15 bg-white/85 px-3 py-2 text-base text-ink caret-leaf outline-none transition placeholder:text-slate-400 hover:border-leaf/40 focus:border-leaf focus:ring-4 focus:ring-leaf/10;
 }
 
-/* A transcript is read/reviewed as a block of running text, not filled in
-   like a short form field - the same text-sm (14px) that's fine for a
-   one-line input reads too small to comfortably read on a phone screen. */
+/* Give long transcript fields a comfortable reading line height. */
 textarea.kh-input {
-  font-size: 0.9375rem;
+  font-size: 1.0625rem;
   line-height: 1.7;
 }
 
 .kh-button {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-base font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .kh-button-primary {
@@ -66,7 +65,7 @@ textarea.kh-input {
 }
 
 .kh-badge {
-  @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+  @apply inline-flex items-center rounded-full px-2.5 py-1 text-sm font-semibold;
 }
 
 main,
@@ -115,11 +114,14 @@ audio {
   .kh-card{border-radius:0.75rem}
   .kh-button{min-height:2.75rem;max-width:100%}
   .kh-input{min-height:2.75rem}
-  /* More specific than the .kh-input min-height rule above (same
-     specificity would lose to cascade order otherwise) - a transcript
-     needs real reading room on a phone screen, not the ~44px comfortable
-     for a one-line field. */
+  /* A transcript needs more room than a one-line field on phones. */
   textarea.kh-input{font-size:1.125rem;line-height:1.8;min-height:50vh}
   audio{max-width:100%}
 }
 @media(max-width:620px){.ai-workspace{padding:14px}.ai-workspace-header{display:block}.score-block{margin-top:14px}.notes-grid,.analytics-grid{grid-template-columns:1fr}.copilot-input{grid-template-columns:1fr}.copilot-input .primary{grid-column:1/-1}.timeline-row{grid-template-columns:58px 1fr}.timeline-row>b{display:none}.document-buttons{grid-template-columns:1fr}.workspace-input{padding:14px}}
+
+.ai-workspace .eyebrow,
+.ai-workspace .task-table th,
+.ai-workspace .timeline-row small {
+  font-size: 0.875rem;
+}

@@ -9,7 +9,6 @@ const translateTimeoutMs = Number(process.env.OPEN_ROUTER_TRANSLATE_TIMEOUT_MS ?
 const targetLabels: Record<string, string> = {
   km: "Khmer",
   en: "English",
-  id: "Indonesian",
   th: "Thai",
   zh: "Chinese",
   vi: "Vietnamese"
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
     const summary = typeof body.summary === "string" ? body.summary.trim() : "";
     const targetLanguage = typeof body.targetLanguage === "string" ? body.targetLanguage.trim() : "";
     const customTarget = typeof body.customTarget === "string" ? body.customTarget.trim() : "";
-    const target = customTarget || targetLabels[targetLanguage] || targetLanguage;
+    const target = customTarget || targetLabels[targetLanguage];
 
     // Was summary.slice(0, 12000) applied silently further down: a longer
     // summary lost its tail before translation even started, and the reply
@@ -51,6 +50,8 @@ export async function POST(request: Request) {
       "Keep the same names, speaker names, company/product names, dates, times, numbers, URLs, acronyms, bullet structure, and section structure.",
       "Preserve technical terms that are normally used in English unless the target language has a common natural equivalent.",
       "For Khmer output, use natural modern Khmer phrasing and Khmer section headings; do not leave English headings like Summary, Tasks, Decisions, or Next steps unless they are part of a proper name.",
+      "Use consistent meeting terminology throughout. For Khmer, prefer សេចក្តីសង្ខេប for summary, កិច្ចការដែលត្រូវធ្វើ for action items, ការសម្រេចចិត្ត for decisions, and ជំហានបន្ទាប់ for next steps.",
+      "Before responding, silently check the translation against every source sentence for missing details, wrong negation, incorrect names or numbers, and awkward wording. Correct any issues you find.",
       "If a source sentence is unclear, translate only what is clearly present instead of guessing.",
       "Do not add facts. Do not remove important details. Do not explain the translation.",
       "Return only the translated summary text.",

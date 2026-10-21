@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useUiText } from "@/components/localized-text";
 import { readJsonResponse } from "@/lib/read-json-response";
 
-type TargetLanguage = "en" | "km" | "id" | "th" | "zh" | "vi" | "custom";
+type TargetLanguage = "en" | "km" | "th" | "zh" | "vi" | "custom";
 
 export function SummaryTranslator({ summary }: { summary: string }) {
   const text = useUiText();
@@ -60,7 +60,6 @@ export function SummaryTranslator({ summary }: { summary: string }) {
         >
           <option value="en">{text.englishOutput}</option>
           <option value="km">{text.khmerOutput}</option>
-          <option value="id">{text.indonesianOutput}</option>
           <option value="th">{text.thaiOutput}</option>
           <option value="zh">{text.chineseOutput}</option>
           <option value="vi">{text.vietnameseOutput}</option>
@@ -91,8 +90,8 @@ export function SummaryTranslator({ summary }: { summary: string }) {
       ) : null}
       {translated ? (
         <div className="mt-3 rounded-lg bg-slate-50 p-4">
-          <p className="mb-2 text-xs font-bold uppercase text-leaf">{text.translatedSummary}</p>
-          <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{translated}</div>
+          <p className="mb-2 text-sm font-bold text-leaf">{text.translatedSummary}</p>
+          <div className="whitespace-pre-wrap text-base leading-8 text-slate-700">{translated}</div>
         </div>
       ) : null}
     </div>
