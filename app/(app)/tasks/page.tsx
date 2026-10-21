@@ -6,6 +6,7 @@ import { createTask, deleteTask, updateTask } from "@/lib/actions";
 import { ActionButton } from "@/components/action-button";
 import { EmptyState } from "@/components/ui";
 import { getServerUiText } from "@/lib/server-ui-text";
+import { localizedPriority } from "@/lib/localized-values";
 
 type TaskPriority = "low" | "medium" | "high";
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -151,7 +152,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                         <input form={`update-${task.id}`} className="kh-input min-w-36" name="deadline" type="date" defaultValue={task.deadline?.toISOString().slice(0, 10) ?? ""} />
                       </div>
                     </td>
-                    <td className="px-4 py-3"><span className="kh-badge bg-sky/10 text-sky">{task.priority}</span></td>
+                    <td className="px-4 py-3"><span className="kh-badge bg-sky/10 text-sky">{localizedPriority(task.priority, text)}</span></td>
                     <td className="px-4 py-3">
                       <select form={`update-${task.id}`} className="kh-input min-w-40" name="status" defaultValue={task.status}>
                         <option value="not_started">{text.notStarted}</option>

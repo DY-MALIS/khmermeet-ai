@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useBilingualText } from "@/lib/display-language";
 
 export function RecordedAudioPlayer({ src, label, audioId }: { src: string; label?: string; audioId?: string }) {
+  const t = useBilingualText();
   const [error, setError] = useState("");
 
   return (
@@ -15,13 +17,13 @@ export function RecordedAudioPlayer({ src, label, audioId }: { src: string; labe
         preload="metadata"
         src={src}
         onCanPlay={() => setError("")}
-        onError={() => setError("The audio file cannot play in the player. Open the audio directly.")}
+        onError={() => setError(t("មិនអាចចាក់ឯកសារសំឡេងនេះបានទេ។ សូមបើកសំឡេងដោយផ្ទាល់។", "The audio file cannot play in the player. Open the audio directly."))}
       />
       {error ? (
         <p className="text-xs text-red-600">
           {error}{" "}
           <a className="font-semibold underline" href={src} rel="noreferrer" target="_blank">
-            Open audio
+            {t("បើកសំឡេង", "Open audio")}
           </a>
         </p>
       ) : null}

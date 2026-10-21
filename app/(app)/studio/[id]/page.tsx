@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { StudioEditor } from "@/components/studio-editor";
+import { getServerUiText } from "@/lib/server-ui-text";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,6 +17,7 @@ export default async function StudioProjectPage({ params }: { params: Promise<{ 
     include: { versions: { orderBy: { createdAt: "desc" }, take: 30 } }
   });
   if (!project) notFound();
+  const { language } = await getServerUiText();
 
   return (
     <div className="space-y-6">
@@ -23,7 +25,7 @@ export default async function StudioProjectPage({ params }: { params: Promise<{ 
         <div>
           <Link href="/studio" className="flex items-center gap-1 text-sm font-semibold text-leaf hover:underline">
             <ArrowLeft className="h-4 w-4" />
-            Scribe Studio
+            {language === "km" ? "ស្ទូឌីយោអត្ថបទ" : "Scribe Studio"}
           </Link>
           <h1 className="mt-1 text-3xl font-bold text-ink">{project.title}</h1>
         </div>

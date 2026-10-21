@@ -1,3 +1,5 @@
+import type { DisplayLanguage } from "@/lib/navigation-labels";
+
 const khmerSummaryHeadings = [
   "\u179f\u1784\u17d2\u1781\u17c1\u1794\u1794\u17d2\u179a\u1787\u17bb\u17c6",
   "\u1785\u17c6\u178e\u17bb\u1785\u179f\u17c6\u1781\u17b6\u1793\u17cb\u17d7",
@@ -34,17 +36,16 @@ function normalizeSummaryHeading(line: string) {
     .trim();
   return canonicalHeadingLabels[cleaned.toLowerCase()] ?? cleaned;
 }
-
 function isSummaryHeading(line: string) {
   const normalized = normalizeSummaryHeading(line);
   return summaryHeadings.some((heading) => heading.toLowerCase() === normalized.toLowerCase());
 }
 
-function defaultSummaryTitle(summary: string) {
-  return /[\u1780-\u17ff]/.test(summary) ? "Meeting overview" : "Meeting overview";
+function defaultSummaryTitle(language: DisplayLanguage) {
+  return language === "km" ? "ទិដ្ឋភាពទូទៅនៃកិច្ចប្រជុំ" : "Meeting overview";
 }
 
-export function SummaryDisplay({ summary }: { summary: string }) {
+export function SummaryDisplay({ summary, language }: { summary: string; language: DisplayLanguage }) {
   const sections: Array<{ title: string; items: string[] }> = [];
   let current: { title: string; items: string[] } | null = null;
 
@@ -59,7 +60,7 @@ export function SummaryDisplay({ summary }: { summary: string }) {
     }
 
     if (!current) {
-      current = { title: defaultSummaryTitle(summary), items: [] };
+      current = { title: defaultSummaryTitle(language), items: [] };
       sections.push(current);
     }
 
@@ -91,7 +92,7 @@ export function SummaryDisplay({ summary }: { summary: string }) {
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-slate-500">No clear information available.</p>
+            <p className="text-sm text-slate-500">{language === "km" ? "មិនមានព័ត៌មានច្បាស់លាស់។" : "No clear information available."}</p>
           )}
         </div>
       ))}

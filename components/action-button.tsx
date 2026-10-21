@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { useBilingualText } from "@/lib/display-language";
 
 export function ActionButton({
   children,
@@ -14,9 +15,10 @@ export function ActionButton({
   disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
+  const t = useBilingualText();
   return (
     <button className={className} disabled={pending || disabled} form={form}>
-      {pending ? "Working..." : children}
+      {pending ? t("កំពុងដំណើរការ...", "Working...") : children}
     </button>
   );
 }

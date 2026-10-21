@@ -3,21 +3,22 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { BilingualText } from "@/components/localized-text";
 
 function CallLoading() {
-  return <div className="kh-card h-48 animate-pulse bg-slate-100" aria-label="Loading video meeting" />;
+  return <div className="kh-card h-48 animate-pulse bg-slate-100" role="status"><BilingualText km="កំពុងផ្ទុកប្រជុំវីដេអូ..." en="Loading video meeting..." /></div>;
 }
 
 function CallLoadFallback() {
   return (
     <div className="kh-card space-y-3 p-5">
-      <p className="text-sm font-semibold text-red-600">Video call could not load</p>
+      <p className="text-sm font-semibold text-red-600"><BilingualText km="មិនអាចផ្ទុកប្រជុំវីដេអូបាន" en="Video call could not load" /></p>
       <p className="text-sm leading-6 text-slate-600">
-        The LiveKit meeting module failed to start in this browser. Please refresh the page. If it still fails, open Dashboard and come back to Meetings.
+        <BilingualText km="ប្រព័ន្ធប្រជុំ LiveKit មិនអាចចាប់ផ្ដើមក្នុងកម្មវិធីរុករកនេះបានទេ។ សូមផ្ទុកទំព័រឡើងវិញ។ បើនៅតែមិនបាន សូមត្រឡប់ទៅផ្ទាំងគ្រប់គ្រង ហើយបើកប្រជុំម្ដងទៀត។" en="The LiveKit meeting module failed to start in this browser. Refresh the page. If it still fails, return to Dashboard and open Meetings again." />
       </p>
       <div className="flex flex-wrap gap-2">
         <button className="kh-button-primary" type="button" onClick={() => window.location.reload()}>
-          Refresh
+          <BilingualText km="ផ្ទុកឡើងវិញ" en="Refresh" />
         </button>
         <BackToDashboardButton />
       </div>
@@ -30,7 +31,7 @@ function BackToDashboardButton() {
 
   return (
     <button className="kh-button-secondary" type="button" onClick={() => router.push("/dashboard")}>
-      Back to dashboard
+      <BilingualText km="ត្រឡប់ទៅផ្ទាំងគ្រប់គ្រង" en="Back to dashboard" />
     </button>
   );
 }
@@ -64,14 +65,14 @@ class VideoCallErrorBoundary extends Component<
     if (this.state.failed) {
       return (
         <div className="kh-card space-y-3 p-5">
-          <p className="text-sm font-semibold text-red-600">Video call error</p>
+          <p className="text-sm font-semibold text-red-600"><BilingualText km="ប្រជុំវីដេអូមានបញ្ហា" en="Video call error" /></p>
           <p className="text-sm leading-6 text-slate-600">
-            The meeting page opened, but the LiveKit call UI crashed before it could connect.
+            <BilingualText km="ទំព័រប្រជុំបានបើក ប៉ុន្តែប្រព័ន្ធ LiveKit មានបញ្ហាមុនពេលភ្ជាប់។" en="The meeting page opened, but the LiveKit call UI crashed before it could connect." />
           </p>
           {this.state.message ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{this.state.message}</p> : null}
           <div className="flex flex-wrap gap-2">
             <button className="kh-button-primary" type="button" onClick={() => window.location.reload()}>
-              Try again
+              <BilingualText km="សាកម្ដងទៀត" en="Try again" />
             </button>
             <BackToDashboardButton />
           </div>

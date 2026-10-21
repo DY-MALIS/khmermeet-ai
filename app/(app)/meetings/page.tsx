@@ -8,12 +8,13 @@ import { formatMeetingDuration } from "@/lib/time-format";
 import { getServerUiText } from "@/lib/server-ui-text";
 import { ownerWhere } from "@/lib/session";
 import type { Prisma } from "@prisma/client";
+import { localizedMeetingStatus } from "@/lib/localized-values";
 
 type MeetingWithTasks = Prisma.MeetingGetPayload<{ include: { tasks: true } }>;
 
 export default async function MeetingsPage({ searchParams }: { searchParams: Promise<{ q?: string; date?: string }> }) {
   const user = await requireUser();
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
   const params = await searchParams;
   const data = await prisma.meeting
     .findMany({
@@ -61,7 +62,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
               </div>
               <p className="text-sm text-slate-500">{meeting.createdAt.toLocaleDateString()} · {formatMeetingDuration(meeting.duration)}</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <span className="kh-badge bg-leaf/10 text-leaf">{meeting.status}</span>
+                <span className="kh-badge bg-leaf/10 text-leaf">{localizedMeetingStatus(meeting.status, language)}</span>
                 <span className="kh-badge bg-slate-100 text-slate-600">{meeting.tasks.length} {text.tasksCount}</span>
               </div>
             </article>

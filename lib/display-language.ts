@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DisplayLanguage } from "@/lib/navigation-labels";
 
 export const languageStorageKey = "khmermeet-display-language";
@@ -46,4 +46,10 @@ export function useDisplayLanguage() {
   }, []);
 
   return [language, writeDisplayLanguage] as const;
+}
+
+/** Use for feature copy that has not yet moved into the shared UI dictionary. */
+export function useBilingualText() {
+  const [language] = useDisplayLanguage();
+  return useCallback((khmer: string, english: string) => language === "km" ? khmer : english, [language]);
 }

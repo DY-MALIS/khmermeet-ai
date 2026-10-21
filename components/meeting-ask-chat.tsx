@@ -9,7 +9,8 @@ import { describeMicError } from "@/lib/mic-permission-error";
 import { playFiller, playLiveAnswer, playVoiceStream, prepareFiller, stopFiller, unlockAnswerAudio } from "@/lib/client/answer-voice";
 import { createLiveListener, type LiveListener } from "@/lib/client/live-listener";
 import { startGeminiLiveCall, type LiveCall } from "@/lib/client/gemini-live-call";
-import { useUiText } from "@/components/localized-text";
+import { useDisplayLanguage } from "@/lib/display-language";
+import { uiText } from "@/lib/ui-translations";
 
 type Turn = {
   id: number;
@@ -103,7 +104,8 @@ function speakWithDevice(text: string, voice: SpeechSynthesisVoice) {
 }
 
 export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meetingId: string; hasTranscript: boolean; hasAudio: boolean }) {
-  const text = useUiText();
+  const [language] = useDisplayLanguage();
+  const text = uiText[language];
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [error, setError] = useState("");
@@ -259,7 +261,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       setTurns((current) => [...current, turn]);
       return turn;
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Ask Meeting failed.");
+      setError(error instanceof Error ? error.message : text.askMeetingFailed);
       // 422 = nothing audible in the recording: worth just listening again.
       return (error as { status?: number }).status === 422 ? ("retry" as const) : null;
     } finally {
@@ -315,7 +317,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       const response = await fetch(`/api/meetings/${meetingId}/live-answer`, { method: "POST", body: form });
       if (!response.ok) {
         const data = await readJsonResponse(response);
-        setError(data.error ?? "Ask Meeting failed.");
+        setError(data.error ?? text.askMeetingFailed);
         endLive();
         return;
       }
@@ -343,7 +345,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       await playback.done;
       if (playbackRef.current === playback) playbackRef.current = null;
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Ask Meeting failed.");
+      setError(error instanceof Error ? error.message : text.askMeetingFailed);
     }
     listenAgain();
   }
@@ -355,7 +357,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
     const audio = unlockAnswerAudio();
     setError("");
     if (!audio) {
-      setError(describeMicError(null));
+      setError(describeMicError(null, language));
       return;
     }
     try {
@@ -425,7 +427,7 @@ export function MeetingAskChat({ meetingId, hasTranscript, hasAudio }: { meeting
       startOneRequestPerQuestion();
     } catch (error) {
       endLive();
-      setError(describeMicError(error));
+      setError(describeMicError(error, language));
     }
   }
 

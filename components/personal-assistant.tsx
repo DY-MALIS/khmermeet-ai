@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { Loader2, Send, Sparkles, UserRound } from "lucide-react";
 import { readJsonResponse } from "@/lib/read-json-response";
-
-const suggestions = ["What are my tasks this week?", "What tasks are overdue?", "What meetings do I have?"];
+import { useBilingualText } from "@/lib/display-language";
 
 export function PersonalAssistant() {
+  const t = useBilingualText();
+  const suggestions = [
+    t("តើខ្ញុំមានកិច្ចការអ្វីខ្លះក្នុងសប្ដាហ៍នេះ?", "What are my tasks this week?"),
+    t("តើកិច្ចការណាហួសកំណត់?", "What tasks are overdue?"),
+    t("តើខ្ញុំមានកិច្ចប្រជុំអ្វីខ្លះ?", "What meetings do I have?")
+  ];
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
@@ -25,10 +30,10 @@ export function PersonalAssistant() {
         body: JSON.stringify({ question: cleanQuestion })
       });
       const data = await readJsonResponse<{ answer?: string; error?: string }>(response);
-      if (!response.ok) throw new Error(data.error ?? "Assistant failed.");
+      if (!response.ok) throw new Error(data.error ?? t("ជំនួយការមិនដំណើរការ។", "Assistant failed."));
       setAnswer(data.answer ?? "");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Assistant failed.");
+      setError(error instanceof Error ? error.message : t("ជំនួយការមិនដំណើរការ។", "Assistant failed."));
     } finally {
       setLoading(false);
     }
@@ -38,7 +43,7 @@ export function PersonalAssistant() {
     <section className="kh-card p-5">
       <p className="mb-3 flex items-center gap-2 text-lg font-bold">
         <UserRound className="h-4 w-4 text-leaf" />
-        AI Personal Assistant
+        {t("ជំនួយការផ្ទាល់ខ្លួន AI", "AI Personal Assistant")}
         <Sparkles className="h-3.5 w-3.5 text-leaf" />
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -49,10 +54,10 @@ export function PersonalAssistant() {
           onKeyDown={(event) => {
             if (event.key === "Enter") void ask();
           }}
-          placeholder="e.g. What are my tasks this week?"
+          placeholder={t("ឧ. តើខ្ញុំមានកិច្ចការអ្វីខ្លះក្នុងសប្ដាហ៍នេះ?", "e.g. What are my tasks this week?")}
           disabled={loading}
         />
-        <button className="kh-button-primary shrink-0" type="button" onClick={() => void ask()} disabled={loading || !question.trim()}>
+        <button className="kh-button-primary shrink-0" type="button" onClick={() => void ask()} disabled={loading || !question.trim()} aria-label={t("សួរជំនួយការ", "Ask assistant")}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>

@@ -2,8 +2,9 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { useBilingualText } from "@/lib/display-language";
 
 type LanguageMode = "km" | "en" | "km-en";
 
@@ -22,13 +23,6 @@ type TranscribeAudioButtonProps = {
 // forever, not to cut a real one short.
 const MAX_TRANSCRIPTION_PASSES = 12;
 
-const progressSteps = [
-  "កំពុងរៀបចំសំឡេង...",
-  "កំពុងស្តាប់សំឡេងជាបំណែកតូចៗ...",
-  "កំពុងចាប់ពាក្យ និងឈ្មោះអ្នកនិយាយ...",
-  "កំពុងសម្អាតអត្ថបទ និងរក្សាទុក..."
-];
-
 export function TranscribeAudioButton({
   meetingId,
   hasTranscript = false,
@@ -37,6 +31,13 @@ export function TranscribeAudioButton({
   autoStart = false,
   onTranscribed
 }: TranscribeAudioButtonProps) {
+  const t = useBilingualText();
+  const progressSteps = useMemo(() => [
+    t("កំពុងរៀបចំសំឡេង...", "Preparing audio..."),
+    t("កំពុងស្តាប់សំឡេងជាបំណែកតូចៗ...", "Listening to audio segments..."),
+    t("កំពុងចាប់ពាក្យ និងឈ្មោះអ្នកនិយាយ...", "Identifying words and speakers..."),
+    t("កំពុងសម្អាតអត្ថបទ និងរក្សាទុក...", "Cleaning and saving transcript...")
+  ], [t]);
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
@@ -78,13 +79,13 @@ export function TranscribeAudioButton({
         if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
           retriedEmptyTranscript = true;
           setProgressStep(0);
-          setMessage("The AI returned no text. Trying the saved audio once more automatically...");
+      setMessage(t("AI មិនបានបញ្ជូនអត្ថបទមកទេ។ កំពុងសាកល្បងសំឡេងដែលបានរក្សាទុកម្ដងទៀត...", "The AI returned no text. Trying the saved audio once more automatically..."));
           continue;
         }
-        if (!response.ok) throw new Error(data.error ?? "Could not transcribe audio.");
+        if (!response.ok) throw new Error(data.error ?? t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio."));
         nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
         if (!nextTranscript) {
-          throw new Error("Transcription finished, but no speech text was returned. Please try again with clearer audio.");
+          throw new Error(t("ការបំលែងសំឡេងបានបញ្ចប់ ប៉ុន្តែមិនមានអត្ថបទនិយាយ។ សូមសាកម្ដងទៀតដោយប្រើសំឡេងច្បាស់ជាងនេះ។", "Transcription finished, but no speech text was returned. Please try again with clearer audio."));
         }
         onTranscribed?.(nextTranscript);
         if (!data.partial) {
@@ -105,10 +106,10 @@ export function TranscribeAudioButton({
           break;
         }
         pass += 1;
-        setMessage(`Long recording - continuing, part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`);
+        setMessage(t(`ការថតវែង — កំពុងបន្តផ្នែកទី ${pass}។ បាន ${nextTranscript.length.toLocaleString()} តួអក្សរ។`, `Long recording — continuing part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`));
       }
       if (!stillPartial && /^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(nextTranscript)) {
-        setMessage("Matching speakers against remembered voices...");
+        setMessage(t("កំពុងផ្គូផ្គងអ្នកនិយាយជាមួយសំឡេងដែលបានចងចាំ...", "Matching speakers against remembered voices..."));
         const recognitionResponse = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" }).catch(() => null);
         if (recognitionResponse?.ok) {
           const recognition = await readJsonResponse<{ transcript?: string; matched?: number; message?: string }>(recognitionResponse);
@@ -118,29 +119,29 @@ export function TranscribeAudioButton({
             onTranscribed?.(nextTranscript);
           }
         } else {
-          recognitionNote = "Could not check remembered voices this time; speaker labels were kept.";
+          recognitionNote = t("មិនអាចពិនិត្យសំឡេងដែលបានចងចាំលើកនេះទេ។ ឈ្មោះអ្នកនិយាយនៅដដែល។", "Could not check remembered voices this time; speaker labels were kept.");
         }
       }
       setMessage(
         stillPartial
-          ? partialMessage || "Some of this recording is still not transcribed. The audio is saved in full. Click Re-transcribe audio again to continue."
+          ? partialMessage || t("ផ្នែកខ្លះនៃការថតនេះមិនទាន់បានបំលែងជាអក្សរ។ សំឡេងទាំងមូលត្រូវបានរក្សាទុក។ សូមចុចបំលែងសំឡេងម្ដងទៀតដើម្បីបន្ត។", "Some of this recording is still not transcribed. The audio is saved in full. Click Re-transcribe audio again to continue.")
           : hasTranscript
-            ? `Transcript replaced below. Refreshing meeting data...${recognitionNote ? ` ${recognitionNote}` : ""}`
-            : `Transcription saved below. Refreshing meeting data...${recognitionNote ? ` ${recognitionNote}` : ""}`
+            ? `${t("បានជំនួសអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcript replaced below. Refreshing meeting data...")}${recognitionNote ? ` ${recognitionNote}` : ""}`
+            : `${t("បានរក្សាទុកអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcription saved below. Refreshing meeting data...")}${recognitionNote ? ` ${recognitionNote}` : ""}`
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "Could not transcribe audio.";
+      const detail = error instanceof Error ? error.message : t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio.");
       setError(
         detail.includes("more time") || detail.toLowerCase().includes("timed out")
-          ? `${detail} អត្ថបទដែលចាប់បានមុននេះត្រូវបានរក្សាទុក ប្រសិនបើមាន។ សូមចុចម្តងទៀត ដើម្បីបន្តពីសំឡេងដែលបានរក្សាទុក។`
+          ? `${detail} ${t("អត្ថបទដែលចាប់បានមុននេះត្រូវបានរក្សាទុក ប្រសិនបើមាន។ សូមចុចម្ដងទៀតដើម្បីបន្ត។", "Previously transcribed text was saved, if any. Click again to continue.")}`
           : detail
       );
     } finally {
       window.clearInterval(progressTimer);
       setPending(false);
     }
-  }, [hasTranscript, languageMode, meetingId, onTranscribed, router]);
+  }, [hasTranscript, languageMode, meetingId, onTranscribed, progressSteps, router, t]);
 
   const matchRememberedVoices = useCallback(async () => {
     setRecognizing(true);
@@ -149,20 +150,20 @@ export function TranscribeAudioButton({
     try {
       const response = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" });
       const result = await readJsonResponse<{ transcript?: string; matched?: number; message?: string; error?: string }>(response);
-      if (!response.ok) throw new Error(result.error ?? "Could not recognize speakers.");
+      if (!response.ok) throw new Error(result.error ?? t("មិនអាចស្គាល់អ្នកនិយាយបានទេ។", "Could not recognize speakers."));
       if (result.matched && result.transcript) {
         onTranscribed?.(result.transcript);
-        setMessage(`Matched ${result.matched} remembered speaker${result.matched === 1 ? "" : "s"}.`);
+        setMessage(t(`បានផ្គូផ្គងអ្នកនិយាយ ${result.matched} នាក់ជាមួយសំឡេងដែលបានចងចាំ។`, `Matched ${result.matched} remembered speaker${result.matched === 1 ? "" : "s"}.`));
         router.refresh();
       } else {
-        setMessage(result.message ?? "No remembered voice matched confidently; speaker labels were kept.");
+        setMessage(result.message ?? t("មិនមានសំឡេងដែលបានចងចាំផ្គូផ្គងច្បាស់ទេ។ ឈ្មោះអ្នកនិយាយនៅដដែល។", "No remembered voice matched confidently; speaker labels were kept."));
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Could not recognize speakers.");
+      setError(error instanceof Error ? error.message : t("មិនអាចស្គាល់អ្នកនិយាយបានទេ។", "Could not recognize speakers."));
     } finally {
       setRecognizing(false);
     }
-  }, [meetingId, onTranscribed, router]);
+  }, [meetingId, onTranscribed, router, t]);
 
   useEffect(() => {
     if (!autoStart || autoStartedRef.current || pending || hasTranscript) return;
@@ -174,19 +175,19 @@ export function TranscribeAudioButton({
     <div className="space-y-3 rounded-2xl border border-leaf/10 bg-gradient-to-br from-white to-emerald-50/50 p-4 shadow-sm">
       <div>
         <p className="font-semibold text-ink">
-          {hasTranscript ? "ស្តាប់សំឡេងឡើងវិញ (Re-transcribe audio)" : "ថតបំលែងសំឡេងទៅជាអត្ថបទ (Transcribe audio)"}
+          {hasTranscript ? t("បំលែងសំឡេងជាអក្សរឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
         </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
           {hasTranscript
-            ? "AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្តងទៀត ហើយជំនួស transcript បច្ចុប្បន្នទាំងស្រុង។ ប្រើពេល transcript មានពាក្យខុសពីអ្វីដែលបាននិយាយ។"
-            : "ជ្រើសរើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទ meeting។"}
+            ? t("AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្ដងទៀត ហើយជំនួសអត្ថបទបច្ចុប្បន្ន។ ប្រើនៅពេលអត្ថបទមានពាក្យខុសពីអ្វីដែលបាននិយាយ។", "AI will listen to the saved audio again and replace the current transcript. Use this when the transcript contains incorrect words.")
+            : t("ជ្រើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទប្រជុំ។", "Choose the spoken language, then AI will transcribe the saved audio.")}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
-          ជ្រើសរបៀប transcript៖ ខ្មែរ + English សរសេរតាមភាសាដែលបាននិយាយ។ Khmer only/English only ទើបបំលែងទៅភាសាតែមួយ។
+          {t("ជ្រើសរបៀបអត្ថបទ៖ ខ្មែរ និងអង់គ្លេសរក្សាភាសាដែលបាននិយាយ។ ជម្រើសភាសាតែមួយនឹងបកប្រែអត្ថបទទាំងអស់ទៅភាសានោះ។", "Choose transcript mode: Khmer and English keeps the spoken languages. A single-language option translates all speech to that language.")}
         </p>
         {speakerNames.length ? (
           <p className="mt-1 text-xs leading-5 text-leaf">
-            Speaker labels: {speakerNames.join(", ")}
+            {t("ឈ្មោះអ្នកនិយាយ", "Speaker labels")}: {speakerNames.join(", ")}
           </p>
         ) : null}
       </div>
@@ -198,18 +199,18 @@ export function TranscribeAudioButton({
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km-en">ខ្មែរ + English (រក្សាភាសាដើម)</option>
-          <option value="km">ខ្មែរ only (បកទាំងអស់ទៅខ្មែរ)</option>
-          <option value="en">English only (translate all to English)</option>
+          <option value="km-en">{t("ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)", "Khmer and English (keep original languages)")}</option>
+          <option value="km">{t("ខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)", "Khmer (translate all speech to Khmer)")}</option>
+          <option value="en">{t("អង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)", "English (translate all speech to English)")}</option>
         </select>
         <button className="kh-button-primary sm:w-auto" disabled={pending || recognizing} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {pending ? "Transcribing audio..." : hasTranscript ? "Re-transcribe audio" : "Transcribe audio"}
+          {pending ? t("កំពុងបំលែងសំឡេង...", "Transcribing audio...") : hasTranscript ? t("បំលែងសំឡេងឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
         </button>
         {/^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(currentTranscript) ? (
           <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing} onClick={matchRememberedVoices} type="button">
             {recognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {recognizing ? "Matching voices..." : "Match remembered voices"}
+            {recognizing ? t("កំពុងផ្គូផ្គងសំឡេង...", "Matching voices...") : t("ផ្គូផ្គងសំឡេងដែលបានចងចាំ", "Match remembered voices")}
           </button>
         ) : null}
       </div>
@@ -227,7 +228,7 @@ export function TranscribeAudioButton({
             />
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            សំឡេងវែងអាចយកពេលច្រើន។ កុំបិទទំព័រនេះ រហូតដល់វារក្សាទុក transcript។
+            {t("សំឡេងវែងអាចចំណាយពេលច្រើន។ សូមកុំបិទទំព័រនេះរហូតដល់អត្ថបទត្រូវបានរក្សាទុក។", "Long recordings may take time. Keep this page open until the transcript is saved.")}
           </p>
         </div>
       ) : null}

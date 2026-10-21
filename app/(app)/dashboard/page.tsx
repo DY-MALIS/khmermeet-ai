@@ -17,7 +17,8 @@ export const revalidate = 0;
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
+  const t = (km: string, en: string) => language === "km" ? km : en;
   const data = await Promise.all([
     prisma.meeting.findMany({
       where: ownerWhere(user),
@@ -60,17 +61,17 @@ export default async function DashboardPage() {
           <p className="text-xs font-bold uppercase text-leaf">{text.welcome}</p>
           <h1 className="mt-1 text-3xl font-black tracking-normal text-ink sm:text-4xl">{text.dashboardTitle}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Record meetings, upload audio, and turn Khmer or English speech into organized notes.
+            {t("ថតប្រជុំ ផ្ទុកសំឡេង និងបំលែងការនិយាយជាខ្មែរ ឬអង់គ្លេសទៅជាកំណត់ត្រាមានរបៀប។", "Record meetings, upload audio, and turn Khmer or English speech into organized notes.")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a href="/meetings/new" className="kh-button-primary">
             <Plus className="h-4 w-4" />
-            Start now
+            {t("ចាប់ផ្ដើមឥឡូវ", "Start now")}
           </a>
           <a href="/meetings/call" className="kh-button-secondary">
             <Video className="h-4 w-4" />
-            Open call
+            {t("បើកការហៅ", "Open call")}
           </a>
         </div>
       </div>
@@ -78,7 +79,7 @@ export default async function DashboardPage() {
         <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-2xl border border-leaf/20 bg-gradient-to-br from-emerald-100/85 via-teal-50 to-sky-100/80 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
           <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-leaf via-sky to-saffron" />
           <div className="absolute right-6 top-6 hidden rounded-full border border-leaf/20 bg-white/75 px-3 py-2 text-xs font-bold text-leaf shadow-sm xl:block">
-            Live capture ready
+            {t("រួចរាល់សម្រាប់ថតផ្ទាល់", "Live capture ready")}
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
@@ -95,13 +96,13 @@ export default async function DashboardPage() {
                 {text.dashboardRecordDescription}
               </p>
               <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold">
-                <span className="rounded-full bg-leaf/10 px-3 py-2 text-leaf shadow-sm ring-1 ring-leaf/15">Audio</span>
-                <span className="rounded-full bg-sky/10 px-3 py-2 text-sky shadow-sm ring-1 ring-sky/15">Transcript</span>
-                <span className="rounded-full bg-saffron/15 px-3 py-2 text-saffron shadow-sm ring-1 ring-saffron/20">Summary</span>
+                <span className="rounded-full bg-leaf/10 px-3 py-2 text-leaf shadow-sm ring-1 ring-leaf/15">{t("សំឡេង", "Audio")}</span>
+                <span className="rounded-full bg-sky/10 px-3 py-2 text-sky shadow-sm ring-1 ring-sky/15">{t("អត្ថបទប្រជុំ", "Transcript")}</span>
+                <span className="rounded-full bg-saffron/15 px-3 py-2 text-saffron shadow-sm ring-1 ring-saffron/20">{t("សេចក្ដីសង្ខេប", "Summary")}</span>
               </div>
             </div>
             <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-leaf px-5 py-3 text-sm font-bold text-white shadow-lg shadow-leaf/30 transition group-hover:bg-sky">
-              Start recording
+              {t("ចាប់ផ្ដើមថត", "Start recording")}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </div>
@@ -113,13 +114,13 @@ export default async function DashboardPage() {
                 <Video className="h-6 w-6" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-slate-500">Video meeting</p>
+                <p className="text-sm font-semibold text-slate-500">{text.videoMeeting}</p>
                 <h2 className="text-xl font-bold text-ink">{text.openVideoMeeting}</h2>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
             <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white/80 px-4 py-2 text-sm font-bold text-ink shadow-sm ring-1 ring-sky/10 transition group-hover:text-sky">
-              Open call
+              {t("បើកការហៅ", "Open call")}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </a>
@@ -129,12 +130,12 @@ export default async function DashboardPage() {
                 <Radio className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-xs font-bold uppercase text-leaf">Today</p>
-                <p className="font-bold text-ink">{pendingTasks.length} pending tasks</p>
+                <p className="text-xs font-bold uppercase text-leaf">{t("ថ្ងៃនេះ", "Today")}</p>
+                <p className="font-bold text-ink">{pendingTasks.length} {t("កិច្ចការមិនទាន់បញ្ចប់", "pending tasks")}</p>
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-600">
-              {overdueTasks.length ? `${overdueTasks.length} overdue items need review.` : "No overdue pressure right now."}
+              {overdueTasks.length ? t(`មានកិច្ចការហួសកំណត់ ${overdueTasks.length} ដែលត្រូវពិនិត្យ។`, `${overdueTasks.length} overdue items need review.`) : t("មិនមានកិច្ចការហួសកំណត់ទេ។", "No overdue tasks right now.")}
             </p>
           </div>
         </div>
@@ -164,21 +165,21 @@ export default async function DashboardPage() {
           <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-100/80 via-teal-50 to-sky-50 px-5 py-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase text-leaf">Insights</p>
-              <h2 className="text-lg font-bold text-ink">AI Meeting Analytics</h2>
+              <p className="text-xs font-semibold uppercase text-leaf">{t("ទិន្នន័យសង្ខេប", "Insights")}</p>
+              <h2 className="text-lg font-bold text-ink">{t("ការវិភាគប្រជុំដោយ AI", "AI Meeting Analytics")}</h2>
             </div>
             <Wand2 className="h-5 w-5 text-saffron" />
           </div>
           </div>
           <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4">
-            <AnalyticsTile label="Meeting Quality" value={avgQualityScore !== null ? `${avgQualityScore}%` : "-"} tone="leaf" />
-            <AnalyticsTile label="Task completion" value={completionRate !== null ? `${completionRate}%` : "-"} tone="sky" />
-            <AnalyticsTile label="Late tasks" value={String(tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length)} tone="saffron" />
-            <AnalyticsTile label="Average meeting time" value={avgMeetingMinutes ? `${avgMeetingMinutes} min` : "-"} tone="ink" />
+            <AnalyticsTile label={t("គុណភាពប្រជុំ", "Meeting quality")} value={avgQualityScore !== null ? `${avgQualityScore}%` : "-"} tone="leaf" />
+            <AnalyticsTile label={t("ការបញ្ចប់កិច្ចការ", "Task completion")} value={completionRate !== null ? `${completionRate}%` : "-"} tone="sky" />
+            <AnalyticsTile label={t("កិច្ចការយឺត", "Late tasks")} value={String(tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length)} tone="saffron" />
+            <AnalyticsTile label={t("រយៈពេលប្រជុំជាមធ្យម", "Average meeting time")} value={avgMeetingMinutes ? `${avgMeetingMinutes} ${t("នាទី", "min")}` : "-"} tone="ink" />
           </div>
           {speakingTime.length ? (
             <div className="px-5 pb-5">
-              <p className="mb-2 text-sm font-bold text-ink">Who talks most (Server Rec recordings)</p>
+              <p className="mb-2 text-sm font-bold text-ink">{t("អ្នកនិយាយច្រើនជាងគេ (ការថតតាមម៉ាស៊ីនមេ)", "Who talks most (server recordings)")}</p>
               <div className="space-y-2">
                 {speakingTime.map((speaker) => {
                   const maxSeconds = speakingTime[0].seconds || 1;
@@ -188,7 +189,7 @@ export default async function DashboardPage() {
                       <div className="h-2 flex-1 rounded-full bg-slate-100">
                         <div className="h-2 rounded-full bg-leaf" style={{ width: `${Math.max(4, (speaker.seconds / maxSeconds) * 100)}%` }} />
                       </div>
-                      <span className="w-14 shrink-0 text-right text-xs text-slate-500">{Math.round(speaker.seconds / 60)} min</span>
+                      <span className="w-14 shrink-0 text-right text-xs text-slate-500">{Math.round(speaker.seconds / 60)} {t("នាទី", "min")}</span>
                     </div>
                   );
                 })}

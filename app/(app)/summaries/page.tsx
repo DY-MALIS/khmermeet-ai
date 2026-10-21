@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export default async function SummariesPage() {
   const user = await requireUser();
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
   const data = await prisma.meeting
     .findMany({
       where: {
@@ -62,7 +62,7 @@ export default async function SummariesPage() {
                     {text.summaryHighlights}
                   </p>
                   {meeting.summary ? (
-                    <SummaryDisplay summary={meeting.summary} />
+                    <SummaryDisplay summary={meeting.summary} language={language} />
                   ) : (
                     <p className="text-sm text-slate-500">{text.noSummaryYet}</p>
                   )}

@@ -4,6 +4,7 @@ import { Download, FileSpreadsheet, FileText, Presentation } from "lucide-react"
 import { useState } from "react";
 import { summaryHeadings } from "@/lib/ai/prompts/summaryPrompt";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { useBilingualText } from "@/lib/display-language";
 
 type ExportTask = {
   title: string;
@@ -91,10 +92,11 @@ export function ExportButton({
   const [exportingWord, setExportingWord] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingSlides, setExportingSlides] = useState(false);
+  const t = useBilingualText();
   const safeTitle = title.replace(/[^\w-]+/g, "-") || "meeting";
 
   function exportText() {
-    const content = [`${title}`, "", "Transcript", transcript ?? "", "", "Summary", summary ?? ""].join("\n");
+    const content = [`${title}`, "", t("អត្ថបទប្រជុំ", "Transcript"), transcript ?? "", "", t("សេចក្ដីសង្ខេប", "Summary"), summary ?? ""].join("\n");
     downloadBlob(new Blob([content], { type: "text/plain;charset=utf-8" }), `${safeTitle}.txt`);
   }
 
@@ -132,10 +134,10 @@ export function ExportButton({
                 spacing: { after: 320 },
                 children: [new TextRun({ text: title, size: 48, bold: true, font: KHMER_FONT, color: "18745F" })]
               }),
-              heading("Transcript"),
+              heading(t("អត្ថបទប្រជុំ", "Transcript")),
               ...toParagraphs(transcript ?? ""),
               new Paragraph({ text: "" }),
-              heading("Summary"),
+              heading(t("សេចក្ដីសង្ខេប", "Summary")),
               ...toParagraphs(summary ?? "")
             ]
           }
@@ -158,29 +160,29 @@ export function ExportButton({
       const nonEmptyLines = (text: string) => text.split("\n").map((line) => line.trim()).filter(Boolean);
 
       const summaryRows: (string | undefined)[][] = [
-        ["Meeting", title],
+        [t("ប្រជុំ", "Meeting"), title],
         [],
-        ["Summary"],
-        ...nonEmptyLines(summary ?? "(no summary yet)").map((line) => [line]),
+        [t("សេចក្ដីសង្ខេប", "Summary")],
+        ...nonEmptyLines(summary ?? t("(មិនទាន់មានសេចក្ដីសង្ខេប)", "(no summary yet)")).map((line) => [line]),
         [],
-        ["Transcript"],
-        ...nonEmptyLines(transcript ?? "(no transcript yet)").map((line) => [line])
+        [t("អត្ថបទប្រជុំ", "Transcript")],
+        ...nonEmptyLines(transcript ?? t("(មិនទាន់មានអត្ថបទប្រជុំ)", "(no transcript yet)")).map((line) => [line])
       ];
-      const summarySheet = workbook.addWorksheet("Summary");
+      const summarySheet = workbook.addWorksheet(t("សង្ខេប", "Summary"));
       summarySheet.addRows(summaryRows);
       summarySheet.getColumn(1).width = 110;
       summarySheet.getColumn(2).width = 40;
       summarySheet.getRow(1).font = { bold: true };
 
-      const tasksSheet = workbook.addWorksheet("Tasks");
-      tasksSheet.addRow(["Task", "Assignee", "Deadline", "Priority", "Status"]);
+      const tasksSheet = workbook.addWorksheet(t("កិច្ចការ", "Tasks"));
+      tasksSheet.addRow([t("កិច្ចការ", "Task"), t("អ្នកទទួលខុសត្រូវ", "Assignee"), t("កាលកំណត់", "Deadline"), t("អាទិភាព", "Priority"), t("ស្ថានភាព", "Status")]);
       for (const task of tasks) {
         tasksSheet.addRow([
           task.title,
           task.assigneeName ?? "",
           task.deadline ? task.deadline.toISOString().slice(0, 10) : "",
-          task.priority,
-          task.status
+          task.priority === "low" ? t("ទាប", "Low") : task.priority === "medium" ? t("មធ្យម", "Medium") : task.priority === "high" ? t("ខ្ពស់", "High") : task.priority,
+          task.status === "not_started" ? t("មិនទាន់ចាប់ផ្ដើម", "Not started") : task.status === "in_progress" ? t("កំពុងធ្វើ", "In progress") : task.status === "completed" ? t("រួចរាល់", "Completed") : task.status
         ]);
       }
       tasksSheet.columns = [{ width: 40 }, { width: 18 }, { width: 14 }, { width: 12 }, { width: 14 }];
@@ -201,13 +203,12 @@ export function ExportButton({
     try {
       await loadPptxGenJs();
       const PptxGenJS = window.PptxGenJS;
-      if (!PptxGenJS) throw new Error("Could not load the PowerPoint export library.");
-      const isEnglish = language === "en";
+      if (!PptxGenJS) throw new Error(t("មិនអាចផ្ទុកឧបករណ៍នាំចេញ PowerPoint បានទេ។", "Could not load the PowerPoint export library."));
       const labels = {
-        summary: isEnglish ? "Summary" : "សង្ខេប (Summary)",
-        tasks: isEnglish ? "Tasks" : "កិច្ចការ (Tasks)",
-        noSummary: isEnglish ? "No summary available." : "មិនទាន់មានសង្ខេប។",
-        outline: isEnglish ? "Outline" : "មាតិកា (Outline)"
+        summary: t("សេចក្ដីសង្ខេប", "Summary"),
+        tasks: t("កិច្ចការ", "Tasks"),
+        noSummary: t("មិនទាន់មានសេចក្ដីសង្ខេប។", "No summary available."),
+        outline: t("មាតិកា", "Outline")
       };
 
       const knownHeadings = new Set(Object.values(summaryHeadings[language === "en" ? "en" : "km"]));
@@ -361,16 +362,16 @@ export function ExportButton({
   return (
     <div className="flex flex-wrap gap-2">
       <button type="button" className="kh-button-secondary" onClick={exportText}>
-        <Download className="h-4 w-4" /> Export text
+        <Download className="h-4 w-4" /> {t("នាំចេញអត្ថបទ", "Export text")}
       </button>
       <button type="button" className="kh-button-secondary" onClick={() => void exportWord()} disabled={exportingWord}>
-        <FileText className="h-4 w-4" /> {exportingWord ? "Exporting..." : "Export Word"}
+        <FileText className="h-4 w-4" /> {exportingWord ? t("កំពុងនាំចេញ...", "Exporting...") : t("នាំចេញ Word", "Export Word")}
       </button>
       <button type="button" className="kh-button-secondary" onClick={() => void exportExcel()} disabled={exportingExcel}>
-        <FileSpreadsheet className="h-4 w-4" /> {exportingExcel ? "Exporting..." : "Export Excel"}
+        <FileSpreadsheet className="h-4 w-4" /> {exportingExcel ? t("កំពុងនាំចេញ...", "Exporting...") : t("នាំចេញ Excel", "Export Excel")}
       </button>
       <button type="button" className="kh-button-secondary" onClick={() => void exportSlides()} disabled={exportingSlides}>
-        <Presentation className="h-4 w-4" /> {exportingSlides ? "Exporting..." : "Export PowerPoint"}
+        <Presentation className="h-4 w-4" /> {exportingSlides ? t("កំពុងនាំចេញ...", "Exporting...") : t("នាំចេញ PowerPoint", "Export PowerPoint")}
       </button>
     </div>
   );

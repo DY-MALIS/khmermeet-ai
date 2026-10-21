@@ -1,4 +1,6 @@
 import { LoginForm } from "@/components/auth-form";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import { getServerUiText } from "@/lib/server-ui-text";
 
 export default async function LoginPage({
   searchParams
@@ -6,6 +8,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; from?: string }>;
 }) {
   const params = await searchParams;
+  const { language } = await getServerUiText();
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-12">
@@ -18,14 +21,15 @@ export default async function LoginPage({
             </div>
             <p className="text-2xl font-bold tracking-tight text-ink">KhmerMeet AI</p>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              AI meeting recorder and action tracker for Cambodian teams.
+              {language === "km" ? "ឧបករណ៍ថត និងតាមដានកិច្ចការប្រជុំដោយ AI សម្រាប់ក្រុមការងារកម្ពុជា។" : "AI meeting recorder and action tracker for Cambodian teams."}
             </p>
           </div>
           <div className="relative mt-8">
             <LoginForm errorCode={params.error ?? null} callbackUrl={params.from || "/dashboard"} />
           </div>
+          <div className="relative mt-5"><LanguageSwitcher compact /></div>
         </div>
-        <p className="mt-6 text-center text-xs text-slate-400">ចូលដោយសុវត្ថិភាព តាមរយៈគណនី Google របស់អ្នក</p>
+        <p className="mt-6 text-center text-xs text-slate-400">{language === "km" ? "ចូលដោយសុវត្ថិភាពតាមរយៈគណនី Google របស់អ្នក" : "Sign in securely with your Google account"}</p>
       </section>
     </main>
   );

@@ -12,3 +12,8 @@ export function LocalizedText({ k }: { k: UiTextKey }) {
   const text = useUiText();
   return <>{text[k]}</>;
 }
+
+export function BilingualText({ km, en }: { km: string; en: string }) {
+  const [language] = useDisplayLanguage();
+  return <>{language === "km" ? km : en}</>;
+}

@@ -16,7 +16,7 @@ export const revalidate = 0;
 
 export default async function TranscriptsPage() {
   const user = await requireUser();
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
   const data = await prisma.meeting
     .findMany({
       where: ownerWhere(user),
@@ -36,7 +36,7 @@ export default async function TranscriptsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold text-leaf">Transcript</p>
+        <p className="text-sm font-semibold text-leaf">{language === "km" ? "អត្ថបទប្រជុំ" : "Transcript"}</p>
         <h1 className="text-3xl font-bold text-ink">{text.transcriptTitle}</h1>
         <p className="mt-2 text-sm text-slate-500">{text.transcriptDescription}</p>
       </div>
@@ -61,12 +61,12 @@ export default async function TranscriptsPage() {
             const transcript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
             const usableTranscript = hasUsableTranscript(transcript);
             const audioItems = meeting.audioUrl
-              ? [{ key: "meeting-audio", label: "Recorded audio", audioUrl: meeting.audioUrl }]
+              ? [{ key: "meeting-audio", label: text.recordedAudio, audioUrl: meeting.audioUrl }]
               : meeting.transcriptSegments
                   .filter((segment) => segment.audioUrl)
                   .map((segment) => ({
                     key: segment.id,
-                    label: segment.speakerName || segment.speakerIdentity || "Participant audio",
+                    label: segment.speakerName || segment.speakerIdentity || (language === "km" ? "សំឡេងអ្នកចូលរួម" : "Participant audio"),
                     audioUrl: segment.audioUrl as string
                   }));
 
@@ -122,7 +122,7 @@ export default async function TranscriptsPage() {
                       <TranscribeAudioButton meetingId={meeting.id} />
                     ) : null}
                     <Link className="kh-button-secondary inline-flex" href={`/meetings/${meeting.id}`}>
-                      Open meeting
+                      {language === "km" ? "បើកកិច្ចប្រជុំ" : "Open meeting"}
                     </Link>
                   </div>
                 </div>

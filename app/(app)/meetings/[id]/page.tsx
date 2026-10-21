@@ -14,26 +14,28 @@ import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 import { getServerUiText } from "@/lib/server-ui-text";
 import type { UiTextKey } from "@/lib/ui-translations";
+import { localizedPriority } from "@/lib/localized-values";
 
-function meetingLoadErrorMessage(error: unknown) {
+function meetingLoadErrorMessage(error: unknown, language: "km" | "en") {
+  const t = (km: string, en: string) => language === "km" ? km : en;
   const code =
     typeof error === "object" && error && "code" in error && typeof error.code === "string"
       ? error.code
       : "";
 
   if (code === "P2022") {
-    return "Database schema is missing a column used by meetings. Run the latest Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.";
+    return t("មូលដ្ឋានទិន្នន័យខ្វះជួរឈរដែលប្រើសម្រាប់ប្រជុំ។ សូមដំណើរការការផ្លាស់ប្ដូរ Prisma ចុងក្រោយ។", "Database schema is missing a column used by meetings. Run the latest Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.");
   }
 
   if (code === "P2021") {
-    return "Database tables are missing. Run the Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.";
+    return t("មូលដ្ឋានទិន្នន័យខ្វះតារាង។ សូមដំណើរការការផ្លាស់ប្ដូរ Prisma។", "Database tables are missing. Run the Prisma migration or paste prisma/supabase-setup.sql in Supabase SQL Editor.");
   }
 
   if (code === "P1001") {
-    return "Database server cannot be reached. Check DATABASE_URL and Supabase project status, then try again.";
+    return t("មិនអាចភ្ជាប់ទៅម៉ាស៊ីនមេមូលដ្ឋានទិន្នន័យបានទេ។ សូមពិនិត្យ DATABASE_URL និងស្ថានភាពគម្រោង Supabase រួចសាកល្បងម្ដងទៀត។", "Database server cannot be reached. Check DATABASE_URL and Supabase project status, then try again.");
   }
 
-  return "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again.";
+  return t("មូលដ្ឋានទិន្នន័យមិនអាចប្រើបាននៅពេលនេះ។ សូមពិនិត្យ DATABASE_URL និងស្ថានភាព Supabase រួចសាកល្បងម្ដងទៀត។", "Database is not available right now, so this meeting detail cannot load. Please check DATABASE_URL/Supabase status, then try again.");
 }
 
 export default async function MeetingDetailPage({
@@ -45,12 +47,12 @@ export default async function MeetingDetailPage({
 }) {
   const { id } = await params;
   const query = searchParams ? await searchParams : {};
-  const { text } = await getServerUiText();
+  const { language, text } = await getServerUiText();
   const meetingResult = await getMeetingById(id)
     .then((meeting) => ({ meeting, error: "" }))
     .catch((error) => ({
       meeting: null,
-      error: meetingLoadErrorMessage(error)
+      error: meetingLoadErrorMessage(error, language)
     }));
   const { meeting, error } = meetingResult;
 
@@ -207,7 +209,7 @@ export default async function MeetingDetailPage({
                       <td className="px-4 py-3">{task.assigneeName ?? "-"}</td>
                       <td className="px-4 py-3">{task.deadline?.toLocaleDateString() ?? "-"}</td>
                       <td className="px-4 py-3">
-                        <span className="kh-badge bg-sky/10 text-sky">{task.priority}</span>
+                        <span className="kh-badge bg-sky/10 text-sky">{localizedPriority(task.priority, text)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`kh-badge ${taskStatusBadgeTone(task)}`}>{taskStatusLabel(task, text)}</span>

@@ -39,10 +39,10 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
         error?: string;
         partial?: boolean;
       }>(response);
-      if (!response.ok) throw new Error(data.error ?? "Summary Agent failed.");
+      if (!response.ok) throw new Error(data.error ?? text.summaryAgentFailed);
       setAnswer(data.answer ?? "");
       if (data.partial) {
-        setPartialNotice("ចម្លើយនេះឈប់មុនពេលចប់។ សូមសាកម្តងទៀត ឬសុំជាទម្រង់ខ្លីជាងនេះ។");
+        setPartialNotice(text.summaryAgentPartial);
       }
       if (data.updatedSummary) router.refresh();
     } catch (error) {
@@ -60,7 +60,7 @@ export function MeetingSummaryAgent({ meetingId, hasTranscript }: { meetingId: s
         </span>
         <div>
           <p className="flex items-center gap-2 text-sm font-bold text-leaf">
-            Summary Agent
+            {text.summaryAgentTitle}
             <Sparkles className="h-3.5 w-3.5" />
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-500">

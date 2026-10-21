@@ -2,8 +2,10 @@
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { clearSessionBackup } from "@/components/session-keeper";
+import { useBilingualText } from "@/lib/display-language";
 
 export function ShellStatusCard({ user }: { user: { name: string; email: string } }) {
+  const t = useBilingualText();
   return (
     <div className="mb-3 rounded-lg bg-slate-50 p-3">
       <p className="truncate text-sm font-semibold text-ink">{user.name || user.email}</p>
@@ -33,7 +35,7 @@ export function ShellStatusCard({ user }: { user: { name: string; email: string 
         }}
         className="mt-2 text-xs font-semibold text-leaf hover:underline"
       >
-        Sign out
+        {t("ចាកចេញពីគណនី", "Sign out")}
       </button>
     </div>
   );

@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-
-const errorMessages: Record<string, string> = {
-  CallbackMissingCode: "Google sign-in did not return the expected data. Please try again.",
-  CallbackFailed: "Could not complete sign-in. Please try again."
-};
+import { useBilingualText } from "@/lib/display-language";
 
 // Unlike a NextAuth native-form POST, Supabase's OAuth flow starts client-side:
 // signInWithOAuth() asks Supabase for the actual Google consent-screen URL
@@ -14,6 +10,7 @@ const errorMessages: Record<string, string> = {
 // redirectTo lands back on our own /auth/callback route, which exchanges the
 // one-time code for a real session.
 export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
+  const t = useBilingualText();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,18 +43,23 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
           <path fill="#FBBC05" d="M4.41 11.9a6 6 0 0 1 0-3.8V5.5H1.06a10 10 0 0 0 0 9l3.35-2.6z" />
           <path fill="#EA4335" d="M10 3.98c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.6 9.6 0 0 0 10 0a10 10 0 0 0-8.94 5.5l3.35 2.6C5.2 5.74 7.4 3.98 10 3.98z" />
         </svg>
-        {pending ? "Redirecting to Google..." : "Continue with Google"}
+        {pending ? t("កំពុងបញ្ជូនទៅ Google...", "Redirecting to Google...") : t("បន្តជាមួយ Google", "Continue with Google")}
       </button>
     </div>
   );
 }
 
 export function LoginForm({ errorCode, callbackUrl }: { errorCode: string | null; callbackUrl: string }) {
+  const t = useBilingualText();
+  const errorMessages: Record<string, string> = {
+    CallbackMissingCode: t("Google មិនបានបញ្ជូនទិន្នន័យចូលដែលត្រូវការ។ សូមសាកម្ដងទៀត។", "Google sign-in did not return the expected data. Please try again."),
+    CallbackFailed: t("មិនអាចបញ្ចប់ការចូលបានទេ។ សូមសាកម្ដងទៀត។", "Could not complete sign-in. Please try again.")
+  };
   return (
     <div className="space-y-5">
       {errorCode ? (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {errorMessages[errorCode] ?? `Could not sign in. Technical detail: ${errorCode}`}
+          {errorMessages[errorCode] ?? `${t("មិនអាចចូលបានទេ។ ព័ត៌មានបច្ចេកទេស៖", "Could not sign in. Technical detail:")} ${errorCode}`}
         </p>
       ) : null}
       <GoogleSignInButton callbackUrl={callbackUrl} />
