@@ -4,7 +4,7 @@ import { AlertCircle, CheckCircle2, FileAudio, Loader2, UploadCloud } from "luci
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useUiText } from "@/components/localized-text";
-import { uploadMediaDirect } from "@/lib/client/direct-upload";
+import { isStorageFileTooLarge, uploadMediaDirect } from "@/lib/client/direct-upload";
 import { readJsonResponse } from "@/lib/read-json-response";
 
 type LanguageMode = "km" | "en" | "km-en";
@@ -97,7 +97,10 @@ export function ExternalMediaUploadPanel() {
       router.push(`/meetings/${meetingJson.id}?transcribe=1#transcript`);
       router.refresh();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : text.uploadFileFailed);
+      setStatus("");
+      setError(isStorageFileTooLarge(uploadError)
+        ? text.uploadStorageLimit.replace("{size}", formatFileSize(file.size))
+        : uploadError instanceof Error ? uploadError.message : text.uploadFileFailed);
     } finally {
       setPending(false);
     }

@@ -11,6 +11,12 @@ type UploadTicket = {
   error?: string;
 };
 
+export function isStorageFileTooLarge(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const statusCode = (error as Error & { statusCode?: string | number }).statusCode;
+  return Number(statusCode) === 413 || /object exceeded the maximum allowed size/i.test(error.message);
+}
+
 function extensionFor(mimeType: string, filename?: string) {
   const nameExt = filename?.split(".").pop()?.replace(/[^a-z0-9]/gi, "").toLowerCase();
   if (nameExt && nameExt.length <= 8) return nameExt;
@@ -53,7 +59,7 @@ export async function uploadRecordingDirect(
   const { error } = await supabase.storage.from(ticket.bucket).uploadToSignedUrl(ticket.objectPath, ticket.token, blob, {
     contentType: blob.type || "audio/webm"
   });
-  if (error) throw new Error(error.message);
+  if (error) throw error;
 
   return ticket.audioUrl;
 }

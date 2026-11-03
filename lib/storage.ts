@@ -673,14 +673,6 @@ export async function createSupabaseUploadTicket(filename: string) {
   const storage = supabaseStorageClient();
   if (!config || !storage) return null;
 
-  // Best-effort: raise the bucket's file size limit so a multi-hour
-  // recording isn't rejected by whatever default is set on the project.
-  // Not fatal if the service role key can't do this for any reason.
-  // `public: false` matches this app's documented setup (a private bucket
-  // accessed only through signed URLs / the service role key) - passed
-  // explicitly since the SDK requires it on every updateBucket call.
-  await storage.client.storage.updateBucket(storage.bucket, { public: false, fileSizeLimit: "2GB" }).catch(() => undefined);
-
   const objectPath = `audio/${new Date().toISOString().slice(0, 10)}/${filename}`;
   const { data, error } = await storage.client.storage.from(storage.bucket).createSignedUploadUrl(objectPath);
   if (error || !data) throw new Error(error?.message || "Could not create an upload ticket.");
