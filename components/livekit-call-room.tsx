@@ -1651,7 +1651,7 @@ function LiveKitMeetingAgent({
     void tryStartPendingLocalTrackRecording();
   }
 
-  async function stopLocalTrackRecording() {
+  async function stopLocalTrackRecording(waitForTranscription = true) {
     trackStartRequestRef.current += 1;
     pendingLocalRecordingRef.current = null;
     if (!trackSegmentingRef.current && !trackSegmentRecorderRef.current) return;
@@ -1671,11 +1671,15 @@ function LiveKitMeetingAgent({
     // while it was still live. Best-effort: if this fails or the tab
     // closes before it finishes, merge-transcript's own catch-up pass
     // retries it since the audio is already safely stored.
-    await fetch(`/api/meetings/${meetingId}/transcribe-stored-segment`, {
+    const transcription = fetch(`/api/meetings/${meetingId}/transcribe-stored-segment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speakerIdentity: room.localParticipant.identity, index: 1 })
-    }).catch(() => undefined);
+    }).then(() => undefined).catch(() => undefined);
+    // The owner can upload the mixed backup while this request is running.
+    // Final merging still waits for this transcription in the background.
+    if (!waitForTranscription) return { transcription };
+    await transcription;
     await fetch(`/api/meetings/${meetingId}/merge-transcript`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1742,6 +1746,7 @@ function LiveKitMeetingAgent({
     const currentEgressRecording = egressRecording;
     setSaving(true);
     setError("");
+    setNotice(t("កំពុងបញ្ឈប់ការថត និងផ្ទុកសំឡេង។ សូមទុកទំព័រនេះឱ្យបើករហូតដល់ការរក្សាទុកចប់។", "Stopping and uploading audio. Keep this page open until saving finishes."));
     try {
       if (currentEgressRecording) {
         const durationMs = clampMeetingDurationMs(Date.now() - currentEgressRecording.recordingStartedAt);
@@ -1781,7 +1786,7 @@ function LiveKitMeetingAgent({
       await room.localParticipant
         .publishData(new TextEncoder().encode(JSON.stringify(stopSignal)), { reliable: true })
         .catch(() => undefined);
-      await stopLocalTrackRecording();
+      const localTrack = await stopLocalTrackRecording(false);
       const savedMixedAudioUrl = await stopServerMixedBackup(currentRecording.meetingId, transcriptionLanguage, durationMs);
       if (!savedMixedAudioUrl) throw new Error(t("សំឡេងមិនត្រូវបានរក្សាទុកទេ។ សូមពិនិត្យមីក្រូហ្វូន និងសិទ្ធិកម្មវិធីរុករក រួចថតម្ដងទៀត។", "Audio was not saved. Check microphone and browser permissions, then record again."));
       const duration = clampMeetingDurationSeconds(durationMs / 1000);
@@ -1789,8 +1794,13 @@ function LiveKitMeetingAgent({
       setSavedAudioUrl(savedMixedAudioUrl);
       setServerRecording(null);
       setNotice(t("បានឈប់ថត។ កំពុងប្រមូលសំឡេងអ្នកចូលរួមម្នាក់ៗ និងបំលែងជាអត្ថបទ។", "Recording stopped. Collecting each participant's audio and transcribing it."));
-      await new Promise((resolve) => window.setTimeout(resolve, Math.min(15000, 3500 + participantCount() * 250)));
-      void finalizeServerRecording(currentRecording.meetingId, duration);
+      // Other participants may still be uploading their own tracks. Wait for
+      // them in the background, after the owner's audio is safely saved.
+      void (async () => {
+        await localTrack?.transcription;
+        await new Promise((resolve) => window.setTimeout(resolve, Math.min(15000, 3500 + participantCount() * 250)));
+        await finalizeServerRecording(currentRecording.meetingId, duration);
+      })();
     } catch (error) {
       setError(error instanceof Error ? error.message : t("មិនអាចរក្សាទុកការថតបានទេ។", "Could not save the recording."));
     } finally {

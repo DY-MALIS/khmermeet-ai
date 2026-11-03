@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
+import { LIVE_RECORDING_REGISTRATION_WINDOW_MS } from "@/lib/meeting-duration";
 
 // This token is what lets a no-account guest join a call, request an upload
 // ticket, and register their finished recording - so it has to stay valid
@@ -9,7 +9,7 @@ import { MAX_MEETING_DURATION_MS } from "@/lib/meeting-duration";
 // the end was rejected outright, silently losing the audio the meeting
 // existed to capture. The extra hour past the cap covers the upload and
 // registration that happen just after a maximum-length call ends.
-const INVITE_TOKEN_LIFETIME_MS = MAX_MEETING_DURATION_MS + 60 * 60 * 1000;
+const INVITE_TOKEN_LIFETIME_MS = LIVE_RECORDING_REGISTRATION_WINDOW_MS;
 
 export function cleanRoomName(value: unknown) {
   const room = typeof value === "string" ? value.trim().toUpperCase() : "";
@@ -59,4 +59,15 @@ export function verifyInviteToken(roomValue: unknown, value: unknown) {
     const equal = expected.length === actual.length && timingSafeEqual(expected, actual);
     return matched || equal;
   }, false);
+}
+
+export function meetingLiveRoom(smartNote: unknown) {
+  if (!smartNote || typeof smartNote !== "object" || Array.isArray(smartNote)) return "";
+  const value = (smartNote as Record<string, unknown>).liveRoom;
+  return typeof value === "string" ? cleanRoomName(value) : "";
+}
+
+export function verifyMeetingInviteToken(smartNote: unknown, roomValue: unknown, token: unknown) {
+  const storedRoom = meetingLiveRoom(smartNote);
+  return Boolean(storedRoom) && cleanRoomName(roomValue) === storedRoom && verifyInviteToken(storedRoom, token);
 }

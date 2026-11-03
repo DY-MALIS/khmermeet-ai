@@ -90,16 +90,26 @@ export async function learnVoiceFromRecording(input: {
 }
 
 // The remembered person this speech belongs to, if anyone is a clear match.
-export async function recogniseVoice(ownerId: string, speech: Float32Array) {
+export async function recogniseVoice(
+  ownerId: string,
+  speech: Float32Array,
+  knownPeople?: Awaited<ReturnType<typeof rememberedVoices>>
+) {
   if (speechSeconds(speech) < MIN_SPEECH_SECONDS) return null;
-  const people = await rememberedVoices(ownerId);
+  const people = knownPeople ?? await rememberedVoices(ownerId);
   if (!people.length) return null;
   return matchVoice(await voiceprint(speech), people);
 }
 
-export async function recogniseVoiceFromRecording(ownerId: string, audioUrl: string) {
+export async function recogniseVoiceFromRecording(
+  ownerId: string,
+  audioUrl: string,
+  knownPeople?: Awaited<ReturnType<typeof rememberedVoices>>
+) {
+  const people = knownPeople ?? await rememberedVoices(ownerId);
+  if (!people.length) return null;
   const { bytes } = await loadStoredAudioBytes(audioUrl);
-  return recogniseVoice(ownerId, speechOnly(await decodeToPcm16k(bytes, DECODE_SECONDS)));
+  return recogniseVoice(ownerId, speechOnly(await decodeToPcm16k(bytes, DECODE_SECONDS)), people);
 }
 
 export async function recogniseMixedRecordingSpeakers(ownerId: string, audioUrl: string, transcript: string) {

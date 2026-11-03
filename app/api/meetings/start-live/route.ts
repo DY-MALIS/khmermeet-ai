@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
+import { cleanRoomName } from "@/lib/livekit-invite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -18,7 +19,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
-    const room = typeof body.room === "string" ? body.room.trim() : "";
+    const room = cleanRoomName(body.room);
+    if (!room) return NextResponse.json({ error: "Room code is required." }, { status: 400 });
     const liveKitSpeakerNames = room ? await listLiveKitParticipantNames(room).catch(() => []) : [];
     const speakerNames = normalizeSpeakerNames([...normalizeSpeakerNames(body.speakerNames), ...liveKitSpeakerNames]);
     const participantCount = clampParticipantCount(body.participantCount, speakerNames.length);
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
         status: "recording",
         duration: 0,
         speakerNames,
-        smartNote: { participantCount, speakerNameCount: speakerNames.length },
+        smartNote: { liveRoom: room, participantCount, speakerNameCount: speakerNames.length },
         createdById: user.id
       }
     });

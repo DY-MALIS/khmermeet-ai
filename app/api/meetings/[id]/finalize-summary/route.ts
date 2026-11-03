@@ -6,6 +6,7 @@ import { extractMeetingSmartNote, extractMeetingTasks, generateMeetingSummary } 
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { meetingLiveRoom } from "@/lib/livekit-invite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -64,10 +65,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
 
     try {
       const smartNote = await extractMeetingSmartNote(meeting.transcript, language);
+      const liveRoom = meetingLiveRoom(meeting.smartNote);
       await prisma.$transaction([
         prisma.meeting.update({
           where: { id },
-          data: { smartNote: { problems: smartNote.problems, ideas: smartNote.ideas, questions: smartNote.questions } }
+          data: { smartNote: {
+            ...(liveRoom ? { liveRoom } : {}),
+            problems: smartNote.problems,
+            ideas: smartNote.ideas,
+            questions: smartNote.questions
+          } }
         }),
         prisma.decision.deleteMany({ where: { meetingId: id } }),
         ...(smartNote.decisions.length

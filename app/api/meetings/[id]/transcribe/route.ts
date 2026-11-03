@@ -18,7 +18,7 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { checkOpenRouterKeyStatus } from "@/lib/ai/openrouter";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
-import { recogniseVoiceFromRecording } from "@/lib/voice/memory";
+import { recogniseVoiceFromRecording, rememberedVoices } from "@/lib/voice/memory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -67,12 +67,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     ].slice(0, 100);
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
     const recognisedTrackNames = new Map<string, string>();
-    const trackMatches = await Promise.all(participantAudioSegments.map(async (segment) => {
-      const identity = segment.speakerIdentity;
-      if (!identity || !isPlaceholderParticipantName(segment.speakerName || identity)) return null;
-      const match = await recogniseVoiceFromRecording(user.id, segment.audioUrl as string).catch(() => null);
-      return match ? { identity, name: match.name } : null;
-    }));
+    const unnamedTracks = participantAudioSegments.filter((segment) =>
+      segment.speakerIdentity && isPlaceholderParticipantName(segment.speakerName || segment.speakerIdentity)
+    );
+    const knownVoices = unnamedTracks.length ? await rememberedVoices(user.id).catch(() => []) : [];
+    const trackMatches: Array<{ identity: string; name: string } | null> = [];
+    if (knownVoices.length) {
+      // Each recognition decodes up to 15 minutes of audio. Bound concurrent
+      // FFmpeg/ONNX work so a large call cannot start one job per participant.
+      for (let offset = 0; offset < unnamedTracks.length; offset += 2) {
+        if (Date.now() >= workDeadline - REFINE_RESERVE_MS) break;
+        const batch = await Promise.all(unnamedTracks.slice(offset, offset + 2).map(async (segment) => {
+          const match = await recogniseVoiceFromRecording(user.id, segment.audioUrl as string, knownVoices).catch(() => null);
+          return match ? { identity: segment.speakerIdentity, name: match.name } : null;
+        }));
+        trackMatches.push(...batch);
+      }
+    }
     const conflictingTrackNames = new Set<string>();
     for (const match of trackMatches) {
       if (!match) continue;

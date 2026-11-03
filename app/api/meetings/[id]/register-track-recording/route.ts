@@ -1,18 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
-import { clampMeetingDurationMs } from "@/lib/meeting-duration";
+import { clampMeetingDurationMs, isRecentLiveMeeting } from "@/lib/meeting-duration";
 import { getOptionalUser, isAdminEmail } from "@/lib/session";
-import { verifyInviteToken } from "@/lib/livekit-invite";
+import { verifyMeetingInviteToken } from "@/lib/livekit-invite";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
-
-function isRecentLiveMeeting(meeting: { status: string; createdAt: Date } | null) {
-  if (!meeting) return false;
-  if (!["recording", "recorded", "transcribed"].includes(meeting.status)) return false;
-  return Date.now() - meeting.createdAt.getTime() < 6 * 60 * 60 * 1000;
-}
 
 // Client-mesh per-speaker recording: each participant's own browser
 // records only its own microphone as one continuous file for the whole
@@ -35,7 +29,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "No live recording found for this meeting." }, { status: 404 });
     }
     const hasOwnerAccess = Boolean(user) && (meeting.createdById === user?.id || isAdminEmail(user?.email));
-    if (!hasOwnerAccess && !verifyInviteToken(body.room, body.inviteToken)) {
+    if (!hasOwnerAccess && !verifyMeetingInviteToken(meeting.smartNote, body.room, body.inviteToken)) {
       return NextResponse.json({ error: "Invite link is required to register this recording." }, { status: 401 });
     }
 
