@@ -20,6 +20,7 @@ import {
   type ChunkedAudioManifest
 } from "@/lib/chunked-audio";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
+import { INCOMPLETE_AUDIO_CHUNK_PREFIX, unpackSavedAudioChunkText } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -378,7 +379,7 @@ function looksSeverelyTruncated(transcript: string, durationSeconds: number | nu
   // 1142 characters, about a fifth of what that meeting actually contained.
   // Catching that is the entire point of this check.
   //
-  // 4 per second sits at less than half the quietest healthy recording, so a
+  // 6 per second still sits below the quietest healthy recording, so a
   // meeting with genuinely long silences still has room; the cap keeps a
   // multi-hour recording from being asked for an unrealistic amount, while
   // no longer flattening to almost nothing the way a 4000-character ceiling
@@ -386,7 +387,7 @@ function looksSeverelyTruncated(transcript: string, durationSeconds: number | nu
   // A false positive costs retries and an "incomplete" warning, never a
   // worse transcript - and a wrong warning is the better failure here than
   // silently presenting a fifth of a meeting as the whole of it.
-  const minimumExpectedLength = Math.min(40000, Math.max(120, durationSeconds * 4));
+  const minimumExpectedLength = Math.min(40000, Math.max(120, durationSeconds * 6));
   return length < minimumExpectedLength;
 }
 
@@ -999,11 +1000,6 @@ const WHOLE_AUDIO_TRANSCRIPTION_MAX_MS = 75000;
 // whenever this fallback does run - it just self-limits to whatever time is
 // actually left rather than needing a large fixed reserve up front.
 const CHUNK_FALLBACK_RESERVE_MS = 90000;
-// Total attempts per chunk once it has come back with real but implausibly
-// short text. Bounded so a recording full of quiet stretches - which trips
-// the same check honestly - cannot spend the whole budget re-asking for
-// windows that really were mostly silence.
-const MAX_CHUNK_TRANSCRIPTION_ATTEMPTS = 3;
 const EMPTY_AUDIO_BUFFER = Buffer.alloc(0);
 // Ceiling on how much audio may be in flight at once. Each window in flight
 // costs roughly its own size again as a copy, and a third as much on top once
@@ -1270,18 +1266,19 @@ export async function transcribeStoredTrackRecording(
       options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
       continue;
     }
+    const savedWindow = unpackSavedAudioChunkText(text);
     if (await isAudioWindowSilent(chunks[index].path, chunks[index].durationSeconds)) {
       completed[index] = true;
       options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
       await options.chunkStore?.save(index, chunks.length, "").catch(() => undefined);
       continue;
     }
-    const trustedText = keepTrustedSpeakerLabels(text, speakerNames);
+    const trustedText = keepTrustedSpeakerLabels(savedWindow.text, speakerNames);
     if (hasUsableTranscript(trustedText)) {
       transcripts[index] = trustedText;
       // An older pass may have saved only the first few words of this
       // window. Keep those words visible, but listen to the audio again.
-      completed[index] = !looksSeverelyTruncated(trustedText, chunks[index].durationSeconds);
+      completed[index] = !savedWindow.incomplete && !looksSeverelyTruncated(trustedText, chunks[index].durationSeconds);
     }
   }
   const queue = chunks.map((chunk, index) => ({ chunk, index })).filter((entry) => !completed[entry.index]);
@@ -1322,10 +1319,15 @@ export async function transcribeStoredTrackRecording(
       // Workers run in parallel, so a long meeting does not need one timeout
       // period per chunk.
       const chunkTimeoutMs = Math.min(150000, remainingMs - 5000);
-      let transcript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
-        ...transcribeOptions,
-        timeoutMs: chunkTimeoutMs
-      }).catch(() => "");
+      // A cached but very short result has already failed on this exact
+      // four-minute audio. Go directly to smaller windows on the next pass.
+      const earlierText = transcripts[next.index];
+      let transcript = hasUsableTranscript(earlierText)
+        ? earlierText
+        : await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
+            ...transcribeOptions,
+            timeoutMs: chunkTimeoutMs
+          }).catch(() => "");
       if (!hasUsableTranscript(transcript)) {
         const retryRemainingMs = deadline - Date.now();
         if (retryRemainingMs >= 35000) {
@@ -1369,36 +1371,64 @@ export async function transcribeStoredTrackRecording(
           }).catch(() => "");
         }
       }
-      // Every retry above only fires when a chunk comes back with nothing at
-      // all. A chunk that returns real but far-too-short text for how long it
-      // actually runs has failed just as badly: the model stopped partway
-      // through and the rest of those minutes is simply gone - and because it
-      // happens mid-recording rather than at the end, the transcript still
-      // reads as if it were complete. Confirmed as a real failure shape on
-      // the whole-audio path (see looksSeverelyTruncated); a four-minute window
-      // is long audio too, so it is exposed to exactly the same thing.
-      for (
-        let attempt = 2;
-        attempt <= MAX_CHUNK_TRANSCRIPTION_ATTEMPTS &&
+      // Repeating the identical four-minute request produced different short
+      // answers and spent credits without recovering the skipped speech.
+      // Split only underfilled windows, then assemble the shorter listens in
+      // time order. A severely collapsed window uses one-minute parts; a
+      // moderately short one uses two-minute parts to limit provider calls.
+      let shorterWindowsIncomplete = false;
+      if (
+        next.chunk.durationSeconds && next.chunk.durationSeconds > 90 &&
         hasUsableTranscript(transcript) &&
-        looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds);
-        attempt += 1
+        looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds) &&
+        deadline - Date.now() >= 30000
       ) {
-        const truncationRetryMs = deadline - Date.now();
-        if (truncationRetryMs < 20000) break;
-        const retryTranscript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
-          ...transcribeOptions,
-          timeoutMs: Math.min(150000, truncationRetryMs - 5000)
-        }).catch(() => "");
-        // Keep the longest usable attempt rather than whichever came last:
-        // a shorter retry must never be allowed to throw away text an
-        // earlier attempt did capture.
-        if (hasUsableTranscript(retryTranscript) && retryTranscript.length > transcript.length) {
-          transcript = retryTranscript;
+        const subwindowSeconds = transcript.length < next.chunk.durationSeconds ? 60 : 120;
+        const subwindows = await splitAudioIntoChunks(
+          Buffer.from(chunkBytes), chunkSourceExt, openRouterAudioLimit, subwindowSeconds
+        ).catch(() => null);
+        if (subwindows) {
+          try {
+            if (subwindows.chunks.length > 1) {
+              const subtexts: string[] = [];
+              for (let offset = 0; offset < subwindows.chunks.length; offset += 2) {
+                const batch = await Promise.all(subwindows.chunks.slice(offset, offset + 2).map(async (part, partOffset) => {
+                  if (await isAudioWindowSilent(part.path, part.durationSeconds)) return { text: "", complete: true };
+                  const budget = deadline - Date.now() - 5000;
+                  if (budget < 20000) return { text: "", complete: false };
+                  const bytes = await readFile(part.path).catch(() => null);
+                  if (!bytes) return { text: "", complete: false };
+                  const file = new File(
+                    [new Uint8Array(bytes)],
+                    `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}.${chunkSourceExt}`,
+                    { type: chunkSourceMimeType }
+                  );
+                  const text = await transcribeAudio(file, speakerNames, audioLanguageMode, {
+                    ...transcribeOptions,
+                    timeoutMs: Math.min(90000, budget)
+                  }).catch(() => "");
+                  return {
+                    text: cleanTranscriptionText(text),
+                    complete: hasUsableTranscript(text) && !looksSeverelyTruncated(text, part.durationSeconds)
+                  };
+                }));
+                subtexts.push(...batch.map((part) => part.text).filter(Boolean));
+                if (batch.some((part) => !part.complete)) shorterWindowsIncomplete = true;
+                if (deadline - Date.now() < 20000) {
+                  if (offset + 2 < subwindows.chunks.length) shorterWindowsIncomplete = true;
+                  break;
+                }
+              }
+              const assembled = cleanTranscriptionText(subtexts.join("\n"));
+              if (hasUsableTranscript(assembled) && assembled.length > transcript.length) transcript = assembled;
+            }
+          } finally {
+            await subwindows.dispose().catch(() => undefined);
+          }
         }
       }
       const chunkTranscriptText = cleanTranscriptionText(transcript);
-      if (hasUsableTranscript(chunkTranscriptText) && looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)) {
+      if (hasUsableTranscript(chunkTranscriptText) && (shorterWindowsIncomplete || looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds))) {
         // Still short after every attempt. The transcript below is real, but
         // this window is missing speech - say so rather than handing back a
         // gap-filled transcript that looks whole.
@@ -1412,18 +1442,18 @@ export async function transcribeStoredTrackRecording(
       // duration. Empty or implausibly short output stays partial and is
       // picked up again from the saved audio on the next pass.
       const windowHasSpeech = hasUsableTranscript(chunkTranscriptText);
-      const windowIsComplete = windowHasSpeech && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds);
-      const earlierText = transcripts[next.index];
-      const bestText = windowHasSpeech && (windowIsComplete || chunkTranscriptText.length > earlierText.length)
+      const windowIsComplete = windowHasSpeech && !shorterWindowsIncomplete && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds);
+      const bestText = windowHasSpeech && chunkTranscriptText.length > earlierText.length
         ? chunkTranscriptText
         : earlierText;
       transcripts[next.index] = bestText;
-      completed[next.index] = windowIsComplete;
+      completed[next.index] = windowIsComplete && bestText === chunkTranscriptText;
       // Written down the moment it succeeds, not at the end: the request can
       // be cut off at any point, and a window not recorded here has to be
       // paid for all over again next time.
-      if (options.chunkStore && bestText && bestText !== earlierText) {
-        await options.chunkStore.save(next.index, chunks.length, bestText).catch(() => undefined);
+      const savedText = completed[next.index] ? bestText : `${INCOMPLETE_AUDIO_CHUNK_PREFIX}${bestText}`;
+      if (options.chunkStore && bestText && savedText !== alreadyDone[next.index]) {
+        await options.chunkStore.save(next.index, chunks.length, savedText).catch(() => undefined);
       }
     }
   }

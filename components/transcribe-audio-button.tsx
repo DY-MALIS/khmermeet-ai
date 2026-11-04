@@ -21,7 +21,10 @@ type TranscribeAudioButtonProps = {
 // A five-hour meeting has up to 150 two-minute windows (or 75 four-minute
 // windows). In the slowest case a request may complete only one.
 // The no-progress check below still stops a stuck recording promptly.
-const MAX_TRANSCRIPTION_PASSES = 160;
+// A few bounded passes can finish a long recording, but repeatedly sending
+// the same underfilled window is costly and leaves the UI spinning after text
+// is already visible. The user can explicitly resume another pass later.
+const MAX_TRANSCRIPTION_PASSES = 2;
 
 export function TranscribeAudioButton({
   meetingId,
@@ -61,6 +64,7 @@ export function TranscribeAudioButton({
       // rather than making someone press the button once per window.
       let pass = 1;
       let previousLength = 0;
+      let previousSavedChunks = 0;
       let nextTranscript = "";
       let stillPartial = false;
       let partialMessage = "";
@@ -72,7 +76,7 @@ export function TranscribeAudioButton({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ languageMode })
         });
-        const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean }>(response);
+        const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean; savedChunks?: number }>(response);
         if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
           retriedEmptyTranscript = true;
           setMessage(t("AI មិនបានបញ្ជូនអត្ថបទមកទេ។ កំពុងសាកល្បងសំឡេងដែលបានរក្សាទុកម្ដងទៀត...", "The AI returned no text. Trying the saved audio once more automatically..."));
@@ -96,9 +100,15 @@ export function TranscribeAudioButton({
         }
         // A pass that adds nothing means continuing would only spend the same
         // money again on the same windows for the same result.
-        const madeProgress = nextTranscript.length > previousLength;
+        const madeProgress =
+          nextTranscript.length >= previousLength + Math.max(100, Math.floor(previousLength * 0.01)) ||
+          (data.savedChunks ?? 0) > previousSavedChunks;
         previousLength = nextTranscript.length;
+        previousSavedChunks = data.savedChunks ?? previousSavedChunks;
         if (!madeProgress || pass >= MAX_TRANSCRIPTION_PASSES) {
+          if (pass >= MAX_TRANSCRIPTION_PASSES) {
+            partialMessage = `${partialMessage} Automatic processing stopped after ${MAX_TRANSCRIPTION_PASSES} passes to limit OpenRouter cost. You can resume manually if more speech is missing.`.trim();
+          }
           stillPartial = true;
           break;
         }

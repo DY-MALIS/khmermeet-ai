@@ -23,3 +23,10 @@ test("brief spoken repetition stays valid", () => {
 test("Khmer numeral glyphs become 0-9 digits without changing words", () => {
   assert.equal(normalizeTranscriptDigits("តម្លៃ ១៥០ ដុល្លារ និង 25 សេន"), "តម្លៃ 150 ដុល្លារ និង 25 សេន");
 });
+
+test("a number-only spoken turn is kept while timestamps are rejected", () => {
+  assert.equal(hasUsableTranscript("Speaker 1: 1000000000"), true);
+  assert.equal(hasUsableTranscript("Speaker 1: ១០០០០០០០០០"), true);
+  assert.equal(hasUsableTranscript("Speaker 1: 25 30 40"), true);
+  assert.equal(hasUsableTranscript("0:01\n0:02\n0:03"), false);
+});

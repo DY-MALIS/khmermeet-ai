@@ -125,7 +125,11 @@ export function hasLowSpeechSignal(text: string) {
   if (!compact) return true;
 
   const letters = compact.match(/\p{L}/gu) ?? [];
-  if (letters.length < 1) return true;
+  // A speaker can say only a price, date, phone number, or large quantity.
+  // Those are real transcript content after timestamps have been removed.
+  // Rejecting every line without letters silently erased exactly the spoken
+  // numbers this app was asked to preserve.
+  if (letters.length < 1) return !/[\d០-៩]/.test(compact) || hasRunawayRepetition(compact);
   if (letters.length < 8 && timestampMatches.length >= 2) return true;
   if (hasRunawayRepetition(compact)) return true;
 
