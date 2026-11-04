@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
-import { extractRealSpeakerNamesFromTranscript, normalizeTranscriptionLanguageMode, refineSavedTranscript } from "@/lib/storage";
+import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode, refineSavedTranscript } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -26,18 +26,21 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     const languageMode = normalizeTranscriptionLanguageMode(meeting.language);
-    const refined = await refineSavedTranscript(meeting.transcript, languageMode, meeting.speakerNames ?? []);
+    const segments = await prisma.meetingTranscriptSegment.findMany({
+      where: { meetingId: id },
+      select: { speakerName: true }
+    });
+    const trustedSpeakerNames = [
+      ...new Set((segments.length
+        ? segments.map((segment) => segment.speakerName ?? "")
+        : meeting.speakerNames ?? []).filter((name) => !isPlaceholderParticipantName(name)))
+    ];
+    const refined = await refineSavedTranscript(meeting.transcript, languageMode, trustedSpeakerNames);
 
     if (refined.trim() && refined.trim() !== meeting.transcript.trim()) {
-      const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(refined);
-      const data: { transcript: string; summary: null; speakerNames?: string[] } = { transcript: refined, summary: null };
-      const speakerNames = [
-        ...new Set([...(meeting.speakerNames ?? []), ...finalSpeakerNames].map((name) => name.trim()).filter(Boolean))
-      ].slice(0, 100);
-      if (speakerNames.length) data.speakerNames = speakerNames;
       await prisma.meeting.update({
         where: { id },
-        data
+        data: { transcript: refined, summary: null, speakerNames: trustedSpeakerNames }
       });
     }
 

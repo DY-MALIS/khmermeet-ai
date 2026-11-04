@@ -9,7 +9,8 @@ import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
-import { applyKnownSpeakerLabels, normalizeTranscriptionLanguageMode } from "@/lib/storage";
+import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
+import { applyKnownSpeakerLabels, isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 import { getServerUiText } from "@/lib/server-ui-text";
@@ -83,15 +84,16 @@ export default async function MeetingDetailPage({
 
   const speakerNames = Array.from(
     new Set(
-      [
-        ...(meeting.speakerNames ?? []),
-        ...meeting.transcriptSegments.map((segment) => segment.speakerName || segment.speakerIdentity)
-      ]
+      (meeting.transcriptSegments.length
+        ? meeting.transcriptSegments.map((segment) => segment.speakerName ?? "")
+        : meeting.speakerNames ?? [])
         .map((name) => name.trim())
-        .filter(Boolean)
+        .filter((name) => !isPlaceholderParticipantName(name))
     )
   ).slice(0, 100);
-  const labeledTranscript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
+  const labeledTranscript = keepTrustedSpeakerLabels(
+    applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames), speakerNames
+  );
   const transcriptIsUsable = hasUsableTranscript(labeledTranscript);
   const transcriptText = transcriptIsUsable ? labeledTranscript : "";
   const summaryText = transcriptIsUsable ? meeting.summary : null;

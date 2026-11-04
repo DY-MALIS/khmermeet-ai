@@ -2046,7 +2046,7 @@ function LiveKitMeetingAgent({
             disabled={recording || Boolean(serverRecording) || Boolean(egressRecording) || saving}
             title={t("ជ្រើសរបៀបបំលែងសំឡេងប្រជុំដែលបានរក្សាទុក។", "Choose how to transcribe the saved meeting audio.")}
           >
-            <option value="km-en">{t("ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)", "Khmer and English (keep original languages)")}</option>
+            <option value="km-en">{t("តាមពាក្យដែលបាននិយាយ (ខ្មែរ និងអង់គ្លេស)", "As spoken (Khmer and English)")}</option>
             <option value="km">{t("ខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)", "Khmer (translate all speech to Khmer)")}</option>
             <option value="en">{t("អង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)", "English (translate all speech to English)")}</option>
           </select>

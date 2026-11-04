@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import {
   createSegmentSpeakerLabelResolver,
-  extractRealSpeakerNamesFromTranscript,
   forceSingleSpeakerLabel,
   isPlaceholderParticipantName,
   normalizeTranscriptionLanguageMode,
@@ -44,13 +43,14 @@ async function catchUpPendingSegments(
         // placeholder-aware resolver (a participant who joined without
         // typing a name has only the anonymous-join placeholder here, which
         // must not be stamped in as if it were their real name).
+        let incomplete = false;
         const transcript = await transcribeStoredTrackRecording(
           segment.audioUrl,
           languageMode,
           Math.max(15000, Math.min(150000, deadline - Date.now())),
-          { speakerNames: [speakerName], singleSpeaker: true }
+          { speakerNames: [speakerName], singleSpeaker: true, onIncomplete: () => { incomplete = true; } }
         );
-        if (hasUsableTranscript(transcript)) {
+        if (!incomplete && hasUsableTranscript(transcript)) {
           const trimmed = transcript.trim();
           await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text: trimmed } });
           segment.text = trimmed;
@@ -114,10 +114,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       segments,
       Math.min(Date.now() + 200000, workDeadline - REFINE_RESERVE_MS)
     );
+    const pendingAudioSegments = segments.some((segment) => segment.audioUrl && !segment.text.trim());
 
     const speakerNames = [
       ...new Set(
-        [...(meeting.speakerNames ?? []), ...segments.map((segment) => segment.speakerName || segment.speakerIdentity)]
+        segments.map((segment) => segment.speakerName ?? "")
           .map((name) => name.trim())
           .filter((name) => name && !isPlaceholderParticipantName(name))
       )
@@ -141,15 +142,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const canTranscribeMixedAudio = shouldUseMixedAudio && meeting.audioUrl && mixedAudioBudget >= 15000;
     // Resolves each segment's label once, here at final assembly: the real
     // registered name, or - for a participant who joined without typing one
-    // - a generic "Speaker N" stable for that identity, so
-    // detectSelfIntroducedSpeakerNames (inside refineSavedTranscript below)
-    // still gets a chance to fill in their real name if they introduce
-    // themselves in the audio.
+    // - a generic "Speaker N" stable for that identity.
     const resolveSegmentLabel = createSegmentSpeakerLabelResolver();
     // Set when a long call's mixed recording ran out of budget partway
     // through its chunks - the transcript is real but missing the tail, so
     // the response says so rather than presenting it as the whole call.
     let incompleteLongRecording = false;
+    let completeMixedAudio = false;
     const rawTranscript =
       canTranscribeMixedAudio && meeting.audioUrl
         ? await transcribeStoredTrackRecording(
@@ -163,7 +162,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                 incompleteLongRecording = true;
               }
             }
-          ).catch(() =>
+          ).then((text) => {
+            completeMixedAudio = !incompleteLongRecording && hasUsableTranscript(text);
+            return text;
+          }).catch(() =>
             segments
               .filter((segment) => segment.text.trim())
               .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
@@ -189,10 +191,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // using the language mode the user picked when recording, set on the
       // meeting when it was created. Forcing "km-en" here discarded that
       // choice and made summary/task generation ignore it downstream.
-      const finalSpeakerNames = speakerNames.length ? speakerNames : extractRealSpeakerNamesFromTranscript(transcript);
       await prisma.meeting.update({
         where: { id },
-        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration, speakerNames: finalSpeakerNames }
+        data: { transcript, summary: null, status: "transcribed", duration: duration ?? meeting.duration, speakerNames }
       });
     }
 
@@ -204,11 +205,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({
       transcript,
       merged: true,
-      ...(incompleteLongRecording
+      ...(incompleteLongRecording || (pendingAudioSegments && !completeMixedAudio)
         ? {
             partial: true,
             message:
-              "This call is long enough that transcription ran out of time before reaching the end, so the last part is missing. The audio is saved in full - run the transcription again to continue."
+              "Some saved audio still has no complete transcript. The text shown so far is partial; run transcription again to continue from the saved recording."
           }
         : {})
     });

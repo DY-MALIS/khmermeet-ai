@@ -60,13 +60,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // placeholder ("Local User"/"KhmerMeet User") - baking that in as if it
     // were their real name would be permanent and unfixable later.
     const languageMode = normalizeTranscriptionLanguageMode(segment.languageMode);
+    let incomplete = false;
     const transcript = await transcribeStoredTrackRecording(segment.audioUrl, languageMode, 180000, {
       speakerNames: [segment.speakerName || segment.speakerIdentity],
-      singleSpeaker: true
+      singleSpeaker: true,
+      onIncomplete: () => { incomplete = true; }
     });
 
     if (!hasUsableTranscript(transcript)) {
       return NextResponse.json({ transcript: "", skipped: true, index });
+    }
+    if (incomplete) {
+      return NextResponse.json({ transcript, partial: true, index });
     }
 
     await prisma.meetingTranscriptSegment.update({

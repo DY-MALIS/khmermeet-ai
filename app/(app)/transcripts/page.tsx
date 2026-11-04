@@ -6,9 +6,10 @@ import { AnalyzeInWorkspaceButton } from "@/components/analyze-in-workspace-butt
 import { EmptyState } from "@/components/ui";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
-import { applyKnownSpeakerLabels } from "@/lib/storage";
+import { applyKnownSpeakerLabels, isPlaceholderParticipantName } from "@/lib/storage";
 import { getServerUiText } from "@/lib/server-ui-text";
 
 export const dynamic = "force-dynamic";
@@ -50,15 +51,16 @@ export default async function TranscriptsPage() {
           {meetings.map((meeting) => {
             const speakerNames = Array.from(
               new Set(
-                [
-                  ...(meeting.speakerNames ?? []),
-                  ...meeting.transcriptSegments.map((segment) => segment.speakerName || segment.speakerIdentity)
-                ]
+                (meeting.transcriptSegments.length
+                  ? meeting.transcriptSegments.map((segment) => segment.speakerName ?? "")
+                  : meeting.speakerNames ?? [])
                   .map((name) => name.trim())
-                  .filter(Boolean)
+                  .filter((name) => !isPlaceholderParticipantName(name))
               )
             ).slice(0, 100);
-            const transcript = applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames);
+            const transcript = keepTrustedSpeakerLabels(
+              applyKnownSpeakerLabels(meeting.transcript ?? "", speakerNames), speakerNames
+            );
             const usableTranscript = hasUsableTranscript(transcript);
             const audioItems = meeting.audioUrl
               ? [{ key: "meeting-audio", label: text.recordedAudio, audioUrl: meeting.audioUrl }]

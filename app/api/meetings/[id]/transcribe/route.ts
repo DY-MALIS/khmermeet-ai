@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import {
   createSegmentSpeakerLabelResolver,
-  extractRealSpeakerNamesFromTranscript,
   forceSingleSpeakerLabel,
   isPlaceholderParticipantName,
   getStoredAudioSize,
@@ -54,18 +53,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const body = await readTranscriptionBody(request);
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
-    // sanitizeKnownSpeakerNames filters out anything that looks like a
-    // leaked reasoning label - a meeting whose speakerNames already picked
-    // one up (before that filter existed, or from a run that slips past it)
-    // would otherwise carry it forward forever: the save below only ever
-    // unions in newly extracted names, it never removes anything, so a
-    // clean re-transcription attempt that extracts nothing new (every line
-    // uses a plain "Speaker N" label) leaves the old garbage untouched.
-    const savedSpeakerNames = sanitizeKnownSpeakerNames(Array.isArray(meeting.speakerNames) ? meeting.speakerNames : []);
-    const speakerNames = [
-      ...new Set([...savedSpeakerNames, ...sanitizeKnownSpeakerNames(body.speakerNames)])
-    ].slice(0, 100);
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
+    // Segment names come from call participants. Uploaded recordings have no
+    // segments, so their saved names are the user-supplied transcription hint.
+    const speakerNames = [
+      ...new Set([
+        ...sanitizeKnownSpeakerNames(body.speakerNames),
+        ...(meeting.transcriptSegments.length
+          ? meeting.transcriptSegments.map((segment) => segment.speakerName ?? "")
+          : meeting.speakerNames ?? [])
+          .filter((name) => !isPlaceholderParticipantName(name))
+      ])
+    ].slice(0, 100);
     const recognisedTrackNames = new Map<string, string>();
     const unnamedTracks = participantAudioSegments.filter((segment) =>
       segment.speakerIdentity && isPlaceholderParticipantName(segment.speakerName || segment.speakerIdentity)
@@ -117,10 +116,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let transcriptSpeakerNames = speakerNames;
     // Resolves each segment's label once here at assembly time: the real
     // registered name, or - for a participant who joined without typing one
-    // - a generic "Speaker N" stable for that identity, so
-    // detectSelfIntroducedSpeakerNames (inside refineSavedTranscript below)
-    // still gets a chance to fill in their real name if they introduce
-    // themselves in the audio. See createSegmentSpeakerLabelResolver.
+    // - a generic "Speaker N" stable for that identity. Unknown speakers
+    // keep generic labels; AI does not infer an identity from speech.
     const resolveSegmentLabel = createSegmentSpeakerLabelResolver();
 
     if (chronologicalSpeakerSegments.length) {
@@ -165,21 +162,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         let text = segment.text.trim();
         const attemptTimeoutMs = transcriptionBudget(workDeadline);
         if (!text && attemptTimeoutMs >= MINIMUM_ATTEMPT_MS) {
+          let incompleteSegment = false;
           text = await withinDeadline(
             transcribeStoredTrackRecording(
               segment.audioUrl as string,
               languageMode,
               attemptTimeoutMs,
-              { speakerNames: [speakerHint], singleSpeaker: true }
+              {
+                speakerNames: [speakerHint],
+                singleSpeaker: true,
+                onIncomplete: () => { incompleteSegment = true; }
+              }
             ),
             workDeadline - REFINE_RESERVE_MS
           ).catch(() => "");
           // Stored as plain text, without a "Name:" prefix baked in - it is
           // applied once below via resolveSegmentLabel, which falls back to
           // a generic label instead of a placeholder display name.
-          if (hasUsableTranscript(text)) {
+          if (!incompleteSegment && hasUsableTranscript(text)) {
             text = text.trim();
-            await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text } }).catch(() => undefined);
+            const saved = await prisma.meetingTranscriptSegment.update({ where: { id: segment.id }, data: { text } })
+              .then(() => true).catch(() => false);
+            if (saved) segment.text = text;
           }
         }
         const speakerName = resolveSegmentLabel(speakerHint, segment.speakerIdentity);
@@ -250,12 +254,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ).catch(() => rawTranscript);
     }
 
-    const skippedPendingSegments =
-      participantAudioSegments.length > 0 &&
-      (participantAudioSegments.some((segment) => !segment.text.trim()) ||
-        Date.now() > workDeadline - REFINE_RESERVE_MS - MINIMUM_ATTEMPT_MS);
+    const completeMixedAudio = shouldUseMixedAudio && hasUsableTranscript(rawTranscript) && !incompleteLongRecording;
+    const skippedPendingSegments = !completeMixedAudio && participantAudioSegments.some((segment) => !segment.text.trim());
     const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
-    const transcript = refineBudget >= 5000
+    // A long recording may need several requests. Refining the incomplete
+    // transcript on every pass spends up to a minute rewriting text that the
+    // next pass will immediately replace. Refine once when every part is in.
+    const transcript = !incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
       : rawTranscript;
 
@@ -305,13 +310,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    // The refine pass may detect additional real names, but it must never
-    // shrink the roster captured when the call started. If AI only labels
-    // three of four people, keep the fourth saved participant name.
-    const finalSpeakerNames = extractRealSpeakerNamesFromTranscript(transcript);
-    const speakerNamesToSave = [
-      ...new Set([...transcriptSpeakerNames, ...finalSpeakerNames].map((name) => name.trim()).filter(Boolean))
-    ].slice(0, 100);
+    const speakerNamesToSave = sanitizeKnownSpeakerNames(transcriptSpeakerNames).slice(0, 100);
 
     await prisma.meeting.update({
       where: { id },
@@ -357,7 +356,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcript,
         partial: true,
         message:
-          "The speech was saved, but the AI did not separate speaker turns. Re-transcribe the saved audio to try speaker identification again. Real names require known participant names or clear self-introductions in the recording."
+          "The speech was saved, but the AI did not separate speaker turns. Re-transcribe the saved audio to try separating voices again. Real names require registered participant names."
       });
     }
 
@@ -366,7 +365,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         transcript,
         partial: true,
         message:
-          "Part of this recording did not transcribe completely, so the transcript is missing speech - at the end, and possibly in the middle too. Your audio is saved in full. Pressing Re-transcribe audio starts the whole recording over from the beginning, which usually fills the gaps in, because the parts that fail are rarely the same ones twice."
+          languageMode === "km-en"
+            ? "Part of this recording did not transcribe completely. The audio is saved in full. Press Re-transcribe audio again to retry only the unfinished parts. The text shown so far may still be incomplete."
+            : "Part of this recording did not transcribe completely. The words shown so far are in the languages originally spoken. Translation will run after the remaining audio is processed. Press Re-transcribe audio again to continue."
       });
     }
 

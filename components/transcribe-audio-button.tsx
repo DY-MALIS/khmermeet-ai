@@ -2,7 +2,7 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { readJsonResponse } from "@/lib/read-json-response";
 import { useBilingualText } from "@/lib/display-language";
 
@@ -18,10 +18,10 @@ type TranscribeAudioButtonProps = {
 };
 
 // Upper bound on how many times the browser will ask the server to continue.
-// Twenty fifteen-minute windows is a five-hour meeting and a pass gets through
-// several, so this is generous - it is here to stop a stuck recording looping
-// forever, not to cut a real one short.
-const MAX_TRANSCRIPTION_PASSES = 12;
+// A five-hour meeting has up to 150 two-minute windows (or 75 four-minute
+// windows). In the slowest case a request may complete only one.
+// The no-progress check below still stops a stuck recording promptly.
+const MAX_TRANSCRIPTION_PASSES = 160;
 
 export function TranscribeAudioButton({
   meetingId,
@@ -32,18 +32,13 @@ export function TranscribeAudioButton({
   onTranscribed
 }: TranscribeAudioButtonProps) {
   const t = useBilingualText();
-  const progressSteps = useMemo(() => [
-    t("កំពុងរៀបចំសំឡេង...", "Preparing audio..."),
-    t("កំពុងស្តាប់សំឡេងជាបំណែកតូចៗ...", "Listening to audio segments..."),
-    t("កំពុងចាប់ពាក្យ និងឈ្មោះអ្នកនិយាយ...", "Identifying words and speakers..."),
-    t("កំពុងសម្អាតអត្ថបទ និងរក្សាទុក...", "Cleaning and saving transcript...")
-  ], [t]);
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [progressStep, setProgressStep] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [currentPass, setCurrentPass] = useState(1);
   const autoStartedRef = useRef(false);
   // Default to km-en so mixed Khmer/English meetings are captured as spoken
   // instead of English getting silently translated into Khmer under "km" mode.
@@ -51,12 +46,14 @@ export function TranscribeAudioButton({
 
   const transcribe = useCallback(async () => {
     setPending(true);
-    setProgressStep(0);
+    setElapsedSeconds(0);
+    setCurrentPass(1);
     setMessage("");
     setError("");
+    const startedAt = Date.now();
     const progressTimer = window.setInterval(() => {
-      setProgressStep((step) => Math.min(step + 1, progressSteps.length - 1));
-    }, 14000);
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     try {
       // A long recording needs more than one request: the server finishes as
       // many windows as its own time limit allows, keeps them, and continues
@@ -67,7 +64,6 @@ export function TranscribeAudioButton({
       let nextTranscript = "";
       let stillPartial = false;
       let partialMessage = "";
-      let recognitionNote = "";
       let retriedEmptyTranscript = false;
       for (;;) {
         const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
@@ -78,8 +74,7 @@ export function TranscribeAudioButton({
         const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean }>(response);
         if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
           retriedEmptyTranscript = true;
-          setProgressStep(0);
-      setMessage(t("AI មិនបានបញ្ជូនអត្ថបទមកទេ។ កំពុងសាកល្បងសំឡេងដែលបានរក្សាទុកម្ដងទៀត...", "The AI returned no text. Trying the saved audio once more automatically..."));
+          setMessage(t("AI មិនបានបញ្ជូនអត្ថបទមកទេ។ កំពុងសាកល្បងសំឡេងដែលបានរក្សាទុកម្ដងទៀត...", "The AI returned no text. Trying the saved audio once more automatically..."));
           continue;
         }
         if (!response.ok) throw new Error(data.error ?? t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio."));
@@ -106,28 +101,15 @@ export function TranscribeAudioButton({
           break;
         }
         pass += 1;
+        setCurrentPass(pass);
         setMessage(t(`ការថតវែង — កំពុងបន្តផ្នែកទី ${pass}។ បាន ${nextTranscript.length.toLocaleString()} តួអក្សរ។`, `Long recording — continuing part ${pass}. ${nextTranscript.length.toLocaleString()} characters so far.`));
-      }
-      if (!stillPartial && /^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(nextTranscript)) {
-        setMessage(t("កំពុងផ្គូផ្គងអ្នកនិយាយជាមួយសំឡេងដែលបានចងចាំ...", "Matching speakers against remembered voices..."));
-        const recognitionResponse = await fetch(`/api/meetings/${meetingId}/recognize-speakers`, { method: "POST" }).catch(() => null);
-        if (recognitionResponse?.ok) {
-          const recognition = await readJsonResponse<{ transcript?: string; matched?: number; message?: string }>(recognitionResponse);
-          recognitionNote = recognition.message ?? "";
-          if (recognition.matched && recognition.transcript) {
-            nextTranscript = recognition.transcript;
-            onTranscribed?.(nextTranscript);
-          }
-        } else {
-          recognitionNote = t("មិនអាចពិនិត្យសំឡេងដែលបានចងចាំលើកនេះទេ។ ឈ្មោះអ្នកនិយាយនៅដដែល។", "Could not check remembered voices this time; speaker labels were kept.");
-        }
       }
       setMessage(
         stillPartial
           ? partialMessage || t("ផ្នែកខ្លះនៃការថតនេះមិនទាន់បានបំលែងជាអក្សរ។ សំឡេងទាំងមូលត្រូវបានរក្សាទុក។ សូមចុចបំលែងសំឡេងម្ដងទៀតដើម្បីបន្ត។", "Some of this recording is still not transcribed. The audio is saved in full. Click Re-transcribe audio again to continue.")
           : hasTranscript
-            ? `${t("បានជំនួសអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcript replaced below. Refreshing meeting data...")}${recognitionNote ? ` ${recognitionNote}` : ""}`
-            : `${t("បានរក្សាទុកអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcription saved below. Refreshing meeting data...")}${recognitionNote ? ` ${recognitionNote}` : ""}`
+            ? t("បានជំនួសអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcript replaced below. Refreshing meeting data...")
+            : t("បានរក្សាទុកអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcription saved below. Refreshing meeting data...")
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
@@ -141,7 +123,7 @@ export function TranscribeAudioButton({
       window.clearInterval(progressTimer);
       setPending(false);
     }
-  }, [hasTranscript, languageMode, meetingId, onTranscribed, progressSteps, router, t]);
+  }, [hasTranscript, languageMode, meetingId, onTranscribed, router, t]);
 
   const matchRememberedVoices = useCallback(async () => {
     setRecognizing(true);
@@ -199,7 +181,7 @@ export function TranscribeAudioButton({
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
           disabled={pending}
         >
-          <option value="km-en">{t("ខ្មែរ និងអង់គ្លេស (រក្សាភាសាដើម)", "Khmer and English (keep original languages)")}</option>
+          <option value="km-en">{t("តាមពាក្យដែលបាននិយាយ (ខ្មែរ និងអង់គ្លេស)", "As spoken (Khmer and English)")}</option>
           <option value="km">{t("ខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)", "Khmer (translate all speech to Khmer)")}</option>
           <option value="en">{t("អង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)", "English (translate all speech to English)")}</option>
         </select>
@@ -218,14 +200,11 @@ export function TranscribeAudioButton({
       {pending ? (
         <div className="rounded-2xl border border-leaf/20 bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
-            <span>{progressSteps[progressStep]}</span>
-            <span>{progressStep + 1}/{progressSteps.length}</span>
+            <span>{t("កំពុងបម្លែងសំឡេង · ជុំទី", "Transcribing audio · pass")} {currentPass}</span>
+            <span>{Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-leaf transition-all duration-500"
-              style={{ width: `${((progressStep + 1) / progressSteps.length) * 100}%` }}
-            />
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-leaf" />
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
             {t("សំឡេងវែងអាចចំណាយពេលច្រើន។ សូមកុំបិទទំព័រនេះរហូតដល់អត្ថបទត្រូវបានរក្សាទុក។", "Long recordings may take time. Keep this page open until the transcript is saved.")}

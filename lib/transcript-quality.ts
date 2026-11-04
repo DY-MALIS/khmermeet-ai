@@ -1,7 +1,21 @@
+import { deflateSync } from "node:zlib";
+
+export function normalizeTranscriptDigits(text: string) {
+  return text.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
+}
+
 function stripSpeakerLabels(text: string) {
   return text
-    .replace(/\b(?:speaker|participant|user)\s*\d*\s*:/giu, " ")
+    .replace(/\b(?:unknown\s+speaker|speaker|participant|user)\s*\d*\s*:/giu, " ")
     .replace(/\b(?:អ្នកនិយាយ|អ្នកចូលរួម)\s*\d*\s*:/giu, " ");
+}
+
+// Some audio models emit "Unknown" as the entire utterance. It describes
+// their uncertainty, not a word heard in the recording.
+export function stripUnknownOnlyLines(text: string) {
+  return text.split(/\r?\n/).filter((line) =>
+    !/^\s*(?:[^:：\n]{1,60}[:：]\s*)?unknown\s*$/iu.test(line)
+  ).join("\n");
 }
 
 export function isTimestampOnlyTranscript(text: string) {
@@ -112,6 +126,7 @@ export function hasLowSpeechSignal(text: string) {
   const letters = compact.match(/\p{L}/gu) ?? [];
   if (letters.length < 1) return true;
   if (letters.length < 8 && timestampMatches.length >= 2) return true;
+  if (hasRunawayRepetition(compact)) return true;
 
   const tokens = compact.split(/\s+/).filter(Boolean);
   // A short transcript that is mostly one word repeated (e.g. a model
@@ -134,8 +149,48 @@ export function hasLowSpeechSignal(text: string) {
   return false;
 }
 
+// Khmer text often has no spaces between words. A model can repeat the same
+// invented phrase for thousands of characters while the word-based uniqueness
+// checks above see only one token. Check overlapping character windows so an
+// otherwise useful transcript is not accepted with a long hallucinated tail.
+export function hasRunawayRepetition(text: string) {
+  // Repetitive Khmer output can vary a few syllables on every pass, so its
+  // 24-character sequences remain nearly unique even while it is visibly a
+  // loop. Compression catches that failure shape. On the reported 29,926-
+  // character transcript the most repetitive 1,000-character window shrank
+  // to 7.8% of its bytes; other saved transcripts stayed at 20% or higher.
+  if (text.length >= 1000) {
+    for (let start = 0; start + 1000 <= text.length; start += 500) {
+      const bytes = Buffer.from(text.slice(start, start + 1000));
+      if (deflateSync(bytes).length / bytes.length < 0.16) return true;
+    }
+  }
+
+  const characters = Array.from(
+    stripSpeakerLabels(text)
+      .replace(/\[[^\]\n]{1,30}\]/g, "")
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]/gu, "")
+  );
+  const windowSize = 1000;
+  const gramSize = 24;
+  const step = 12;
+  if (characters.length < windowSize) return false;
+
+  for (let start = 0; start + windowSize <= characters.length; start += 500) {
+    const seen = new Set<string>();
+    let count = 0;
+    for (let index = start; index + gramSize <= start + windowSize; index += step) {
+      seen.add(characters.slice(index, index + gramSize).join(""));
+      count += 1;
+    }
+    if (seen.size / count < 0.3) return true;
+  }
+  return false;
+}
+
 export function hasUsableTranscript(text: string) {
-  const clean = text.trim();
+  const clean = stripUnknownOnlyLines(text).trim();
   if (!clean) return false;
   if (hasCorruptedEncoding(clean)) return false;
   if (hasTranscriptionPromptLeakage(clean)) return false;

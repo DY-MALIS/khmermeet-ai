@@ -345,7 +345,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     "Multi-word proper names, brand names, and product names (e.g. company names, app names, payment providers) must be transcribed completely and exactly as spoken - never drop, shorten, or merge part of a multi-word name. For example, if the audio says \"ABA PayWay\", the transcript must say \"ABA PayWay\" in full, never a shortened \"ABA Pay\". These names can blend together at normal speaking speed - listen closely for every syllable of a name rather than assuming it ends where a natural word would.";
   const languageInstruction =
     language === "km"
-      ? "Transcribe the speech into Khmer script only, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
+      ? "Transcribe the speech into Khmer script with numeric values written as digits 0-9, even if some words were spoken in English or another language - convert their meaning into modern, natural Khmer as used in Cambodia today. Do not use archaic, overly literary, or old-fashioned Khmer wording unless the speaker actually said it. Keep proper names, product names, URLs, and well-known acronyms in their original form (do not transliterate them into Khmer script)."
       : language === "en"
         ? "Transcribe the speech into English only, even if some words were spoken in Khmer or another language - convert their meaning into natural English. Keep proper names, product names, URLs, and well-known acronyms in their original form."
         : "The audio may contain both Khmer and English. Preserve each spoken phrase in the language it was actually spoken in - do not translate. Khmer speech must remain Khmer script. English speech must remain English. Do not translate Khmer speech into English to create a mixed transcript, and do not translate English speech into Khmer.";
@@ -394,6 +394,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     properNounRule,
     selfIntroductionInstruction,
     accuracyInstruction,
+    "Write clearly spoken quantities, dates, times, money amounts, percentages, measurements, and phone numbers with digits 0-9 rather than spelling the numbers out in Khmer or English. For example, spoken Khmer 'ម្ភៃបី' is 23 and 'មួយរយហាសិប' is 150. Preserve the spoken value exactly; do not calculate, guess an unclear number, or change words such as 'មួយ' when they mean 'a/one' in an ordinary phrase rather than a numeric value.",
     "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
     "Work through the recording carefully before writing: replay a quiet, fast, or distant span in your mind and try to resolve it from the sound itself, including faint syllables and changes of voice. Trying harder means listening again - it never means reconstructing a word from context or repeating a nearby phrase to fill a quiet span.",
     "Every span of the recording ends in exactly one of three outcomes. Words you can make out: write them exactly as spoken. Speech you can hear but cannot make out after that effort: write [unclear] for that span - do not leave it out, and do not replace it with a plausible word. Stretches where nobody speaks: write nothing at all.",
@@ -540,13 +541,13 @@ export async function transcribeOpenRouterAudioViaChat(
   );
   if (hasUsableTranscript(result)) return result;
 
-  if (result || !safetyNetModel || primaryModel === safetyNetModel) return result;
+  if (!safetyNetModel || primaryModel === safetyNetModel) return result;
 
   const remaining = deadline - Date.now();
   if (remaining < 8000) return result;
 
-  // Primary model came back empty on audio the caller believes has speech -
-  // give the safety-net model one shot with whatever time budget is left.
+  // The primary model returned empty or unusable text (including a repeated
+  // hallucination loop). Give the safety-net model the remaining time.
   return callMultimodalTranscription(
     safetyNetModel,
     audio,
@@ -600,7 +601,7 @@ export async function refineOpenRouterTranscript(
 
   const languageInstruction =
     language === "km"
-      ? "The selected output language is Khmer. Return Khmer script only, using modern, natural Khmer as used in Cambodia today. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Do not rewrite into archaic, overly literary, or old-fashioned Khmer unless the speaker actually used that wording. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
+      ? "The selected output language is Khmer. Return Khmer script with numeric values written as digits 0-9, using modern, natural Khmer as used in Cambodia today. If the raw transcript contains English or romanized Khmer, convert its meaning into natural Khmer. Do not rewrite into archaic, overly literary, or old-fashioned Khmer unless the speaker actually used that wording. Keep only proper names, product names, URLs, code terms, and well-known acronyms in their original form."
       : language === "en"
         ? "The selected output language is English. Return English only. If the raw transcript contains Khmer, translate its meaning into natural English. Keep proper names, product names, URLs, code terms, and well-known acronyms in their original form."
         : "The final transcript may contain Khmer and English. Keep each spoken phrase in its original language. Khmer phrases in the raw transcript must remain Khmer script, and English phrases must remain English. Never translate Khmer speech into English or English speech into Khmer in Khmer + English mode.";
@@ -618,14 +619,7 @@ export async function refineOpenRouterTranscript(
       : `Translation into ${language === "km" ? "Khmer" : "English"} is required in this mode and takes precedence over the wording rules below. Those rules govern meaning, detail, speaker turns, and ordering - they never permit leaving a phrase in the language it was spoken in. Every phrase must end up in ${language === "km" ? "Khmer" : "English"}, even though translating necessarily changes the words themselves.`;
   const speakerInstruction = speakerNames.length
     ? `Known speaker names: ${speakerNames.join(", ")}. Preserve any real speaker name that is already present. Convert generic numbered labels only when the mapping is clear from the raw transcript. If a label is unknown or uncertain, keep Unknown Speaker: instead of guessing a real name. Every spoken turn should start with a speaker label, but uncertain speakers must not be forced onto a known participant name. If there is only one known speaker, prefix each spoken line with that speaker name.`
-    : // Some lines may already start with a real name instead of "Speaker N:"
-      // (a separate detection step upstream confidently matched only some
-      // speakers to a self-introduced name, and left the rest generic on
-      // purpose - a partial result, not a mistake). Preserve those already-
-      // substituted labels exactly; do not revert them back to a generic
-      // label, and do not extend that substitution to any other label
-      // yourself.
-      "Preserve Speaker 1, Speaker 2 labels if present. If a spoken turn already starts with a real name instead of a generic label (e.g. \"អារ៉ាស់:\" instead of \"Speaker 3:\"), that name is confirmed correct - keep it exactly as-is, do not change it back to a generic label or to a different name. Keep self-introduced names inside the spoken sentence, but do not turn a still-generic Speaker N: label into a speaker name yourself. Do not invent real person names.";
+    : "Preserve generic Speaker 1, Speaker 2, and Unknown Speaker labels. No participant names were verified for this recording, so do not create or infer a person's name as a speaker label. A name spoken inside a sentence stays inside that sentence; it does not identify the voice. Do not rename a generic speaker even if a speaker seems to introduce themselves.";
 
   const prompt = [
     "You are a careful meeting transcript proofreader.",
@@ -648,6 +642,7 @@ export async function refineOpenRouterTranscript(
     "- Keep the speaker's wording and word order as close as possible to the raw transcript.",
     "- Do not rewrite awkward, informal, repeated, or broken speech into a polished sentence.",
     "- Preserve all real spoken content, including short replies, hesitations, repeated words, corrections, names, numbers, dates, and question endings.",
+    "- Write clear numeric values as digits 0-9, including quantities, dates, times, money, percentages, measurements, and phone numbers; do not spell those values out in Khmer or English. Preserve the exact value in the raw transcript and do not guess or calculate an unclear number. Keep nonnumeric uses of words such as 'one' or 'មួយ' as words.",
     "- Treat [unclear] as evidence from the audio; preserve it exactly and do not replace it with a guessed phrase.",
     "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
     "- Remove hallucinated words, timestamp-only lines, exact duplicate adjacent lines, and obvious non-speech boilerplate. [unclear] is none of those - it is the transcriber's record that someone spoke there and could not be made out, so keep every one of them.",

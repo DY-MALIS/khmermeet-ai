@@ -4,7 +4,6 @@ import path from "path";
 import { createHmac, timingSafeEqual } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
-  detectSelfIntroducedSpeakerNames,
   hasOpenRouterKey,
   refineOpenRouterTranscript,
   transcribeOpenRouterAudioViaChat
@@ -20,7 +19,8 @@ import {
   parseChunkedAudioManifest,
   type ChunkedAudioManifest
 } from "@/lib/chunked-audio";
-import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript } from "@/lib/transcript-quality";
+import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
+import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
 // Vercel Serverless Functions (Route Handlers) hard-cap the request body at 4.5MB.
@@ -59,7 +59,8 @@ export function normalizeTranscriptionLanguageMode(value: unknown): Transcriptio
   ) {
     return "km-en";
   }
-  return "km";
+  // Missing or unfamiliar modes must not translate speech by accident.
+  return "km-en";
 }
 
 // Standard Khmer writing has no spaces between the letters of a word (only
@@ -120,7 +121,7 @@ function cleanTranscriptionText(text: string) {
     /^(?:diagnostic|analysis)\s*[:：]/i
   ];
 
-  const cleaned = splitInlineSpeakerLabels(text.replace(/^```(?:text)?/i, "").replace(/```$/i, ""))
+  const cleaned = stripUnknownOnlyLines(splitInlineSpeakerLabels(text.replace(/^```(?:text)?/i, "").replace(/```$/i, "")))
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -133,7 +134,7 @@ function cleanTranscriptionText(text: string) {
 
   if (noSpeechPatterns.some((pattern) => pattern.test(cleaned))) return "";
   if (isTimestampOnlyTranscript(cleaned)) return "";
-  return rejoinKhmerWordSpacing(cleaned);
+  return normalizeTranscriptDigits(rejoinKhmerWordSpacing(cleaned));
 }
 
 // Confirmed live: for a known participant name with an internal space (a
@@ -240,9 +241,8 @@ function looksLikeLeakedSpeakerLabel(label: string) {
 // placeholder display name - "Local User" client-side (readSavedParticipantName
 // in livekit-call-room.tsx) or "KhmerMeet User" server-side (cleanDisplayName
 // in livekit-token/route.ts). Treating that placeholder as a genuine known
-// name would permanently block the self-introduction fallback below (it only
-// runs when no real name is known for a speaker) and would show up as
-// someone's "name" in the transcript, summary, and any translation forever.
+// name would be mistaken for a verified identity and show up in the
+// transcript, summary, and any translation.
 const placeholderParticipantNames = new Set(["local user", "khmermeet user"]);
 
 // Blank counts as a placeholder too: an empty/whitespace name is just as
@@ -261,9 +261,7 @@ export function isPlaceholderParticipantName(name: string | null | undefined) {
 // in which case a generic "Speaker N" is assigned instead - stable per
 // distinct speakerIdentity within one call to the returned function, so two
 // different unnamed participants in the same meeting don't collapse into the
-// same label, and so the "Speaker N:" shape stays available for
-// detectSelfIntroducedSpeakerNames to correct later if that person actually
-// introduces themselves in the audio.
+// same label. An unknown identity stays generic.
 export function createSegmentSpeakerLabelResolver() {
   const genericLabels = new Map<string, string>();
   return (speakerName: string | null | undefined, speakerIdentity: string) => {
@@ -276,67 +274,13 @@ export function createSegmentSpeakerLabelResolver() {
   };
 }
 
-// Confirmed live: a meeting whose speakerNames already picked up a leaked
-// label before this filter existed keeps it forever otherwise - the save
-// path only ever unions newly extracted names into the existing saved list
-// (see speakerNamesToSave in the transcribe route), it never removes
-// anything, and a clean re-transcription attempt extracts no new names at
-// all once every line uses a plain "Speaker N" label (nothing for
-// extractRealSpeakerNamesFromTranscript to add). Worse, the stale garbage
-// keeps getting fed back into the next attempt's "known participants" hint.
-// Callers that reuse a meeting's already-saved speakerNames (as a known-name
-// hint, or as the base for the next save) should filter through this first
-// so a name that would be rejected today doesn't get to persist just
-// because it slipped in before the rejection existed.
+// Filter placeholders and leaked reasoning labels from trusted participant
+// names before using them as hints or showing them in a transcript.
 export function sanitizeKnownSpeakerNames(names: string[]) {
   return names.filter((name) => {
     const trimmed = name.trim();
     return trimmed && !genericSpeakerLabelPattern.test(trimmed) && !looksLikeLeakedSpeakerLabel(trimmed) && !isPlaceholderParticipantName(trimmed);
   });
-}
-
-// Reads back whichever real speaker names actually ended up in a finished
-// transcript's "Name: ..." labels, regardless of whether those names came
-// from user input, meeting-join participant names, or auto-detected
-// self-introductions (see detectSelfIntroducedSpeakerNames) - so the saved
-// meeting.speakerNames always reflects what the transcript really says
-// instead of only whatever was known before transcription ran.
-export function extractRealSpeakerNamesFromTranscript(transcript: string) {
-  const names: string[] = [];
-  const seen = new Set<string>();
-  for (const line of transcript.split(/\r?\n/)) {
-    const match = line.match(/^\s*([^:\n]{1,60}):\s+\S/);
-    const label = match?.[1]?.trim();
-    if (
-      !label ||
-      genericSpeakerLabelPattern.test(label) ||
-      looksLikeLeakedSpeakerLabel(label) ||
-      isPlaceholderParticipantName(label) ||
-      seen.has(label)
-    )
-      continue;
-    seen.add(label);
-    names.push(label);
-  }
-  return names.slice(0, 100);
-}
-
-// Replaces "Speaker N:" at the start of a line with the real detected name
-// for that exact N, leaving any label not present in `detected` untouched -
-// a deliberately partial substitution (see detectSelfIntroducedSpeakerNames)
-// so a speaker who never introduced themselves keeps their generic label
-// instead of being forced onto a name that was never theirs.
-function substituteDetectedSpeakerLabels(transcript: string, detected: Record<number, string>) {
-  return transcript
-    .split(/\r?\n/)
-    .map((line) => {
-      const match = line.match(/^(\s*)Speaker\s+(\d+)(\s*[:：]\s*)(.*)$/i);
-      if (!match) return line;
-      const [, leadingWs, number, separator, rest] = match;
-      const name = detected[Number(number)];
-      return name ? `${leadingWs}${name}${separator}${rest}` : line;
-    })
-    .join("\n");
 }
 
 // Confirmed live (2026-09-04): the same mixed-audio recording, re-sent fresh
@@ -442,7 +386,7 @@ function looksSeverelyTruncated(transcript: string, durationSeconds: number | nu
   // A false positive costs retries and an "incomplete" warning, never a
   // worse transcript - and a wrong warning is the better failure here than
   // silently presenting a fifth of a meeting as the whole of it.
-  const minimumExpectedLength = Math.min(20000, Math.max(120, durationSeconds * 4));
+  const minimumExpectedLength = Math.min(40000, Math.max(120, durationSeconds * 4));
   return length < minimumExpectedLength;
 }
 
@@ -870,12 +814,11 @@ async function ensureAudioFileTable() {
 export async function transcribeAudio(
   audioFile: File,
   speakerNames: string[] = [],
-  languageMode: TranscriptionLanguageMode = "km",
+  languageMode: TranscriptionLanguageMode = "km-en",
   options: TranscriptionOptions = {}
 ) {
   // Live calls use this same path in small, bounded chunks, while saved
-  // recordings run a final refine pass that can infer self-introduced speaker
-  // names when the user did not provide labels up front.
+  // recordings run a final text cleanup pass after audio transcription.
   if (!hasOpenRouterKey()) return "";
   if (audioFile.size > openRouterAudioLimit) {
     throw new Error(
@@ -886,6 +829,11 @@ export async function transcribeAudio(
   }
 
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
+  // Saved uploads first capture the spoken languages. A later text step may
+  // translate that transcript, but the audio model must not translate while
+  // it is still trying to identify the words. Live chunks retain their
+  // selected output mode because they are displayed during the call.
+  const audioLanguageMode = options.mode === "live" ? normalizedLanguageMode : "km-en";
   const originalAudioBuffer: Buffer = Buffer.from(await audioFile.arrayBuffer());
   const originalMimeType = audioFile.type || "audio/webm";
   const originalFilename = audioFile.name || "meeting-audio.webm";
@@ -943,17 +891,21 @@ export async function transcribeAudio(
       attempt.audioBuffer,
       attempt.mimeType,
       attempt.filename,
-      normalizedLanguageMode,
+      audioLanguageMode,
       timeoutMs,
       speakerNames,
       options.singleSpeaker ?? false
     );
     cleanedTranscript = chooseMoreCompleteTranscript(cleanedTranscript, attemptTranscript);
-    if (cleanedTranscript.trim() && !isLikelyIncompleteTranscript(cleanedTranscript)) break;
+    if (hasUsableTranscript(cleanedTranscript) && !isLikelyIncompleteTranscript(cleanedTranscript)) break;
   }
 
   if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
   assertUsableSavedTranscript(cleanedTranscript);
+
+  // The default mode is a record of the words actually spoken. A text-only
+  // model cannot check the audio and may silently replace a correct word.
+  if (normalizedLanguageMode === "km-en") return cleanedTranscript;
 
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
@@ -963,7 +915,7 @@ export async function transcribeAudio(
   ).catch(() => cleanedTranscript);
 
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(
-    addSingleSpeakerLabel(cleanTranscriptionText(refinedTranscript), speakerNames),
+    addSingleSpeakerLabel(keepTrustedSpeakerLabels(cleanTranscriptionText(refinedTranscript), speakerNames), speakerNames),
     speakerNames
   );
   const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
@@ -990,7 +942,7 @@ async function transcribeAndCleanAudioBuffer(
     singleSpeaker
   );
   return applyKnownSpeakerLabels(
-    addSingleSpeakerLabel(cleanTranscriptionText(rawTranscript), speakerNames),
+    addSingleSpeakerLabel(keepTrustedSpeakerLabels(cleanTranscriptionText(rawTranscript), speakerNames), speakerNames),
     speakerNames
   );
 }
@@ -1012,7 +964,7 @@ function audioExtensionFromMime(mimeType: string) {
 //
 // Two-minute windows fit within one parallel round for recordings up to
 // about 20 minutes. Use them below only after a severely truncated whole-
-// audio result; longer recordings still need 15-minute windows to finish
+// audio result; longer recordings still need bounded windows to finish
 // within one request's time budget.
 //
 // An earlier attempt at 30-45s (tried before splitAudioIntoChunks' silence-
@@ -1022,7 +974,9 @@ function audioExtensionFromMime(mimeType: string) {
 // cut landing mid-sentence/mid-word loses more than a silence-aware one
 // does). Revisit with fresh live testing if a similar loss shows up again at
 // this much larger size.
-const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 15 * 60;
+// Shorter windows reduce the amount of speech a model can silently skip or
+// replace with repetitive text in one request, especially on multi-hour MP3s.
+const STORED_TRANSCRIPTION_SEGMENT_SECONDS = 4 * 60;
 // Confirmed live against a real 727s recording: per-chunk transcription
 // (OpenRouter multimodal call, sometimes doubled by the empty-result safety-
 // net retry) averages ~60s. At the old concurrency of 4, a 12-minute
@@ -1076,20 +1030,17 @@ export type StoredChunkTranscripts = {
 // safely stored, then transcripts are stitched back in chronological order.
 export async function transcribeStoredTrackRecording(
   audioUrl: string,
-  languageMode: TranscriptionLanguageMode,
+  _languageMode: TranscriptionLanguageMode,
   timeoutMs = 120000,
-  // onIncomplete fires when the time budget ran out before every chunk of a
-  // long recording was transcribed. The text returned in that case is a real
-  // transcript of the parts that finished, just missing the tail - callers
-  // pass this so they can tell the user rather than presenting a silently
-  // truncated transcript as if it were the whole meeting.
+  // onIncomplete fires when a window was skipped or returned too little
+  // speech. The caller must present the assembled text as partial.
   options: {
     speakerNames?: string[];
     singleSpeaker?: boolean;
     onIncomplete?: () => void;
     // Where finished chunks are kept between requests. Everything here has to
     // finish inside one serverless request, and a long meeting cannot: a
-    // 5-hour recording is 20 windows and there is only ever time for a few.
+    // A 5-hour recording has many windows and there is only time for a few.
     // Without somewhere to put the finished ones, every attempt redid the
     // same early windows and stopped in the same place, so the end of a long
     // meeting could never be reached however many times anyone pressed the
@@ -1110,6 +1061,11 @@ export async function transcribeStoredTrackRecording(
   // short clip - skipPrimaryModel avoids the ~60-90s wasted on chirp-3's
   // confirmed rejection of longer English audio before falling back.
   const speakerNames = normalizeSpeakerNames(options.speakerNames ?? []);
+  // First write down what was spoken, in its original language. Translation
+  // happens once after the audio-grounded transcript has been assembled.
+  // Cached windows therefore contain source speech regardless of the output
+  // language selected for a later pass.
+  const audioLanguageMode: TranscriptionLanguageMode = "km-en";
   const transcribeOptions: TranscriptionOptions = {
     mode: "live",
     timeoutMs,
@@ -1146,7 +1102,9 @@ export async function transcribeStoredTrackRecording(
   // multi-hour file is minutes of a request that only has a few. Long
   // recordings go straight to the chunked path, which is the only thing that
   // was ever going to finish them.
-  const wholeAudioMaxSeconds = 45 * 60;
+  // For longer recordings, bounded windows make it possible to verify that
+  // each stretch produced speech instead of trusting one fluent partial reply.
+  const wholeAudioMaxSeconds = STORED_TRANSCRIPTION_SEGMENT_SECONDS;
   const skipWholeAudio = Boolean(options.durationSeconds && options.durationSeconds > wholeAudioMaxSeconds);
   const wholeAudioTimeoutMs = skipWholeAudio
     ? 0
@@ -1172,7 +1130,7 @@ export async function transcribeStoredTrackRecording(
             Buffer.from(wholeAudio),
             "audio/mp4",
             "complete-recording.m4a",
-            languageMode,
+            audioLanguageMode,
             wholeAudioTimeoutMs,
             speakerNames,
             options.singleSpeaker ?? true
@@ -1195,7 +1153,7 @@ export async function transcribeStoredTrackRecording(
               Buffer.from(wholeAudio),
               "audio/mp4",
               "complete-recording.m4a",
-              languageMode,
+              audioLanguageMode,
               Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, retryTimeoutMs),
               speakerNames,
               options.singleSpeaker ?? true
@@ -1273,11 +1231,11 @@ export async function transcribeStoredTrackRecording(
   // A short recording that yielded only a tiny fraction of expected speech
   // must be retried in genuinely smaller windows. Re-sending the same 7- or
   // 20-minute file as a single "chunk" repeats the truncation failure.
-  // Keep 15-minute windows for longer meetings so they still fit one server
+  // Keep four-minute windows for longer meetings so they still fit one server
   // request's time budget.
   const knownDuration = wholeAudioAttempt.durationSeconds ?? options.durationSeconds;
   const fallbackSegmentSeconds =
-    knownDuration && knownDuration <= 20 * 60 && looksSeverelyTruncated(wholeTranscript, knownDuration)
+    knownDuration && knownDuration <= 20 * 60
       ? 2 * 60
       : STORED_TRANSCRIPTION_SEGMENT_SECONDS;
   const split = await splitAudioIntoChunks(
@@ -1302,9 +1260,12 @@ export async function transcribeStoredTrackRecording(
   const completed = new Array<boolean>(chunks.length).fill(false);
   for (const [key, text] of Object.entries(alreadyDone)) {
     const index = Number(key);
-    if (Number.isInteger(index) && index >= 0 && index < chunks.length && text.trim()) {
-      transcripts[index] = text;
-      completed[index] = true;
+    const trustedText = keepTrustedSpeakerLabels(text, speakerNames);
+    if (Number.isInteger(index) && index >= 0 && index < chunks.length && hasUsableTranscript(trustedText)) {
+      transcripts[index] = trustedText;
+      // An older pass may have saved only the first few words of this
+      // window. Keep those words visible, but listen to the audio again.
+      completed[index] = !looksSeverelyTruncated(trustedText, chunks[index].durationSeconds);
     }
   }
   const queue = chunks.map((chunk, index) => ({ chunk, index })).filter((entry) => !completed[entry.index]);
@@ -1331,12 +1292,12 @@ export async function transcribeStoredTrackRecording(
         chunks.length === 1 ? `recording.${chunkSourceExt}` : `recording-part-${String(next.index + 1).padStart(3, "0")}.${chunkSourceExt}`,
         { type: chunkSourceMimeType }
       );
-      // Cap sized for STORED_TRANSCRIPTION_SEGMENT_SECONDS (15 min chunks,
-      // not 15s) - a much longer chunk needs more than 90s to transcribe.
+      // Cap sized for STORED_TRANSCRIPTION_SEGMENT_SECONDS (4 min chunks,
+      // not 4s) - a much longer chunk needs more than 90s to transcribe.
       // Workers run in parallel, so a long meeting does not need one timeout
       // period per chunk.
       const chunkTimeoutMs = Math.max(8000, Math.min(150000, remainingMs));
-      let transcript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
+      let transcript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
         ...transcribeOptions,
         timeoutMs: chunkTimeoutMs
       }).catch(() => "");
@@ -1354,7 +1315,7 @@ export async function transcribeStoredTrackRecording(
               Buffer.from(preparedAudio),
               "audio/mp4",
               `recording-part-${String(next.index + 1).padStart(3, "0")}-speech.m4a`,
-              languageMode,
+              audioLanguageMode,
               Math.min(45000, retryRemainingMs),
               speakerNames,
               options.singleSpeaker ?? true
@@ -1373,7 +1334,7 @@ export async function transcribeStoredTrackRecording(
         // accept generic Speaker N labels rather than losing the chunk.
         const noNameRemainingMs = deadline - Date.now();
         if (noNameRemainingMs >= 12000) {
-          transcript = await transcribeAudio(chunkFile, [], languageMode, {
+          transcript = await transcribeAudio(chunkFile, [], audioLanguageMode, {
             ...transcribeOptions,
             timeoutMs: Math.max(8000, Math.min(90000, noNameRemainingMs))
           }).catch(() => "");
@@ -1385,7 +1346,7 @@ export async function transcribeStoredTrackRecording(
       // through and the rest of those minutes is simply gone - and because it
       // happens mid-recording rather than at the end, the transcript still
       // reads as if it were complete. Confirmed as a real failure shape on
-      // the whole-audio path (see looksSeverelyTruncated); a 15-minute window
+      // the whole-audio path (see looksSeverelyTruncated); a four-minute window
       // is long audio too, so it is exposed to exactly the same thing.
       for (
         let attempt = 2;
@@ -1396,7 +1357,7 @@ export async function transcribeStoredTrackRecording(
       ) {
         const truncationRetryMs = deadline - Date.now();
         if (truncationRetryMs < 15000) break;
-        const retryTranscript = await transcribeAudio(chunkFile, speakerNames, languageMode, {
+        const retryTranscript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
           ...transcribeOptions,
           timeoutMs: Math.max(8000, Math.min(150000, truncationRetryMs))
         }).catch(() => "");
@@ -1418,20 +1379,22 @@ export async function transcribeStoredTrackRecording(
       // long recording does not leave twenty copies of itself in the
       // function's temporary storage while it works through them.
       await rm(next.chunk.path, { force: true }).catch(() => undefined);
-      transcripts[next.index] = chunkTranscriptText;
-      // A window counts as done only if it actually produced speech. An empty
-      // result means the provider failed on it or gave up, and calling that
-      // "done" is how whole stretches of a meeting used to disappear in
-      // silence: the window was marked finished, no text was kept, and
-      // nothing was reported. Left unfinished it is both reported now and
-      // picked up again by the next pass.
+      // A window counts as done only if it produced enough speech for its
+      // duration. Empty or implausibly short output stays partial and is
+      // picked up again from the saved audio on the next pass.
       const windowHasSpeech = hasUsableTranscript(chunkTranscriptText);
-      completed[next.index] = windowHasSpeech;
+      const windowIsComplete = windowHasSpeech && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds);
+      const earlierText = transcripts[next.index];
+      const bestText = windowHasSpeech && (windowIsComplete || chunkTranscriptText.length > earlierText.length)
+        ? chunkTranscriptText
+        : earlierText;
+      transcripts[next.index] = bestText;
+      completed[next.index] = windowIsComplete;
       // Written down the moment it succeeds, not at the end: the request can
       // be cut off at any point, and a window not recorded here has to be
       // paid for all over again next time.
-      if (options.chunkStore && windowHasSpeech) {
-        await options.chunkStore.save(next.index, chunks.length, chunkTranscriptText).catch(() => undefined);
+      if (options.chunkStore && bestText && bestText !== earlierText) {
+        await options.chunkStore.save(next.index, chunks.length, bestText).catch(() => undefined);
       }
     }
   }
@@ -1462,14 +1425,11 @@ export async function transcribeStoredTrackRecording(
   }
   if (completed.some((done) => !done)) {
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
-    const best = wholeAudioAttempt.looksIncomplete && hasUsableTranscript(chunkTranscript)
-      ? chunkTranscript
-      : chooseMoreCompleteTranscript(wholeAudioTranscript, chunkTranscript);
-    // Only really incomplete if the chunked (partial) run is what we're
-    // returning - when the whole-audio attempt succeeded and won, it covers
-    // the entire recording regardless of how many chunks finished.
-    if (best !== wholeAudioTranscript) options.onIncomplete?.();
-    return best;
+    if (hasUsableTranscript(wholeAudioTranscript) && !wholeAudioAttempt.looksIncomplete) {
+      return wholeAudioTranscript;
+    }
+    options.onIncomplete?.();
+    return hasUsableTranscript(chunkTranscript) ? chunkTranscript : wholeAudioTranscript;
   }
 
   if (wholeAudioAttempt.looksIncomplete) {
@@ -1543,43 +1503,16 @@ export async function refineSavedTranscript(
   timeoutMs = 55000
 ) {
   const normalizedLanguageMode = normalizeTranscriptionLanguageMode(languageMode);
-  let cleanedTranscript = cleanTranscriptionText(transcript);
+  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
+  const cleanedTranscript = keepTrustedSpeakerLabels(cleanTranscriptionText(transcript), normalizedSpeakerNames);
   if (!hasUsableTranscript(cleanedTranscript)) return cleanedTranscript;
 
-  const deadline = Date.now() + Math.max(1000, timeoutMs);
-  const normalizedSpeakerNames = normalizeSpeakerNames(speakerNames);
-  // Trigger on any remaining generic "Speaker N:" label, not just "no names
-  // known at all" - a call where every other participant already has a real
-  // registered name but one joined without typing theirs (see
-  // createSegmentSpeakerLabelResolver) still leaves that one speaker on a
-  // generic label needing this fallback, even though normalizedSpeakerNames
-  // is non-empty overall. detectSelfIntroducedSpeakerNames only ever touches
-  // labels matching this exact shape, so this is a cheap, safe pre-check -
-  // it also means calling it below never wastes an AI call on a transcript
-  // that has nothing left to relabel.
-  // Substituted directly into the transcript text below rather than routed
-  // through the positional "known speaker names" hint mechanism used for
-  // typed-in/LiveKit-join names - detection is commonly partial (e.g. a
-  // facilitator who only asks questions never states their own name), and
-  // that positional mechanism has no way to represent "leave this one
-  // generic". Direct substitution handles a partial map safely: an
-  // unintroduced speaker just keeps their generic "Speaker N:" label
-  // instead of being forced onto a name that was never theirs.
-  const hasGenericSpeakerLabel = /^\s*Speaker\s+\d+\s*:/im.test(cleanedTranscript);
-  if (hasGenericSpeakerLabel) {
-    const looksLikeSelfIntroduction = /ខ្ញុំ\s*(?:ឈ្មោះ|ជា)|my name is|i\s*'?am\b|i'm\b/i.test(cleanedTranscript);
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      const detectionBudget = Math.min(20000, deadline - Date.now() - 5000);
-      if (detectionBudget < 5000) break;
-      const detected = await detectSelfIntroducedSpeakerNames(cleanedTranscript, detectionBudget).catch(() => ({}));
-      if (Object.keys(detected).length) {
-        cleanedTranscript = substituteDetectedSpeakerLabels(cleanedTranscript, detected);
-        break;
-      }
-      if (attempt === 1 && !looksLikeSelfIntroduction) break;
-    }
-  }
+  // In the original-language mode the audio-grounded words are the source
+  // of truth. Keep deterministic spacing and digit cleanup, but do not let
+  // a text-only proofreader rewrite speech it cannot hear.
+  if (normalizedLanguageMode === "km-en") return cleanedTranscript;
 
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
   const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
 
   const refinedChunks = await Promise.all(
@@ -1594,8 +1527,12 @@ export async function refineSavedTranscript(
   );
   const refinedTranscript = refinedChunks.join("\n");
 
-  const labeledTranscript = applyKnownSpeakerLabels(cleanedTranscript, normalizedSpeakerNames);
-  const cleanedRefinedTranscript = applyKnownSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames);
+  const labeledTranscript = applyKnownSpeakerLabels(
+    keepTrustedSpeakerLabels(cleanedTranscript, normalizedSpeakerNames), normalizedSpeakerNames
+  );
+  const cleanedRefinedTranscript = applyKnownSpeakerLabels(
+    keepTrustedSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames), normalizedSpeakerNames
+  );
   return chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
 }
 
@@ -1700,7 +1637,7 @@ function chooseBetterSavedTranscript(
   refinedTranscript: string,
   languageMode: TranscriptionLanguageMode
 ) {
-  if (!refinedTranscript.trim()) return rawTranscript;
+  if (!hasUsableTranscript(refinedTranscript)) return rawTranscript;
   if (isLikelyIncompleteTranscript(refinedTranscript)) return rawTranscript;
 
   const rawScore = transcriptTokenScore(rawTranscript);
@@ -1744,8 +1681,8 @@ function chooseMoreCompleteTranscript(
   currentTranscript: string,
   candidateTranscript: string
 ) {
-  if (!candidateTranscript.trim() || isLikelyIncompleteTranscript(candidateTranscript)) return currentTranscript;
-  if (!currentTranscript.trim() || isLikelyIncompleteTranscript(currentTranscript)) return candidateTranscript;
+  if (!hasUsableTranscript(candidateTranscript) || isLikelyIncompleteTranscript(candidateTranscript)) return currentTranscript;
+  if (!hasUsableTranscript(currentTranscript) || isLikelyIncompleteTranscript(currentTranscript)) return candidateTranscript;
   // Repeated listens to the same audio can add fluent words that were never
   // spoken. Length, extra turns, and extra English words are not evidence of
   // accuracy. Keep the first usable result unless it is actually incomplete.
@@ -1753,7 +1690,7 @@ function chooseMoreCompleteTranscript(
 }
 
 function assertUsableSavedTranscript(transcript: string) {
-  if (!isLikelyIncompleteTranscript(transcript)) return;
+  if (hasUsableTranscript(transcript) && !isLikelyIncompleteTranscript(transcript)) return;
   throw new Error(
     "No clear speech text was detected. Please check the audio, microphone, selected language, or OpenRouter credits/key, then try again."
   );
