@@ -1038,6 +1038,7 @@ export async function transcribeStoredTrackRecording(
     speakerNames?: string[];
     singleSpeaker?: boolean;
     onIncomplete?: () => void;
+    onSilentWindow?: (durationSeconds: number) => void;
     // Where finished chunks are kept between requests. Everything here has to
     // finish inside one serverless request, and a long meeting cannot: a
     // A 5-hour recording has many windows and there is only time for a few.
@@ -1072,7 +1073,7 @@ export async function transcribeStoredTrackRecording(
     singleSpeaker: options.singleSpeaker ?? true,
     skipPrimaryModel: true
   };
-  const { compressWholeAudioForTranscription, splitAudioIntoChunks } = await import("@/lib/ffmpeg");
+  const { compressWholeAudioForTranscription, splitAudioIntoChunks, isAudioWindowSilent } = await import("@/lib/ffmpeg");
   // Deliberately reassignable: on a multi-hour recording this is hundreds of
   // megabytes, and it is dead weight the moment the audio has been cut into
   // windows. Measured on a real 5-hour, 289 MB recording: holding the source
@@ -1260,8 +1261,23 @@ export async function transcribeStoredTrackRecording(
   const completed = new Array<boolean>(chunks.length).fill(false);
   for (const [key, text] of Object.entries(alreadyDone)) {
     const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= chunks.length) continue;
+    // An empty saved row means this window was confirmed silent on an earlier
+    // pass. Old versions could save invented text for silence, so verify any
+    // cached words against the actual audio before trusting them again.
+    if (text === "") {
+      completed[index] = true;
+      options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
+      continue;
+    }
+    if (await isAudioWindowSilent(chunks[index].path, chunks[index].durationSeconds)) {
+      completed[index] = true;
+      options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
+      await options.chunkStore?.save(index, chunks.length, "").catch(() => undefined);
+      continue;
+    }
     const trustedText = keepTrustedSpeakerLabels(text, speakerNames);
-    if (Number.isInteger(index) && index >= 0 && index < chunks.length && hasUsableTranscript(trustedText)) {
+    if (hasUsableTranscript(trustedText)) {
       transcripts[index] = trustedText;
       // An older pass may have saved only the first few words of this
       // window. Keep those words visible, but listen to the audio again.
@@ -1280,7 +1296,16 @@ export async function transcribeStoredTrackRecording(
       if (!next) return;
 
       const remainingMs = deadline - Date.now();
-      if (remainingMs < 8000) return;
+      if (remainingMs < 20000) return;
+
+      if (await isAudioWindowSilent(next.chunk.path, next.chunk.durationSeconds)) {
+        completed[next.index] = true;
+        transcripts[next.index] = "";
+        options.onSilentWindow?.(next.chunk.durationSeconds ?? 0);
+        await options.chunkStore?.save(next.index, chunks.length, "").catch(() => undefined);
+        await rm(next.chunk.path, { force: true }).catch(() => undefined);
+        continue;
+      }
 
       // Read only while this window is being worked on. Holding every window
       // in memory at once is what put a 5-hour recording over the function's
@@ -1296,30 +1321,34 @@ export async function transcribeStoredTrackRecording(
       // not 4s) - a much longer chunk needs more than 90s to transcribe.
       // Workers run in parallel, so a long meeting does not need one timeout
       // period per chunk.
-      const chunkTimeoutMs = Math.max(8000, Math.min(150000, remainingMs));
+      const chunkTimeoutMs = Math.min(150000, remainingMs - 5000);
       let transcript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
         ...transcribeOptions,
         timeoutMs: chunkTimeoutMs
       }).catch(() => "");
       if (!hasUsableTranscript(transcript)) {
         const retryRemainingMs = deadline - Date.now();
-        if (retryRemainingMs >= 15000) {
+        if (retryRemainingMs >= 35000) {
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
           const preparedAudio = await prepareAudioForTranscription(
             Buffer.from(chunkBytes),
             chunkSourceExt,
-            openRouterAudioLimit
+            openRouterAudioLimit,
+            Math.min(15000, retryRemainingMs - 20000)
           ).catch(() => null);
           if (preparedAudio) {
-            transcript = await transcribeAndCleanAudioBuffer(
-              Buffer.from(preparedAudio),
-              "audio/mp4",
-              `recording-part-${String(next.index + 1).padStart(3, "0")}-speech.m4a`,
-              audioLanguageMode,
-              Math.min(45000, retryRemainingMs),
-              speakerNames,
-              options.singleSpeaker ?? true
-            ).catch(() => "");
+            const enhancedRemainingMs = deadline - Date.now() - 5000;
+            if (enhancedRemainingMs >= 8000) {
+              transcript = await transcribeAndCleanAudioBuffer(
+                Buffer.from(preparedAudio),
+                "audio/mp4",
+                `recording-part-${String(next.index + 1).padStart(3, "0")}-speech.m4a`,
+                audioLanguageMode,
+                Math.min(45000, enhancedRemainingMs),
+                speakerNames,
+                options.singleSpeaker ?? true
+              ).catch(() => "");
+            }
           }
         }
       }
@@ -1333,10 +1362,10 @@ export async function transcribeStoredTrackRecording(
         // recover from this. Last resort: drop the name hint entirely and
         // accept generic Speaker N labels rather than losing the chunk.
         const noNameRemainingMs = deadline - Date.now();
-        if (noNameRemainingMs >= 12000) {
+        if (noNameRemainingMs >= 20000) {
           transcript = await transcribeAudio(chunkFile, [], audioLanguageMode, {
             ...transcribeOptions,
-            timeoutMs: Math.max(8000, Math.min(90000, noNameRemainingMs))
+            timeoutMs: Math.min(90000, noNameRemainingMs - 5000)
           }).catch(() => "");
         }
       }
@@ -1356,10 +1385,10 @@ export async function transcribeStoredTrackRecording(
         attempt += 1
       ) {
         const truncationRetryMs = deadline - Date.now();
-        if (truncationRetryMs < 15000) break;
+        if (truncationRetryMs < 20000) break;
         const retryTranscript = await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
           ...transcribeOptions,
-          timeoutMs: Math.max(8000, Math.min(150000, truncationRetryMs))
+          timeoutMs: Math.min(150000, truncationRetryMs - 5000)
         }).catch(() => "");
         // Keep the longest usable attempt rather than whichever came last:
         // a shorter retry must never be allowed to throw away text an

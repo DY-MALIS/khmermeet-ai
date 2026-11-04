@@ -297,6 +297,28 @@ export async function splitAudioIntoChunks(
   }
 }
 
+// A saved window with no audible signal must never be sent to the speech
+// model: it can invent words for silence. Require near-total silence at a
+// conservative -45 dB threshold so quiet but real speech remains eligible.
+export async function isAudioWindowSilent(inputPath: string, durationSeconds: number | null): Promise<boolean> {
+  if (!ffmpegPath || !durationSeconds || durationSeconds < 2) return false;
+  await ensureFfmpegExecutable();
+  try {
+    const { stderr } = await execFileAsync(
+      ffmpegPath,
+      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-45dB:d=1", "-f", "null", "-"],
+      { timeout: 20000, maxBuffer: 2 * 1024 * 1024 }
+    );
+    const starts = [...stderr.matchAll(/silence_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+    const ends = [...stderr.matchAll(/silence_end:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+    const silentSeconds = starts.reduce((sum, start, index) =>
+      sum + Math.max(0, Math.min(durationSeconds, ends[index] ?? durationSeconds) - start), 0);
+    return silentSeconds >= durationSeconds - Math.min(2, durationSeconds * 0.01);
+  } catch {
+    return false;
+  }
+}
+
 // Re-encodes one complete recording to a speech-optimized mono M4A without
 // cutting or removing any time range. This keeps sentence and speaker-turn
 // context intact while fitting providers that cap a single audio request by
@@ -396,9 +418,10 @@ export async function compressWholeAudioForTranscription(
 export async function prepareAudioForTranscription(
   buffer: Buffer,
   ext: string,
-  maxBytes: number
+  maxBytes: number,
+  timeoutMs = 90000
 ): Promise<Buffer> {
-  const variant = await prepareAudioVariantForTranscription(buffer, ext, maxBytes, 0);
+  const variant = await prepareAudioVariantForTranscription(buffer, ext, maxBytes, 0, timeoutMs);
   return variant?.buffer ?? buffer;
 }
 
@@ -422,7 +445,8 @@ export async function prepareAudioVariantForTranscription(
   buffer: Buffer,
   ext: string,
   maxBytes: number,
-  index: number
+  index: number,
+  timeoutMs = 90000
 ): Promise<{ buffer: Buffer; mimeType: string; filename: string } | null> {
   const variant = transcriptionVariants[index];
   if (!ffmpegPath || !variant) return null;
@@ -450,7 +474,7 @@ export async function prepareAudioVariantForTranscription(
         "-movflags", "+faststart",
         outputPath
       ],
-      { timeout: 90000, maxBuffer: 2 * 1024 * 1024 }
+      { timeout: timeoutMs, maxBuffer: 2 * 1024 * 1024 }
     );
     const output = await readFile(/* turbopackIgnore: true */ outputPath);
     if (output.length >= 1000 && output.length <= maxBytes) {

@@ -14,6 +14,7 @@ import {
 } from "@/lib/storage";
 import type { StoredChunkTranscripts } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { assembleSavedAudioChunks } from "@/lib/transcript-progress";
 import { checkOpenRouterKeyStatus } from "@/lib/ai/openrouter";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -29,6 +30,7 @@ const MINIMUM_ATTEMPT_MS = 12000;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const workDeadline = Date.now() + WORK_DEADLINE_MS;
+  let authorizedMeetingId = "";
   try {
     const user = await requireUser();
     const limited = await rateLimitResponse(user.id, "ai-transcribe");
@@ -46,6 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!meeting) {
       return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     }
+    authorizedMeetingId = id;
 
     if (!meeting.audioUrl && !meeting.transcriptSegments.length) {
       return NextResponse.json({ error: "No audio file found for this meeting." }, { status: 400 });
@@ -113,6 +116,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // transcript below is real but incomplete, so the response has to say so
     // instead of presenting it as the whole meeting.
     let incompleteLongRecording = false;
+    let silentAudioSeconds = 0;
     let transcriptSpeakerNames = speakerNames;
     // Resolves each segment's label once here at assembly time: the real
     // registered name, or - for a participant who joined without typing one
@@ -151,7 +155,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
-          }
+          },
+          onSilentWindow: (seconds) => { silentAudioSeconds += seconds; }
         }),
         workDeadline - REFINE_RESERVE_MS
       );
@@ -223,7 +228,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
-          }
+          },
+          onSilentWindow: (seconds) => { silentAudioSeconds += seconds; }
         }),
         workDeadline - REFINE_RESERVE_MS
       );
@@ -248,7 +254,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           chunkStore: meetingChunkStore(id),
           onIncomplete: () => {
             incompleteLongRecording = true;
-          }
+          },
+          onSilentWindow: (seconds) => { silentAudioSeconds += seconds; }
         }),
         workDeadline - REFINE_RESERVE_MS
       ).catch(() => rawTranscript);
@@ -263,8 +270,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const transcript = !incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
       : rawTranscript;
+    const silenceNotice = silentAudioSeconds >= 30
+      ? ` The saved recording contains about ${Math.round(Math.min(silentAudioSeconds, meeting.duration || silentAudioSeconds) / 60)} minutes of silence; there are no spoken words to recover from those parts.`
+      : "";
 
     if (!hasUsableTranscript(transcript)) {
+      if (meeting.duration > 0 && silentAudioSeconds >= meeting.duration * 0.95) {
+        return NextResponse.json({
+          code: "NO_AUDIBLE_SPEECH",
+          error: "The saved recording is nearly silent. There are no spoken words to transcribe. Check the original recording or microphone source."
+        }, { status: 422 });
+      }
       // Deliberately no longer leads with "check your microphone / credits":
       // the audio is already saved and was recorded fine, and the common
       // cause is the model simply returning nothing on this attempt - which
@@ -361,24 +377,56 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     if (incompleteLongRecording) {
+      const progress = await savedChunkProgress(id);
       return NextResponse.json({
+        ...progress,
         transcript,
         partial: true,
         message:
-          languageMode === "km-en"
+          (languageMode === "km-en"
             ? "Part of this recording did not transcribe completely. The audio is saved in full. Press Re-transcribe audio again to retry only the unfinished parts. The text shown so far may still be incomplete."
-            : "Part of this recording did not transcribe completely. The words shown so far are in the languages originally spoken. Translation will run after the remaining audio is processed. Press Re-transcribe audio again to continue."
+            : "Part of this recording did not transcribe completely. The words shown so far are in the languages originally spoken. Translation will run after the remaining audio is processed. Press Re-transcribe audio again to continue.")
+          + silenceNotice
       });
     }
 
-    return NextResponse.json({ transcript });
+    return NextResponse.json({
+      transcript,
+      ...(silentAudioSeconds >= 30 ? {
+        message: `${silenceNotice.trim()} The transcript covers audible speech only; check the recording if you expected speech during that time.`
+      } : {})
+    });
   } catch (error) {
+    if (authorizedMeetingId && error instanceof Error && error.message.toLowerCase().includes("timed out")) {
+      const progress = await savedChunkProgress(authorizedMeetingId).catch(() => null);
+      if (progress && hasUsableTranscript(progress.transcript)) {
+        await prisma.meeting.update({
+          where: { id: authorizedMeetingId },
+          data: { transcript: progress.transcript, summary: null, status: "transcribed" }
+        }).catch(() => undefined);
+        revalidatePath(`/meetings/${authorizedMeetingId}`);
+        revalidatePath("/transcripts");
+        return NextResponse.json({
+          ...progress,
+          partial: true,
+          message: `Processed ${progress.savedChunks} of ${progress.totalChunks} audio parts. Some parts may still be incomplete; continue transcription to retry them.`
+        });
+      }
+    }
     const publicError = publicAiTranscriptionError(error);
     return NextResponse.json(
       { error: publicError.message },
       { status: publicError.status }
     );
   }
+}
+
+async function savedChunkProgress(meetingId: string) {
+  const rows = await prisma.meetingAudioChunk.findMany({
+    where: { meetingId },
+    select: { chunkIndex: true, totalChunks: true, text: true }
+  });
+  return assembleSavedAudioChunks(rows);
 }
 
 // Keeps finished windows of a long recording between requests, so pressing

@@ -64,6 +64,7 @@ export function TranscribeAudioButton({
       let nextTranscript = "";
       let stillPartial = false;
       let partialMessage = "";
+      let completeMessage = "";
       let retriedEmptyTranscript = false;
       for (;;) {
         const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
@@ -84,6 +85,7 @@ export function TranscribeAudioButton({
         }
         onTranscribed?.(nextTranscript);
         if (!data.partial) {
+          completeMessage = data.message ?? "";
           stillPartial = false;
           break;
         }
@@ -107,6 +109,8 @@ export function TranscribeAudioButton({
       setMessage(
         stillPartial
           ? partialMessage || t("ផ្នែកខ្លះនៃការថតនេះមិនទាន់បានបំលែងជាអក្សរ។ សំឡេងទាំងមូលត្រូវបានរក្សាទុក។ សូមចុចបំលែងសំឡេងម្ដងទៀតដើម្បីបន្ត។", "Some of this recording is still not transcribed. The audio is saved in full. Click Re-transcribe audio again to continue.")
+          : completeMessage
+            ? completeMessage
           : hasTranscript
             ? t("បានជំនួសអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcript replaced below. Refreshing meeting data...")
             : t("បានរក្សាទុកអត្ថបទប្រជុំ។ កំពុងផ្ទុកទិន្នន័យឡើងវិញ...", "Transcription saved below. Refreshing meeting data...")
