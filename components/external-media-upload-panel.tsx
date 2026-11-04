@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useUiText } from "@/components/localized-text";
 import { isStorageFileTooLarge, uploadMediaDirect } from "@/lib/client/direct-upload";
 import { readJsonResponse } from "@/lib/read-json-response";
+import { AUDIO_PART_BYTES } from "@/lib/chunked-audio";
 
 type LanguageMode = "km" | "en" | "km-en";
 
@@ -73,7 +74,9 @@ export function ExternalMediaUploadPanel() {
 
     try {
       const duration = await getMediaDuration(file);
-      const audioUrl = await uploadMediaDirect(file);
+      const audioUrl = await uploadMediaDirect(file, (current, total) => {
+        setStatus(text.uploadingPart.replace("{current}", String(current)).replace("{total}", String(total)));
+      });
 
       setStatus(text.savingMeetingRecord);
       const meetingResponse = await fetch("/api/meetings", {
@@ -94,7 +97,8 @@ export function ExternalMediaUploadPanel() {
 
       setWarning("");
       setStatus(text.uploadOpeningMeeting);
-      router.push(`/meetings/${meetingJson.id}?transcribe=1#transcript`);
+      const transcribeLater = file.size > AUDIO_PART_BYTES || duration > 45 * 60;
+      router.push(`/meetings/${meetingJson.id}${transcribeLater ? "" : "?transcribe=1"}#transcript`);
       router.refresh();
     } catch (uploadError) {
       setStatus("");

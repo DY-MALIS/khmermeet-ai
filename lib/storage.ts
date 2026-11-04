@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { rm, unlink } from "fs/promises";
 import path from "path";
+import { createHmac, timingSafeEqual } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
   detectSelfIntroducedSpeakerNames,
@@ -9,6 +10,16 @@ import {
   transcribeOpenRouterAudioViaChat
 } from "@/lib/ai/openrouter";
 import { prisma } from "@/lib/prisma";
+import {
+  AUDIO_PART_BYTES,
+  MAX_AUDIO_RESPONSE_BYTES,
+  audioPartCount,
+  audioPartPath,
+  audioPartSize,
+  isChunkManifestPath,
+  parseChunkedAudioManifest,
+  type ChunkedAudioManifest
+} from "@/lib/chunked-audio";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript } from "@/lib/transcript-quality";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -491,7 +502,7 @@ export async function loadStoredAudioBytes(audioUrl: string): Promise<{ bytes: B
       .map(decodeURIComponent)
       .join("/");
     const downloaded = await downloadSupabaseAudio(objectPath);
-    return { bytes: Buffer.from(downloaded.data), mimeType: downloaded.mimeType };
+    return { bytes: downloaded.data, mimeType: downloaded.mimeType };
   }
 
   if (/^https?:\/\//i.test(normalizedUrl)) {
@@ -542,6 +553,14 @@ export async function loadStoredAudioAsFile(audioUrl: string) {
   throw new Error("Unsupported audio storage path.");
 }
 
+export async function getStoredAudioSize(audioUrl: string) {
+  if (audioUrl.startsWith("/api/storage/")) {
+    const objectPath = audioUrl.replace(/^\/api\/storage\//, "").split("/").map(decodeURIComponent).join("/");
+    if (isChunkManifestPath(objectPath)) return (await getChunkedAudioManifest(objectPath)).size;
+  }
+  return (await loadStoredAudioAsFile(audioUrl)).size;
+}
+
 export async function deleteStoredAudio(audioUrl: string | null | undefined) {
   const normalizedUrl = audioUrl?.trim();
   if (!normalizedUrl) return;
@@ -562,7 +581,12 @@ export async function deleteStoredAudio(audioUrl: string | null | undefined) {
       .split("/")
       .map(decodeURIComponent)
       .join("/");
-    await storage.client.storage.from(storage.bucket).remove([objectPath]);
+    const manifest = isChunkManifestPath(objectPath) ? await getChunkedAudioManifest(objectPath).catch(() => null) : null;
+    const paths = manifest
+      ? [...Array(audioPartCount(manifest.size))].map((_, index) => audioPartPath(objectPath, index))
+      : [];
+    const { error } = await storage.client.storage.from(storage.bucket).remove([...paths, objectPath]);
+    if (error) throw new Error(error.message);
   }
 }
 
@@ -638,6 +662,20 @@ export async function downloadSupabaseAudio(objectPath: string) {
   const storage = supabaseStorageClient();
   if (!storage) throw new Error("Supabase Storage is not configured.");
 
+  if (isChunkManifestPath(objectPath)) {
+    const manifest = await getChunkedAudioManifest(objectPath);
+    const bytes = Buffer.allocUnsafe(manifest.size);
+    for (let index = 0; index < audioPartCount(manifest.size); index += 1) {
+      const partPath = audioPartPath(objectPath, index);
+      const { data, error } = await storage.client.storage.from(storage.bucket).download(partPath);
+      if (error || !data) throw new Error(error?.message || `Missing audio part ${index + 1}.`);
+      const part = Buffer.from(await data.arrayBuffer());
+      if (part.length !== audioPartSize(manifest.size, index)) throw new Error(`Audio part ${index + 1} is incomplete.`);
+      part.copy(bytes, index * AUDIO_PART_BYTES);
+    }
+    return { data: bytes, mimeType: manifest.mimeType };
+  }
+
   const { data, error } = await storage.client.storage.from(storage.bucket).download(objectPath);
   if (error || !data) throw new Error(error?.message || "Storage file not found.");
 
@@ -646,6 +684,37 @@ export async function downloadSupabaseAudio(objectPath: string) {
     data: Buffer.from(arrayBuffer),
     mimeType: data.type || contentTypeFromPath(objectPath)
   };
+}
+
+export async function getChunkedAudioManifest(objectPath: string): Promise<ChunkedAudioManifest> {
+  if (!isChunkManifestPath(objectPath)) throw new Error("Invalid chunked audio path.");
+  const storage = supabaseStorageClient();
+  if (!storage) throw new Error("Supabase Storage is not configured.");
+  const { data, error } = await storage.client.storage.from(storage.bucket).download(objectPath);
+  if (error || !data) throw new Error(error?.message || "Chunked audio manifest not found.");
+  return parseChunkedAudioManifest(JSON.parse(await data.text()), objectPath);
+}
+
+export async function readChunkedAudioRange(objectPath: string, start: number, end: number) {
+  if (!isChunkManifestPath(objectPath) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+      start < 0 || end < start || end - start >= MAX_AUDIO_RESPONSE_BYTES) {
+    throw new Error("Invalid chunked audio range.");
+  }
+  const bytes = Buffer.allocUnsafe(end - start + 1);
+  let written = 0;
+  for (let index = Math.floor(start / AUDIO_PART_BYTES); index <= Math.floor(end / AUDIO_PART_BYTES); index += 1) {
+    const partStart = index * AUDIO_PART_BYTES;
+    const from = Math.max(0, start - partStart);
+    const to = Math.min(AUDIO_PART_BYTES - 1, end - partStart);
+    const signedUrl = await createSupabaseSignedUrl(audioPartPath(objectPath, index), 60);
+    const response = await fetch(signedUrl, { headers: { Range: `bytes=${from}-${to}` }, cache: "no-store" });
+    if (response.status !== 206) throw new Error(`Audio part ${index + 1} could not be read.`);
+    const part = Buffer.from(await response.arrayBuffer());
+    if (part.length !== to - from + 1) throw new Error(`Audio part ${index + 1} is incomplete.`);
+    part.copy(bytes, written);
+    written += part.length;
+  }
+  return bytes;
 }
 
 export async function listSupabaseStorageFolder(prefix: string) {
@@ -684,6 +753,55 @@ export async function createSupabaseUploadTicket(filename: string) {
     token: data.token,
     audioUrl: `/api/storage/${objectPath.split("/").map(encodeURIComponent).join("/")}`
   };
+}
+
+export async function createSupabaseChunkedUploadTicket(size: number, mimeType: string) {
+  const config = supabaseStorageConfig();
+  const storage = supabaseStorageClient();
+  if (!config || !storage) return null;
+
+  const count = audioPartCount(size);
+  const manifestPath = `audio/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}/manifest.chunks.json`;
+  const manifest: ChunkedAudioManifest = { kind: "khmermeet-chunked-audio", version: 1, size, mimeType };
+  const parts = await Promise.all([...Array(count)].map(async (_, index) => {
+    const objectPath = audioPartPath(manifestPath, index);
+    const { data, error } = await storage.client.storage.from(storage.bucket).createSignedUploadUrl(objectPath);
+    if (error || !data) throw new Error(error?.message || `Could not prepare audio part ${index + 1}.`);
+    return { objectPath, token: data.token, start: index * AUDIO_PART_BYTES, end: index * AUDIO_PART_BYTES + audioPartSize(size, index) };
+  }));
+  const { error } = await storage.client.storage.from(storage.bucket).upload(
+    manifestPath,
+    Buffer.from(JSON.stringify(manifest)),
+    { contentType: "application/json", upsert: false }
+  );
+  if (error) throw new Error(error.message);
+  return {
+    bucket: storage.bucket,
+    supabaseUrl: config.url,
+    audioUrl: `/api/storage/${manifestPath.split("/").map(encodeURIComponent).join("/")}`,
+    cleanupToken: chunkCleanupToken(manifestPath, config.serviceRoleKey),
+    parts
+  };
+}
+
+function chunkCleanupToken(manifestPath: string, secret: string) {
+  return createHmac("sha256", secret).update(`chunk-cleanup:${manifestPath}`).digest("hex");
+}
+
+export function verifyChunkCleanupToken(audioUrl: unknown, token: unknown) {
+  if (typeof audioUrl !== "string" || typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) return false;
+  if (!audioUrl.startsWith("/api/storage/")) return false;
+  let manifestPath: string;
+  try {
+    manifestPath = audioUrl.slice("/api/storage/".length).split("/").map(decodeURIComponent).join("/");
+  } catch {
+    return false;
+  }
+  if (!isChunkManifestPath(manifestPath)) return false;
+  const config = supabaseStorageConfig();
+  if (!config) return false;
+  const expected = chunkCleanupToken(manifestPath, config.serviceRoleKey);
+  return timingSafeEqual(Buffer.from(token, "hex"), Buffer.from(expected, "hex"));
 }
 
 export async function createSupabaseSignedUrl(objectPath: string, expiresInSeconds = 3600) {

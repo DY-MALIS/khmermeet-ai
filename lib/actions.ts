@@ -160,9 +160,13 @@ export async function deleteTask(formData: FormData) {
 export async function deleteMeeting(formData: FormData) {
   const user = await requireUser();
   const id = formString(formData, "id");
-  const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
+  const meeting = await prisma.meeting.findFirst({
+    where: { id, ...ownerWhere(user) },
+    include: { transcriptSegments: { select: { audioUrl: true } } }
+  });
   if (!meeting) throw new Error("No meeting found.");
   await prisma.meeting.delete({ where: { id } });
-  await deleteStoredAudio(meeting.audioUrl).catch(() => undefined);
+  const audioUrls = new Set([meeting.audioUrl, ...meeting.transcriptSegments.map((segment) => segment.audioUrl)].filter(Boolean));
+  await Promise.all([...audioUrls].map((audioUrl) => deleteStoredAudio(audioUrl).catch(() => undefined)));
   revalidateMeetingViews(id);
 }

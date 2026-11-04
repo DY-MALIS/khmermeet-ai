@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { createSupabaseSignedUrl } from "@/lib/storage";
+import { createSupabaseSignedUrl, getChunkedAudioManifest, readChunkedAudioRange } from "@/lib/storage";
+import { audioResponseRange, isChunkManifestPath } from "@/lib/chunked-audio";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const objectPath = path.map(decodeURIComponent).join("/");
 
@@ -31,6 +32,25 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pat
   }
 
   try {
+    if (isChunkManifestPath(objectPath)) {
+      const manifest = await getChunkedAudioManifest(objectPath);
+      const range = audioResponseRange(request.headers.get("range"), manifest.size);
+      if (!range) {
+        return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${manifest.size}` } });
+      }
+      const length = range.end - range.start + 1;
+      const bytes = await readChunkedAudioRange(objectPath, range.start, range.end);
+      return new Response(new Uint8Array(bytes), {
+        status: 206,
+        headers: {
+          "Accept-Ranges": "bytes",
+          "Content-Range": `bytes ${range.start}-${range.end}/${manifest.size}`,
+          "Content-Length": String(length),
+          "Content-Type": manifest.mimeType,
+          "Cache-Control": "private, no-store"
+        }
+      });
+    }
     const signedUrl = await createSupabaseSignedUrl(objectPath);
     return NextResponse.redirect(signedUrl, { status: 307 });
   } catch (error) {

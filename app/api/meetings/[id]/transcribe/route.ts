@@ -7,7 +7,7 @@ import {
   extractRealSpeakerNamesFromTranscript,
   forceSingleSpeakerLabel,
   isPlaceholderParticipantName,
-  loadStoredAudioAsFile,
+  getStoredAudioSize,
   normalizeTranscriptionLanguageMode,
   refineSavedTranscript,
   sanitizeKnownSpeakerNames,
@@ -137,8 +137,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         ])
       ];
     } else if (shouldUseMixedAudio && meeting.audioUrl) {
-      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-      if (audioFile.size < 1500) {
+      if (await getStoredAudioSize(meeting.audioUrl) < 1500) {
         return NextResponse.json(
           {
             error:
@@ -203,8 +202,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         ])
       ];
     } else if (meeting.audioUrl) {
-      const audioFile = await loadStoredAudioAsFile(meeting.audioUrl);
-      if (audioFile.size < 1500) {
+      if (await getStoredAudioSize(meeting.audioUrl) < 1500) {
         return NextResponse.json(
           {
             error:

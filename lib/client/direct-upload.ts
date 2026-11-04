@@ -8,6 +8,8 @@ type UploadTicket = {
   objectPath?: string;
   token?: string;
   audioUrl?: string;
+  cleanupToken?: string;
+  parts?: Array<{ objectPath: string; token: string; start: number; end: number }>;
   error?: string;
 };
 
@@ -36,7 +38,8 @@ export async function uploadRecordingDirect(
   filename?: string,
   meetingId?: string,
   room?: string,
-  inviteToken?: string
+  inviteToken?: string,
+  onPartUploaded?: (current: number, total: number) => void
 ): Promise<string> {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!anonKey) throw new Error("Direct upload is not configured (missing NEXT_PUBLIC_SUPABASE_ANON_KEY).");
@@ -44,10 +47,11 @@ export async function uploadRecordingDirect(
   const initResponse = await fetch("/api/uploads/direct-init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ext: extensionFor(blob.type, filename), meetingId, room, inviteToken })
+    body: JSON.stringify({ ext: extensionFor(blob.type, filename), size: blob.size, mimeType: blob.type, meetingId, room, inviteToken })
   });
   const ticket = await readJsonResponse<UploadTicket>(initResponse);
-  if (!initResponse.ok || !ticket.token || !ticket.objectPath || !ticket.supabaseUrl || !ticket.bucket || !ticket.audioUrl) {
+  if (!initResponse.ok || !ticket.supabaseUrl || !ticket.bucket || !ticket.audioUrl ||
+      (!ticket.parts?.length && (!ticket.token || !ticket.objectPath))) {
     throw new Error(ticket.error ?? "Could not prepare a direct upload.");
   }
 
@@ -56,6 +60,34 @@ export async function uploadRecordingDirect(
   // actually finishes and needs uploading.
   const { createClient } = await import("@supabase/supabase-js");
   const supabase = createClient(ticket.supabaseUrl, anonKey);
+  if (ticket.parts?.length) {
+    try {
+      for (const [index, part] of ticket.parts.entries()) {
+        if (!part.token || !part.objectPath || part.start < 0 || part.end <= part.start || part.end > blob.size) {
+          throw new Error("Invalid audio upload ticket.");
+        }
+        const { error } = await supabase.storage.from(ticket.bucket).uploadToSignedUrl(
+          part.objectPath,
+          part.token,
+          blob.slice(part.start, part.end),
+          { contentType: "application/octet-stream" }
+        );
+        if (error) throw error;
+        onPartUploaded?.(index + 1, ticket.parts.length);
+      }
+    } catch (error) {
+      if (ticket.cleanupToken) {
+        await fetch("/api/uploads/direct-init", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audioUrl: ticket.audioUrl, cleanupToken: ticket.cleanupToken })
+        }).catch(() => undefined);
+      }
+      throw error;
+    }
+    return ticket.audioUrl;
+  }
+  if (!ticket.objectPath || !ticket.token) throw new Error("Invalid audio upload ticket.");
   const { error } = await supabase.storage.from(ticket.bucket).uploadToSignedUrl(ticket.objectPath, ticket.token, blob, {
     contentType: blob.type || "audio/webm"
   });
@@ -64,6 +96,6 @@ export async function uploadRecordingDirect(
   return ticket.audioUrl;
 }
 
-export async function uploadMediaDirect(file: File): Promise<string> {
-  return uploadRecordingDirect(file, file.name);
+export async function uploadMediaDirect(file: File, onPartUploaded?: (current: number, total: number) => void): Promise<string> {
+  return uploadRecordingDirect(file, file.name, undefined, undefined, undefined, onPartUploaded);
 }
