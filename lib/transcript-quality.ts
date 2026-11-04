@@ -1,7 +1,8 @@
 import { deflateSync } from "node:zlib";
+import { normalizeSpokenKhmerNumbers } from "./transcript-numbers";
 
 export function normalizeTranscriptDigits(text: string) {
-  return text.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
+  return normalizeSpokenKhmerNumbers(text.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit))));
 }
 
 function stripSpeakerLabels(text: string) {
