@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assembleSavedAudioChunks, chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, unpackSavedAudioChunkText } from "./transcript-progress";
+import { assembleSavedAudioChunks, chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unpackSavedAudioChunkText } from "./transcript-progress";
 
 test("timeout recovery returns saved audio windows in recording order", () => {
   assert.deepEqual(assembleSavedAudioChunks([
@@ -77,4 +77,13 @@ test("partial short listens survive a request boundary without losing their orde
   const covered = unpackSavedAudioChunkText(packPartialAudioSubwindows(fallback, [first, middle, { ...last, complete: true }]));
   assert.equal(covered.text, [first.text, middle.text, last.text].join("\n"));
   assert.equal(covered.covered, true);
+});
+
+test("overlapping retry audio keeps new Khmer speech without repeating an exact boundary", () => {
+  const first = "Speaker 1: យើងត្រូវតាមដានរហូតអគ្គគាត់ក្ដៅណាស់";
+  const second = "Speaker 1: អគ្គគាត់ក្ដៅណាស់ណា។ ដាក់ហើយអត់មក";
+  const joined = stitchOverlappingAudioTranscripts(first, second);
+  assert.equal(joined, `${first}\nSpeaker 1: ណា។ ដាក់ហើយអត់មក`);
+  assert.equal(stitchOverlappingAudioTranscripts(first, "Speaker 2: អគ្គគាត់ក្ដៅណាស់ណា។"),
+    `${first}\nSpeaker 2: អគ្គគាត់ក្ដៅណាស់ណា។`);
 });

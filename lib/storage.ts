@@ -21,7 +21,7 @@ import {
 } from "@/lib/chunked-audio";
 import { hasAbbreviatedSpokenNumber, hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
 import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
-import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
+import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -1073,7 +1073,7 @@ export async function transcribeStoredTrackRecording(
     skipPrimaryModel: true,
     formatNumberWords: false
   };
-  const { compressWholeAudioForTranscription, splitAudioIntoChunks, isAudioWindowSilent, estimatedAudibleAudioSeconds } = await import("@/lib/ffmpeg");
+  const { compressWholeAudioForTranscription, splitAudioIntoChunks, splitAudioIntoOverlappingHalves, isAudioWindowSilent, estimatedAudibleAudioSeconds } = await import("@/lib/ffmpeg");
   // Deliberately reassignable: on a multi-hour recording this is hundreds of
   // megabytes, and it is dead weight the moment the audio has been cut into
   // windows. Measured on a real 5-hour, 289 MB recording: holding the source
@@ -1431,8 +1431,8 @@ export async function transcribeStoredTrackRecording(
                   // more paid calls to every window in the recording.
                   if (cached?.text && !cached.complete && budget >= 45000 &&
                     part.durationSeconds && part.durationSeconds > 35) {
-                    const shorter = await splitAudioIntoChunks(
-                      Buffer.from(bytes), chunkSourceExt, openRouterAudioLimit, 30
+                    const shorter = await splitAudioIntoOverlappingHalves(
+                      Buffer.from(bytes), chunkSourceExt
                     ).catch(() => null);
                     if (shorter) {
                       try {
@@ -1447,8 +1447,8 @@ export async function transcribeStoredTrackRecording(
                             if (!pieceBytes) return { text: "", complete: false };
                             const pieceFile = new File(
                               [new Uint8Array(pieceBytes)],
-                              `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}-piece-${pieceIndex + 1}.${chunkSourceExt}`,
-                              { type: chunkSourceMimeType }
+                              `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}-piece-${pieceIndex + 1}.m4a`,
+                              { type: "audio/mp4" }
                             );
                             const result = cleanTranscriptionText(await transcribeAudio(
                               pieceFile, speakerNames, audioLanguageMode,
@@ -1461,7 +1461,9 @@ export async function transcribeStoredTrackRecording(
                                 !looksSeverelyTruncated(result, audible)
                             };
                           }));
-                          const assembled = cleanTranscriptionText(pieces.map((piece) => piece.text).filter(Boolean).join("\n"));
+                          const assembled = cleanTranscriptionText(
+                            stitchOverlappingAudioTranscripts(pieces[0].text, pieces[1].text)
+                          );
                           const complete = pieces.every((piece) => piece.complete) && hasUsableTranscript(assembled);
                           return { text: chooseAudioWindowText(cached.text, assembled, complete), complete };
                         }

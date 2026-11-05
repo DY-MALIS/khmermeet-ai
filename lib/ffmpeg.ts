@@ -296,6 +296,55 @@ export async function splitAudioIntoChunks(
   }
 }
 
+// Retry only an unfinished one-minute listen as two overlapping halves.
+// Ordinary segment cuts can land inside a Khmer word when the recording has
+// no quiet gap nearby. Both halves include the boundary, so the next model
+// call has the missing syllables and context without adding another request.
+export async function splitAudioIntoOverlappingHalves(
+  buffer: Buffer,
+  ext: string,
+  overlapSeconds = 2
+): Promise<SplitAudio | null> {
+  if (!ffmpegPath) return null;
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "khmermeet-overlap-"));
+  const inputPath = path.join(tmpDir, `input.${ext}`);
+  let keepTmpDir = false;
+  try {
+    await writeFile(inputPath, buffer);
+    const duration = await probeDurationSeconds(inputPath).catch(() => null);
+    if (!duration || duration < 35 || duration > 90) return null;
+    const midpoint = duration / 2;
+    const ranges = [
+      { start: 0, length: midpoint + overlapSeconds },
+      { start: midpoint - overlapSeconds, length: duration - midpoint + overlapSeconds }
+    ];
+    const chunks: AudioChunk[] = [];
+    for (let index = 0; index < ranges.length; index += 1) {
+      const range = ranges[index];
+      const outputPath = path.join(tmpDir, `overlap-${index}.m4a`);
+      await execFileAsync(ffmpegPath, [
+        "-y", "-i", inputPath,
+        "-ss", range.start.toFixed(3), "-t", range.length.toFixed(3),
+        "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
+        "-c:a", "aac", "-b:a", "48000", "-movflags", "+faststart",
+        outputPath
+      ], { timeout: 20000, maxBuffer: 2 * 1024 * 1024 });
+      const actualDuration = await probeDurationSeconds(outputPath).catch(() => null);
+      if (!actualDuration || actualDuration < range.length - 1) return null;
+      chunks.push({ path: outputPath, durationSeconds: actualDuration });
+    }
+    await rm(inputPath, { force: true }).catch(() => undefined);
+    keepTmpDir = true;
+    return { chunks, dispose: async () => {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    } };
+  } catch {
+    return null;
+  } finally {
+    if (!keepTmpDir) await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 // A saved window with no audible signal must never be sent to the speech
 // model: it can invent words for silence. A brief utterance anywhere in a
 // long window is still speech, so only skip a window with essentially no

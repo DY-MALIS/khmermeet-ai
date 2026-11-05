@@ -63,6 +63,40 @@ export function chooseAudioWindowText(previous: string, candidate: string, cover
   return previous;
 }
 
+// Two retry clips share a few seconds of audio at their boundary. Remove
+// duplicated text only when the same speaker's ending and beginning match
+// exactly; an uncertain match stays visible instead of deleting real words.
+export function stitchOverlappingAudioTranscripts(first: string, second: string) {
+  const left = first.trim();
+  const right = second.trim();
+  if (!left) return right;
+  if (!right) return left;
+  const lastLine = left.slice(left.lastIndexOf("\n") + 1);
+  const firstLineEnd = right.indexOf("\n");
+  const firstLine = firstLineEnd < 0 ? right : right.slice(0, firstLineEnd);
+  const labelPattern = /^([^:\n]{1,60}):\s*/;
+  const leftLabel = lastLine.match(labelPattern);
+  const rightLabel = firstLine.match(labelPattern);
+  if (leftLabel?.[1] !== rightLabel?.[1]) return `${left}\n${right}`;
+  const leftWords = lastLine.slice(leftLabel?.[0].length ?? 0).trimEnd();
+  const rightWords = firstLine.slice(rightLabel?.[0].length ?? 0).trimStart();
+  let repeatedChars = 0;
+  for (let count = Math.min(160, leftWords.length, rightWords.length); count >= 8; count--) {
+    if (leftWords.endsWith(rightWords.slice(0, count))) {
+      repeatedChars = count;
+      break;
+    }
+  }
+  if (!repeatedChars) return `${left}\n${right}`;
+  const uniqueFirstLine = rightWords.slice(repeatedChars).trimStart();
+  const rest = firstLineEnd < 0 ? "" : right.slice(firstLineEnd + 1).trim();
+  const next = [
+    uniqueFirstLine ? `${rightLabel?.[0] ?? ""}${uniqueFirstLine}` : "",
+    rest
+  ].filter(Boolean).join("\n");
+  return next ? `${left}\n${next}` : left;
+}
+
 export function assembleSavedAudioChunks(chunks: SavedAudioChunk[]) {
   const totalChunks = Math.max(0, ...chunks.map((chunk) => chunk.totalChunks));
   const saved = chunks
