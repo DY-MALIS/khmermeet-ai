@@ -17,6 +17,7 @@ type MeetingTranscriptPanelProps = {
   rawTranscript?: string | null;
   transcriptIsUsable: boolean;
   hasUnfinishedTranscription?: boolean;
+  initialLanguageMode?: "km" | "en" | "km-en";
   reviewRanges?: AudioReviewRange[];
   speakerNames?: string[] | null;
   autoStartTranscription?: boolean;
@@ -51,6 +52,7 @@ export function MeetingTranscriptPanel({
   rawTranscript,
   transcriptIsUsable,
   hasUnfinishedTranscription = false,
+  initialLanguageMode = "km-en",
   reviewRanges = [],
   speakerNames,
   autoStartTranscription = false
@@ -106,7 +108,7 @@ export function MeetingTranscriptPanel({
 
       {hasUnfinishedTranscription ? (
         <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-900" role="status">
-          {t("ការបម្លែងសំឡេងនេះនៅមានផ្នែកមិនទាន់បញ្ចប់។ អត្ថបទដែលមើលឃើញអាចខ្វះពាក្យ។ ចុចបម្លែងសំឡេងឡើងវិញដើម្បីបន្តពីផ្នែកដែលបានរក្សាទុក។", "This recording still has unfinished transcription parts. The visible text may be missing words. Use Re-transcribe audio to continue from the saved progress.")}
+          {t("ការបម្លែងសំឡេងនេះនៅមានផ្នែកមិនទាន់បញ្ចប់។ អត្ថបទដែលមើលឃើញអាចខ្វះពាក្យ។ ចុចបន្តផ្នែកខ្វះ ដើម្បីបន្តពីផ្នែកដែលបានរក្សាទុក។", "This recording still has unfinished transcription parts. The visible text may be missing words. Use Continue unfinished parts to resume from the saved progress.")}
         </p>
       ) : null}
 
@@ -160,6 +162,8 @@ export function MeetingTranscriptPanel({
             <TranscribeAudioButton
               meetingId={meetingId}
               hasTranscript={hasAnyTranscript}
+              hasUnfinishedTranscription={hasUnfinishedTranscription}
+              initialLanguageMode={initialLanguageMode}
               currentTranscript={transcript === initialTranscript ? transcript : ""}
               speakerNames={meetingSpeakerNames}
               autoStart={autoStartTranscription}

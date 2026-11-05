@@ -1667,20 +1667,20 @@ export async function refineSavedTranscript(
   // of truth. Keep deterministic spacing and digit cleanup, but do not let
   // a text-only proofreader rewrite speech it cannot hear.
   if (normalizedLanguageMode === "km-en") return spellTranscriptNumberWords(cleanedTranscript);
+  if (!hasOpenRouterKey()) throw new Error("OpenRouter is required to translate this transcript.");
 
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
 
-  const refinedChunks = await Promise.all(
-    chunks.map((chunk) =>
-      refineOpenRouterTranscript(
-        chunk,
-        normalizedLanguageMode,
-        normalizedSpeakerNames,
-        Math.max(1000, deadline - Date.now())
-      ).catch(() => chunk)
+  const refinedChunks = await Promise.all(chunks.map((chunk) =>
+    refineOpenRouterTranscript(
+      chunk,
+      normalizedLanguageMode,
+      normalizedSpeakerNames,
+      Math.max(1000, deadline - Date.now()),
+      true
     )
-  );
+  ));
   const refinedTranscript = refinedChunks.join("\n");
 
   const labeledTranscript = applyKnownSpeakerLabels(
@@ -1689,7 +1689,11 @@ export async function refineSavedTranscript(
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(
     keepTrustedSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames), normalizedSpeakerNames
   );
-  return spellTranscriptNumberWords(chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode));
+  const selected = chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
+  if (selected === labeledTranscript && cleanedRefinedTranscript !== labeledTranscript) {
+    throw new Error("Translation omitted too much speech. Please retry transcription.");
+  }
+  return spellTranscriptNumberWords(selected);
 }
 
 export async function transcribeAudioChunks(

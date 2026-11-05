@@ -176,6 +176,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             .map((segment) => forceSingleSpeakerLabel(segment.text, resolveSegmentLabel(segment.speakerName, segment.speakerIdentity)))
             .join("\n");
     let transcript = rawTranscript;
+    const partial = incompleteLongRecording || (pendingAudioSegments && !completeMixedAudio);
     if (hasUsableTranscript(rawTranscript)) {
       // Each segment was transcribed live (mode:"live"), which skips the
       // refine/cleanup pass for latency - raw Khmer STT output comes back
@@ -184,8 +185,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       // recording-panel.tsx's finalize-transcript step.
       const languageMode = normalizeTranscriptionLanguageMode(meeting.language);
       const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
-      transcript = refineBudget >= 5000
-        ? await refineSavedTranscript(rawTranscript, languageMode, speakerNames, refineBudget).catch(() => rawTranscript)
+      if (!partial && languageMode !== "km-en" && refineBudget < 5000) {
+        throw new Error("Translation needs more time. The recording is saved; please try again.");
+      }
+      transcript = !partial && refineBudget >= 5000
+        ? await refineSavedTranscript(rawTranscript, languageMode, speakerNames, refineBudget)
         : rawTranscript;
       // Don't overwrite `language` here: segments were already transcribed
       // using the language mode the user picked when recording, set on the
@@ -205,7 +209,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({
       transcript,
       merged: true,
-      ...(incompleteLongRecording || (pendingAudioSegments && !completeMixedAudio)
+      ...(partial
         ? {
             partial: true,
             message:

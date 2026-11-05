@@ -593,7 +593,8 @@ export async function refineOpenRouterTranscript(
   transcript: string,
   language: "km" | "en" | "km-en",
   speakerNames: string[] = [],
-  timeoutMs = 55000
+  timeoutMs = 55000,
+  requireComplete = false
 ) {
   const clean = transcript.trim();
   if (!clean || !hasOpenRouterKey()) return clean;
@@ -661,12 +662,18 @@ export async function refineOpenRouterTranscript(
   // over the input length.
   const maxTokens = Math.min(16000, Math.max(1000, Math.ceil(clean.length / 2) + 500));
 
-  return generateOpenRouterContent([{ text: prompt }], {
+  let truncated = false;
+  const result = await generateOpenRouterContent([{ text: prompt }], {
     model: textModel(),
     temperature: 0,
     timeoutMs,
-    maxTokens
+    maxTokens,
+    onTruncated: () => { truncated = true; }
   });
+  if (requireComplete && (truncated || !result.trim())) {
+    throw new Error("Translation was incomplete. Please retry transcription.");
+  }
+  return result;
 }
 
 // Detects real names from explicit self-introductions (e.g. "ខ្ញុំឈ្មោះ...",

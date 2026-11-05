@@ -162,6 +162,7 @@ export default async function MeetingDetailPage({
           rawTranscript={labeledTranscript}
           transcriptIsUsable={transcriptIsUsable}
           hasUnfinishedTranscription={reviewRanges.length > 0}
+          initialLanguageMode={normalizeTranscriptionLanguageMode(meeting.language)}
           reviewRanges={reviewRanges}
           speakerNames={speakerNames}
           autoStartTranscription={query.transcribe === "1" || query.transcribe === "true"}

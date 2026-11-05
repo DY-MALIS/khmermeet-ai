@@ -32,6 +32,7 @@ const MINIMUM_ATTEMPT_MS = 12000;
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const workDeadline = Date.now() + WORK_DEADLINE_MS;
   let authorizedMeetingId = "";
+  let translatingFinalTranscript = false;
   try {
     const user = await requireUser();
     const limited = await rateLimitResponse(user.id, "ai-transcribe");
@@ -147,6 +148,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           },
           { status: 422 }
         );
+      }
+      if (body.fresh) {
+        // A user-requested full recheck must not reuse windows produced by
+        // an older model. Keep the existing meeting transcript until the
+        // new attempt has returned text.
+        await prisma.meetingAudioChunk.deleteMany({ where: { meetingId: id } });
       }
       rawTranscript = await withinDeadline(
         transcribeStoredTrackRecording(meeting.audioUrl, languageMode, transcriptionBudget(workDeadline), {
@@ -265,11 +272,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const completeMixedAudio = shouldUseMixedAudio && hasUsableTranscript(rawTranscript) && !incompleteLongRecording;
     const skippedPendingSegments = !completeMixedAudio && participantAudioSegments.some((segment) => !segment.text.trim());
     const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
+    if (languageMode !== "km-en" && hasUsableTranscript(rawTranscript) && !incompleteLongRecording && !skippedPendingSegments && refineBudget < 5000) {
+      throw new Error("Translation needs more time. The recording is saved; please try again.");
+    }
     // A long recording may need several requests. Refining the incomplete
     // transcript on every pass spends up to a minute rewriting text that the
     // next pass will immediately replace. Refine once when every part is in.
+    translatingFinalTranscript = languageMode !== "km-en" && !incompleteLongRecording && !skippedPendingSegments;
     const transcript = spellTranscriptNumberWords(!incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
-      ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
+      ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget)
       : rawTranscript);
     const silenceNotice = silentAudioSeconds >= 30
       ? ` The saved recording contains about ${Math.round(Math.min(silentAudioSeconds, meeting.duration || silentAudioSeconds) / 60)} minutes of silence; there are no spoken words to recover from those parts.`
@@ -398,7 +409,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       } : {})
     });
   } catch (error) {
-    if (authorizedMeetingId && error instanceof Error && error.message.toLowerCase().includes("timed out")) {
+    if (authorizedMeetingId && !translatingFinalTranscript && error instanceof Error && error.message.toLowerCase().includes("timed out")) {
       const progress = await savedChunkProgress(authorizedMeetingId).catch(() => null);
       if (progress && hasUsableTranscript(progress.transcript)) {
         await prisma.meeting.update({
@@ -490,12 +501,12 @@ async function withinDeadline<T>(operation: Promise<T>, deadline: number): Promi
 
 async function readTranscriptionBody(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json")) {
-    return { languageMode: undefined as unknown, speakerNames: [] as string[] };
+    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false };
   }
 
   const body = await request.json().catch(() => ({}));
   if (!body || typeof body !== "object") {
-    return { languageMode: undefined as unknown, speakerNames: [] as string[] };
+    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false };
   }
 
   const rawSpeakerNames = "speakerNames" in body ? body.speakerNames : [];
@@ -514,6 +525,7 @@ async function readTranscriptionBody(request: Request) {
 
   return {
     languageMode: "languageMode" in body ? body.languageMode : undefined,
-    speakerNames
+    speakerNames,
+    fresh: "fresh" in body && body.fresh === true
   };
 }

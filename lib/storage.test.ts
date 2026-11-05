@@ -30,3 +30,41 @@ test("original-language transcript spells digits without asking a text model to 
     else process.env.OPEN_ROUTER_API_KEY = previousKey;
   }
 });
+
+test("a failed translation does not silently return the original-language transcript", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.OPEN_ROUTER_API_KEY;
+  globalThis.fetch = async () => { throw new Error("translation service unavailable"); };
+  process.env.OPEN_ROUTER_API_KEY = "test-key";
+
+  try {
+    await assert.rejects(
+      refineSavedTranscript("Speaker 1: សួស្តីអ្នកទាំងអស់គ្នា", "en", []),
+      /translation service unavailable/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPEN_ROUTER_API_KEY;
+    else process.env.OPEN_ROUTER_API_KEY = previousKey;
+  }
+});
+
+test("a translation cut off by the model is rejected", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.OPEN_ROUTER_API_KEY;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{ finish_reason: "length", message: { content: "Speaker 1: Hello" } }]
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  process.env.OPEN_ROUTER_API_KEY = "test-key";
+
+  try {
+    await assert.rejects(
+      refineSavedTranscript("Speaker 1: សួស្តីអ្នកទាំងអស់គ្នា", "en", []),
+      /Translation was incomplete/
+    );
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPEN_ROUTER_API_KEY;
+    else process.env.OPEN_ROUTER_API_KEY = previousKey;
+  }
+});

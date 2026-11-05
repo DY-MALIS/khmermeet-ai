@@ -11,6 +11,8 @@ type LanguageMode = "km" | "en" | "km-en";
 type TranscribeAudioButtonProps = {
   meetingId: string;
   hasTranscript?: boolean;
+  hasUnfinishedTranscription?: boolean;
+  initialLanguageMode?: LanguageMode;
   currentTranscript?: string;
   speakerNames?: string[];
   autoStart?: boolean;
@@ -29,6 +31,8 @@ const MAX_TRANSCRIPTION_PASSES = 2;
 export function TranscribeAudioButton({
   meetingId,
   hasTranscript = false,
+  hasUnfinishedTranscription = false,
+  initialLanguageMode = "km-en",
   currentTranscript = "",
   speakerNames = [],
   autoStart = false,
@@ -43,9 +47,10 @@ export function TranscribeAudioButton({
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentPass, setCurrentPass] = useState(1);
   const autoStartedRef = useRef(false);
-  // Default to km-en so mixed Khmer/English meetings are captured as spoken
-  // instead of English getting silently translated into Khmer under "km" mode.
-  const [languageMode, setLanguageMode] = useState<LanguageMode>("km-en");
+  // Preserve the meeting's selected output language when an unfinished
+  // recording is resumed after a page reload.
+  const [languageMode, setLanguageMode] = useState<LanguageMode>(initialLanguageMode);
+  const [processingMode, setProcessingMode] = useState<"resume" | "fresh">("resume");
 
   const transcribe = useCallback(async () => {
     setPending(true);
@@ -71,11 +76,15 @@ export function TranscribeAudioButton({
       let partialMessage = "";
       let completeMessage = "";
       let retriedEmptyTranscript = false;
+      let freshPending = processingMode === "fresh";
       for (;;) {
+        // A second pass must resume the newly saved windows, not clear them.
+        const fresh = freshPending;
+        freshPending = false;
         const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ languageMode })
+          body: JSON.stringify({ languageMode, fresh })
         });
         const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean; savedChunks?: number; completedSubwindows?: number }>(response);
         if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
@@ -84,6 +93,7 @@ export function TranscribeAudioButton({
           continue;
         }
         if (!response.ok) throw new Error(data.error ?? t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio."));
+        if (fresh) setProcessingMode("resume");
         nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
         if (!nextTranscript) {
           throw new Error(t("ការបំលែងសំឡេងបានបញ្ចប់ ប៉ុន្តែមិនមានអត្ថបទនិយាយ។ សូមសាកម្ដងទៀតដោយប្រើសំឡេងច្បាស់ជាងនេះ។", "Transcription finished, but no speech text was returned. Please try again with clearer audio."));
@@ -140,7 +150,7 @@ export function TranscribeAudioButton({
       window.clearInterval(progressTimer);
       setPending(false);
     }
-  }, [hasTranscript, languageMode, meetingId, onTranscribed, router, t]);
+  }, [hasTranscript, languageMode, meetingId, onTranscribed, processingMode, router, t]);
 
   const matchRememberedVoices = useCallback(async () => {
     setRecognizing(true);
@@ -174,11 +184,15 @@ export function TranscribeAudioButton({
     <div className="space-y-3 rounded-2xl border border-leaf/10 bg-gradient-to-br from-white to-emerald-50/50 p-4 shadow-sm">
       <div>
         <p className="font-semibold text-ink">
-          {hasTranscript ? t("បំលែងសំឡេងជាអក្សរឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
+          {hasTranscript && hasUnfinishedTranscription
+            ? t("បន្តការបំលែងសំឡេង", "Continue transcription")
+            : hasTranscript ? t("បំលែងសំឡេងជាអក្សរឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
         </p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
           {hasTranscript
-            ? t("AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្ដងទៀត ហើយជំនួសអត្ថបទបច្ចុប្បន្ន។ ប្រើនៅពេលអត្ថបទមានពាក្យខុសពីអ្វីដែលបាននិយាយ។", "AI will listen to the saved audio again and replace the current transcript. Use this when the transcript contains incorrect words.")
+            ? hasUnfinishedTranscription
+              ? t("បន្តពីផ្នែកសំឡេងដែលមិនទាន់ពេញ។ បើពាក្យខុសនៅផ្នែកដែលបានបញ្ចប់ សូមជ្រើសស្តាប់ពីដើមឡើងវិញ។", "Continue unfinished audio parts. To recheck words in parts already marked complete, select a full recheck below.")
+              : t("AI នឹងស្តាប់ឯកសារសំឡេងដែលបានរក្សាទុកម្ដងទៀត ហើយជំនួសអត្ថបទបច្ចុប្បន្ន។ ប្រើនៅពេលអត្ថបទមានពាក្យខុសពីអ្វីដែលបាននិយាយ។", "AI will listen to the saved audio again and replace the current transcript. Use this when the transcript contains incorrect words.")
             : t("ជ្រើសភាសាដែលបាននិយាយ រួច AI នឹងបំលែងឯកសារសំឡេងទៅជាអត្ថបទប្រជុំ។", "Choose the spoken language, then AI will transcribe the saved audio.")}
         </p>
         <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -190,6 +204,29 @@ export function TranscribeAudioButton({
           </p>
         ) : null}
       </div>
+
+      {hasTranscript && hasUnfinishedTranscription ? (
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-ink" htmlFor={`transcription-mode-${meetingId}`}>
+            {t("របៀបស្តាប់សំឡេង", "Audio review mode")}
+          </label>
+          <select
+            id={`transcription-mode-${meetingId}`}
+            className="kh-input w-full"
+            value={processingMode}
+            onChange={(event) => setProcessingMode(event.target.value as "resume" | "fresh")}
+            disabled={pending}
+          >
+            <option value="resume">{t("បន្តតែផ្នែកខ្វះ (សន្សំថ្លៃ)", "Continue unfinished parts (lower cost)")}</option>
+            <option value="fresh">{t("ស្តាប់ពីដើមឡើងវិញ (ការហៅ AI ច្រើន)", "Recheck the full recording (many AI requests)")}</option>
+          </select>
+          {processingMode === "fresh" ? (
+            <p className="mt-1 text-xs leading-5 text-amber-800">
+              {t("ការស្តាប់ពីដើមនឹងចំណាយ OpenRouter credits ច្រើនជាង ហើយលទ្ធផលថ្មីអាចជំនួសអត្ថបទចាស់មុនពេលគ្រប់ផ្នែកបញ្ចប់។ សូមទាញយកអត្ថបទចាស់បើចង់រក្សាទុក។", "A full recheck uses more OpenRouter credits. Partial new results may replace the saved transcript before every part finishes. Download the current transcript first if you need to keep it.")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <select
@@ -204,7 +241,12 @@ export function TranscribeAudioButton({
         </select>
         <button className="kh-button-primary sm:w-auto" disabled={pending || recognizing} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {pending ? t("កំពុងបំលែងសំឡេង...", "Transcribing audio...") : hasTranscript ? t("បំលែងសំឡេងឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
+          {pending ? t("កំពុងបំលែងសំឡេង...", "Transcribing audio...")
+            : hasTranscript && hasUnfinishedTranscription && processingMode === "resume"
+              ? t("បន្តផ្នែកខ្វះ", "Continue unfinished parts")
+              : hasTranscript && processingMode === "fresh"
+                ? t("ស្តាប់ពីដើមឡើងវិញ", "Recheck full recording")
+                : hasTranscript ? t("បំលែងសំឡេងឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
         </button>
         {/^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(currentTranscript) ? (
           <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing} onClick={matchRememberedVoices} type="button">
