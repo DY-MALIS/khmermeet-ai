@@ -12,6 +12,15 @@ export function unpackSavedAudioChunkText(value: string) {
     : { text: value, incomplete: false };
 }
 
+// A complete set of short, ordered listens covers the whole window. A
+// longer single-pass answer can still skip speech in the middle, so length
+// must not override that coverage. Partial short listens remain provisional.
+export function chooseAudioWindowText(previous: string, candidate: string, coversEverySubwindow: boolean) {
+  if (!hasUsableTranscript(candidate)) return previous;
+  if (coversEverySubwindow || candidate.length > previous.length) return candidate;
+  return previous;
+}
+
 export function assembleSavedAudioChunks(chunks: SavedAudioChunk[]) {
   const totalChunks = Math.max(0, ...chunks.map((chunk) => chunk.totalChunks));
   const saved = chunks

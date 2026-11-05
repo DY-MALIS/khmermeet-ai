@@ -20,7 +20,7 @@ import {
   type ChunkedAudioManifest
 } from "@/lib/chunked-audio";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
-import { INCOMPLETE_AUDIO_CHUNK_PREFIX, unpackSavedAudioChunkText } from "@/lib/transcript-progress";
+import { chooseAudioWindowText, INCOMPLETE_AUDIO_CHUNK_PREFIX, unpackSavedAudioChunkText } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -1377,6 +1377,7 @@ export async function transcribeStoredTrackRecording(
       // time order. A severely collapsed window uses one-minute parts; a
       // moderately short one uses two-minute parts to limit provider calls.
       let shorterWindowsIncomplete = false;
+      let shorterWindowsCovered = false;
       if (
         next.chunk.durationSeconds && next.chunk.durationSeconds > 90 &&
         hasUsableTranscript(transcript) &&
@@ -1420,7 +1421,8 @@ export async function transcribeStoredTrackRecording(
                 }
               }
               const assembled = cleanTranscriptionText(subtexts.join("\n"));
-              if (hasUsableTranscript(assembled) && assembled.length > transcript.length) transcript = assembled;
+              shorterWindowsCovered = !shorterWindowsIncomplete && hasUsableTranscript(assembled);
+              transcript = chooseAudioWindowText(transcript, assembled, shorterWindowsCovered);
             }
           } finally {
             await subwindows.dispose().catch(() => undefined);
@@ -1428,7 +1430,7 @@ export async function transcribeStoredTrackRecording(
         }
       }
       const chunkTranscriptText = cleanTranscriptionText(transcript);
-      if (hasUsableTranscript(chunkTranscriptText) && (shorterWindowsIncomplete || looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds))) {
+      if (hasUsableTranscript(chunkTranscriptText) && (shorterWindowsIncomplete || (!shorterWindowsCovered && looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)))) {
         // Still short after every attempt. The transcript below is real, but
         // this window is missing speech - say so rather than handing back a
         // gap-filled transcript that looks whole.
@@ -1442,10 +1444,9 @@ export async function transcribeStoredTrackRecording(
       // duration. Empty or implausibly short output stays partial and is
       // picked up again from the saved audio on the next pass.
       const windowHasSpeech = hasUsableTranscript(chunkTranscriptText);
-      const windowIsComplete = windowHasSpeech && !shorterWindowsIncomplete && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds);
-      const bestText = windowHasSpeech && chunkTranscriptText.length > earlierText.length
-        ? chunkTranscriptText
-        : earlierText;
+      const windowIsComplete = windowHasSpeech && !shorterWindowsIncomplete &&
+        (shorterWindowsCovered || !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds));
+      const bestText = chooseAudioWindowText(earlierText, chunkTranscriptText, shorterWindowsCovered);
       transcripts[next.index] = bestText;
       completed[next.index] = windowIsComplete && bestText === chunkTranscriptText;
       // Written down the moment it succeeds, not at the end: the request can
