@@ -21,6 +21,16 @@ test("an underfilled four-minute audio window can be retried in ordered one-minu
       assert.equal(split.chunks.length, 4);
       const duration = split.chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds ?? 0), 0);
       assert.ok(Math.abs(duration - 240) < 1);
+      const retry = await splitAudioIntoChunks(
+        await readFile(split.chunks[0].path), "wav", 24 * 1024 * 1024, 30
+      );
+      try {
+        assert.equal(retry.chunks.length, 2);
+        const retryDuration = retry.chunks.reduce((sum, chunk) => sum + (chunk.durationSeconds ?? 0), 0);
+        assert.ok(Math.abs(retryDuration - (split.chunks[0].durationSeconds ?? 0)) < 1);
+      } finally {
+        await retry.dispose();
+      }
     } finally {
       await split.dispose();
     }

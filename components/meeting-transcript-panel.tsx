@@ -14,6 +14,7 @@ type MeetingTranscriptPanelProps = {
   initialTranscript: string;
   rawTranscript?: string | null;
   transcriptIsUsable: boolean;
+  hasUnfinishedTranscription?: boolean;
   speakerNames?: string[] | null;
   autoStartTranscription?: boolean;
 };
@@ -36,6 +37,7 @@ export function MeetingTranscriptPanel({
   initialTranscript,
   rawTranscript,
   transcriptIsUsable,
+  hasUnfinishedTranscription = false,
   speakerNames,
   autoStartTranscription = false
 }: MeetingTranscriptPanelProps) {
@@ -86,6 +88,12 @@ export function MeetingTranscriptPanel({
         <div className="mb-4 rounded-lg border border-saffron/30 bg-saffron/10 p-3 text-sm leading-6 text-ink">
           {t("អត្ថបទដែលបានរក្សាទុកហាក់មិនមែនជាសំឡេងនិយាយច្បាស់ទេ។ វាអាចមានតែពេលវេលា ឬអត្ថបទមិនច្បាស់។ សូមបំលែងសំឡេងម្ដងទៀត ឬបិទភ្ជាប់អត្ថបទត្រឹមត្រូវខាងក្រោម។", "The saved transcript does not look like real speech text. It may contain only timestamps or unclear output. Please transcribe the audio again or paste the correct meeting text below.")}
         </div>
+      ) : null}
+
+      {hasUnfinishedTranscription ? (
+        <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-900" role="status">
+          {t("ការបម្លែងសំឡេងនេះនៅមានផ្នែកមិនទាន់បញ្ចប់។ អត្ថបទដែលមើលឃើញអាចខ្វះពាក្យ។ ចុចបម្លែងសំឡេងឡើងវិញដើម្បីបន្តពីផ្នែកដែលបានរក្សាទុក។", "This recording still has unfinished transcription parts. The visible text may be missing words. Use Re-transcribe audio to continue from the saved progress.")}
+        </p>
       ) : null}
 
       {(audioUrl || meetingSpeakerNames.length) ? (

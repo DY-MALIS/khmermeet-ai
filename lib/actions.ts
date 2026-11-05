@@ -30,6 +30,7 @@ export async function getMeetingById(id: string) {
   return prisma.meeting.findFirst({
     where: { id, ...ownerWhere(user) },
     include: {
+      _count: { select: { audioChunks: true } },
       tasks: { orderBy: { createdAt: "desc" } },
       decisions: { orderBy: { createdAt: "desc" } },
       // Server Rec meetings never set meeting.audioUrl (each participant's

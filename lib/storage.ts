@@ -1424,6 +1424,52 @@ export async function transcribeStoredTrackRecording(
                   if (budget < 20000) return cached ?? { text: "", complete: false };
                   const bytes = await readFile(part.path).catch(() => null);
                   if (!bytes) return cached ?? { text: "", complete: false };
+                  // A repeat of the same underfilled one-minute listen often
+                  // returns the same missing words. On a later pass, divide
+                  // only that unfinished minute into two shorter listens.
+                  // This replaces the repeat minute call instead of adding
+                  // more paid calls to every window in the recording.
+                  if (cached?.text && !cached.complete && budget >= 45000 &&
+                    part.durationSeconds && part.durationSeconds > 35) {
+                    const shorter = await splitAudioIntoChunks(
+                      Buffer.from(bytes), chunkSourceExt, openRouterAudioLimit, 30
+                    ).catch(() => null);
+                    if (shorter) {
+                      try {
+                        if (shorter.chunks.length > 1) {
+                          const pieces = await Promise.all(shorter.chunks.map(async (piece, pieceIndex) => {
+                            if (await isAudioWindowSilent(piece.path, piece.durationSeconds)) {
+                              return { text: "", complete: true };
+                            }
+                            const pieceBudget = deadline - Date.now() - 5000;
+                            if (pieceBudget < 20000) return { text: "", complete: false };
+                            const pieceBytes = await readFile(piece.path).catch(() => null);
+                            if (!pieceBytes) return { text: "", complete: false };
+                            const pieceFile = new File(
+                              [new Uint8Array(pieceBytes)],
+                              `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}-piece-${pieceIndex + 1}.${chunkSourceExt}`,
+                              { type: chunkSourceMimeType }
+                            );
+                            const result = cleanTranscriptionText(await transcribeAudio(
+                              pieceFile, speakerNames, audioLanguageMode,
+                              { ...transcribeOptions, timeoutMs: Math.min(60000, pieceBudget) }
+                            ).catch(() => ""));
+                            const audible = await estimatedAudibleAudioSeconds(piece.path, piece.durationSeconds);
+                            return {
+                              text: result,
+                              complete: hasUsableTranscript(result) && !hasAbbreviatedSpokenNumber(result) &&
+                                !looksSeverelyTruncated(result, audible)
+                            };
+                          }));
+                          const assembled = cleanTranscriptionText(pieces.map((piece) => piece.text).filter(Boolean).join("\n"));
+                          const complete = pieces.every((piece) => piece.complete) && hasUsableTranscript(assembled);
+                          return { text: chooseAudioWindowText(cached.text, assembled, complete), complete };
+                        }
+                      } finally {
+                        await shorter.dispose().catch(() => undefined);
+                      }
+                    }
+                  }
                   const file = new File(
                     [new Uint8Array(bytes)],
                     `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}.${chunkSourceExt}`,

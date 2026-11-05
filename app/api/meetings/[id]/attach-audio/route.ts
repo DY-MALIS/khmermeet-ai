@@ -28,15 +28,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
     ].slice(0, 100);
 
-    await prisma.meeting.update({
-      where: { id },
-      data: {
-        audioUrl,
-        language: languageMode,
-        duration: duration ?? meeting.duration,
-        speakerNames: nextSpeakerNames,
-        status: meeting.status === "recording" ? "recorded" : meeting.status
+    await prisma.$transaction(async (tx) => {
+      // Cached words are tied to the exact saved recording. A replacement
+      // with the same duration/chunk count must never reuse the old audio's
+      // transcription, including cached silent windows.
+      if (meeting.audioUrl !== audioUrl) {
+        await tx.meetingAudioChunk.deleteMany({ where: { meetingId: id } });
       }
+      await tx.meeting.update({
+        where: { id },
+        data: {
+          audioUrl,
+          language: languageMode,
+          duration: duration ?? meeting.duration,
+          speakerNames: nextSpeakerNames,
+          status: meeting.status === "recording" ? "recorded" : meeting.status
+        }
+      });
     });
 
     revalidatePath("/meetings");

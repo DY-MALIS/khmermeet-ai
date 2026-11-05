@@ -157,6 +157,7 @@ export default async function MeetingDetailPage({
           initialTranscript={transcriptText}
           rawTranscript={labeledTranscript}
           transcriptIsUsable={transcriptIsUsable}
+          hasUnfinishedTranscription={meeting._count.audioChunks > 0}
           speakerNames={speakerNames}
           autoStartTranscription={query.transcribe === "1" || query.transcribe === "true"}
         />
