@@ -4,6 +4,13 @@ export function normalizeTranscriptDigits(text: string) {
   return text.replace(/[០-៩]/g, (digit) => String("០១២៣៤៥៦៧៨៩".indexOf(digit)));
 }
 
+// Audio models sometimes compress a spoken large amount into "10B" or
+// "681M". Those tokens are ambiguous and have already accompanied missing
+// number words in real transcripts, so their audio window needs review.
+export function hasAbbreviatedSpokenNumber(text: string) {
+  return /(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?[KMBT](?![\p{L}])/iu.test(text);
+}
+
 function stripSpeakerLabels(text: string) {
   return text
     .replace(/\b(?:unknown\s+speaker|speaker|participant|user)\s*\d*\s*:/giu, " ")

@@ -19,8 +19,8 @@ import {
   parseChunkedAudioManifest,
   type ChunkedAudioManifest
 } from "@/lib/chunked-audio";
-import { hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
-import { chooseAudioWindowText, INCOMPLETE_AUDIO_CHUNK_PREFIX, unpackSavedAudioChunkText } from "@/lib/transcript-progress";
+import { hasAbbreviatedSpokenNumber, hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
+import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -956,12 +956,9 @@ function audioExtensionFromMime(mimeType: string) {
   return "webm";
 }
 
-// Owner decision (2026-09-01, reconfirmed 2026-09-22): this only governs the
-// chunking fallback - transcribeStoredTrackRecording always tries the whole
-// recording as one OpenRouter request first (see above), so this path runs
-// only when that single request can't be used or came back looking
-// incomplete. Fewer, larger pieces here means fewer separate OpenRouter
-// transactions on the recordings that do need it.
+// Outer windows bound memory and carry progress across requests. For long
+// recordings, each non-silent outer window is verified in shorter listens
+// before it is marked complete.
 //
 // Two-minute windows fit within one parallel round for recordings up to
 // about 20 minutes. Use them below only after a severely truncated whole-
@@ -1069,7 +1066,7 @@ export async function transcribeStoredTrackRecording(
     singleSpeaker: options.singleSpeaker ?? true,
     skipPrimaryModel: true
   };
-  const { compressWholeAudioForTranscription, splitAudioIntoChunks, isAudioWindowSilent } = await import("@/lib/ffmpeg");
+  const { compressWholeAudioForTranscription, splitAudioIntoChunks, isAudioWindowSilent, estimatedAudibleAudioSeconds } = await import("@/lib/ffmpeg");
   // Deliberately reassignable: on a multi-hour recording this is hundreds of
   // megabytes, and it is dead weight the moment the audio has been cut into
   // windows. Measured on a real 5-hour, 289 MB recording: holding the source
@@ -1231,6 +1228,10 @@ export async function transcribeStoredTrackRecording(
   // Keep four-minute windows for longer meetings so they still fit one server
   // request's time budget.
   const knownDuration = wholeAudioAttempt.durationSeconds ?? options.durationSeconds;
+  // A fluent four-minute answer can still skip a sentence or a number phrase
+  // in its middle. On long recordings, only ordered short listens can mark a
+  // window complete; legacy length-only cache rows need that verification.
+  const requireShortCoverage = Boolean(knownDuration && knownDuration > 20 * 60);
   const fallbackSegmentSeconds =
     knownDuration && knownDuration <= 20 * 60
       ? 2 * 60
@@ -1258,12 +1259,14 @@ export async function transcribeStoredTrackRecording(
   for (const [key, text] of Object.entries(alreadyDone)) {
     const index = Number(key);
     if (!Number.isInteger(index) || index < 0 || index >= chunks.length) continue;
-    // An empty saved row means this window was confirmed silent on an earlier
-    // pass. Old versions could save invented text for silence, so verify any
-    // cached words against the actual audio before trusting them again.
+    // Recheck even cached silent windows: older detection could classify a
+    // very quiet voice as silence. A cached blank must not permanently hide
+    // speech after the threshold is corrected.
     if (text === "") {
-      completed[index] = true;
-      options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
+      if (await isAudioWindowSilent(chunks[index].path, chunks[index].durationSeconds)) {
+        completed[index] = true;
+        options.onSilentWindow?.(chunks[index].durationSeconds ?? 0);
+      }
       continue;
     }
     const savedWindow = unpackSavedAudioChunkText(text);
@@ -1278,7 +1281,11 @@ export async function transcribeStoredTrackRecording(
       transcripts[index] = trustedText;
       // An older pass may have saved only the first few words of this
       // window. Keep those words visible, but listen to the audio again.
-      completed[index] = !savedWindow.incomplete && !looksSeverelyTruncated(trustedText, chunks[index].durationSeconds);
+      completed[index] = !savedWindow.incomplete &&
+        !hasAbbreviatedSpokenNumber(trustedText) &&
+        (requireShortCoverage
+          ? savedWindow.covered
+          : !looksSeverelyTruncated(trustedText, chunks[index].durationSeconds));
     }
   }
   const queue = chunks.map((chunk, index) => ({ chunk, index })).filter((entry) => !completed[entry.index]);
@@ -1319,16 +1326,21 @@ export async function transcribeStoredTrackRecording(
       // Workers run in parallel, so a long meeting does not need one timeout
       // period per chunk.
       const chunkTimeoutMs = Math.min(150000, remainingMs - 5000);
-      // A cached but very short result has already failed on this exact
-      // four-minute audio. Go directly to smaller windows on the next pass.
+      // A size-limited outer chunk may already be at most a minute long.
+      // Transcribe that chunk directly instead of asking it to split again.
+      const requireSubwindows = requireShortCoverage &&
+        Boolean(next.chunk.durationSeconds && next.chunk.durationSeconds > 90);
+      // Keep legacy text visible while verifying it against shorter audio
+      // listens. Text length alone never proves every phrase was captured.
       const earlierText = transcripts[next.index];
-      let transcript = hasUsableTranscript(earlierText)
+      let savedSubwindows = unpackSavedAudioChunkText(alreadyDone[next.index] ?? "").subwindows ?? null;
+      let transcript = !requireShortCoverage && hasUsableTranscript(earlierText)
         ? earlierText
-        : await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
+        : requireSubwindows ? "" : await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
             ...transcribeOptions,
             timeoutMs: chunkTimeoutMs
           }).catch(() => "");
-      if (!hasUsableTranscript(transcript)) {
+      if (!requireSubwindows && !hasUsableTranscript(transcript)) {
         const retryRemainingMs = deadline - Date.now();
         if (retryRemainingMs >= 35000) {
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
@@ -1354,7 +1366,7 @@ export async function transcribeStoredTrackRecording(
           }
         }
       }
-      if (!hasUsableTranscript(transcript) && speakerNames.length) {
+      if (!requireSubwindows && !hasUsableTranscript(transcript) && speakerNames.length) {
         // Confirmed live: a specific known-participant name can make the
         // model return an empty completion for every chunk regardless of
         // audio content or quality (e.g. "probe" - a real user's own test
@@ -1371,34 +1383,40 @@ export async function transcribeStoredTrackRecording(
           }).catch(() => "");
         }
       }
-      // Repeating the identical four-minute request produced different short
-      // answers and spent credits without recovering the skipped speech.
-      // Split only underfilled windows, then assemble the shorter listens in
-      // time order. A severely collapsed window uses one-minute parts; a
-      // moderately short one uses two-minute parts to limit provider calls.
+      // Long recordings use short, ordered listens for every audible outer
+      // window. Shorter recordings use them only when a whole-window answer
+      // appears severely truncated.
       let shorterWindowsIncomplete = false;
-      let shorterWindowsCovered = false;
+      let shorterWindowsCovered = requireShortCoverage && !requireSubwindows &&
+        hasUsableTranscript(transcript) && !hasAbbreviatedSpokenNumber(transcript) &&
+        !looksSeverelyTruncated(transcript, next.chunk.durationSeconds);
+      let shorterWindowsAllSilent = false;
       if (
         next.chunk.durationSeconds && next.chunk.durationSeconds > 90 &&
-        hasUsableTranscript(transcript) &&
-        looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds) &&
+        (requireSubwindows || (hasUsableTranscript(transcript) &&
+          looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds))) &&
         deadline - Date.now() >= 30000
       ) {
-        const subwindowSeconds = transcript.length < next.chunk.durationSeconds ? 60 : 120;
+        const subwindowSeconds = requireSubwindows || transcript.length < next.chunk.durationSeconds ? 60 : 120;
         const subwindows = await splitAudioIntoChunks(
           Buffer.from(chunkBytes), chunkSourceExt, openRouterAudioLimit, subwindowSeconds
         ).catch(() => null);
         if (subwindows) {
           try {
             if (subwindows.chunks.length > 1) {
-              const subtexts: string[] = [];
+              const subparts: Array<SavedAudioSubwindow | null> =
+                savedSubwindows?.length === subwindows.chunks.length
+                  ? [...savedSubwindows]
+                  : new Array(subwindows.chunks.length).fill(null);
               for (let offset = 0; offset < subwindows.chunks.length; offset += 2) {
                 const batch = await Promise.all(subwindows.chunks.slice(offset, offset + 2).map(async (part, partOffset) => {
+                  const cached = subparts[offset + partOffset];
+                  if (cached?.complete) return cached;
                   if (await isAudioWindowSilent(part.path, part.durationSeconds)) return { text: "", complete: true };
                   const budget = deadline - Date.now() - 5000;
-                  if (budget < 20000) return { text: "", complete: false };
+                  if (budget < 20000) return cached ?? { text: "", complete: false };
                   const bytes = await readFile(part.path).catch(() => null);
-                  if (!bytes) return { text: "", complete: false };
+                  if (!bytes) return cached ?? { text: "", complete: false };
                   const file = new File(
                     [new Uint8Array(bytes)],
                     `recording-part-${next.index + 1}-subpart-${offset + partOffset + 1}.${chunkSourceExt}`,
@@ -1408,19 +1426,25 @@ export async function transcribeStoredTrackRecording(
                     ...transcribeOptions,
                     timeoutMs: Math.min(90000, budget)
                   }).catch(() => "");
+                  const cleaned = cleanTranscriptionText(text);
+                  const audibleSeconds = await estimatedAudibleAudioSeconds(part.path, part.durationSeconds);
+                  const complete = hasUsableTranscript(cleaned) && !hasAbbreviatedSpokenNumber(cleaned) &&
+                    !looksSeverelyTruncated(cleaned, audibleSeconds);
                   return {
-                    text: cleanTranscriptionText(text),
-                    complete: hasUsableTranscript(text) && !looksSeverelyTruncated(text, part.durationSeconds)
+                    text: chooseAudioWindowText(cached?.text ?? "", cleaned, complete),
+                    complete
                   };
                 }));
-                subtexts.push(...batch.map((part) => part.text).filter(Boolean));
-                if (batch.some((part) => !part.complete)) shorterWindowsIncomplete = true;
+                batch.forEach((part, partOffset) => { subparts[offset + partOffset] = part; });
+                savedSubwindows = subparts;
+                await options.chunkStore?.save(next.index, chunks.length, packPartialAudioSubwindows(earlierText, subparts)).catch(() => undefined);
                 if (deadline - Date.now() < 20000) {
-                  if (offset + 2 < subwindows.chunks.length) shorterWindowsIncomplete = true;
                   break;
                 }
               }
-              const assembled = cleanTranscriptionText(subtexts.join("\n"));
+              shorterWindowsIncomplete = subparts.some((part) => !part?.complete);
+              shorterWindowsAllSilent = subparts.every((part) => part?.complete && !part.text);
+              const assembled = cleanTranscriptionText(subparts.map((part) => part?.text ?? "").filter(Boolean).join("\n"));
               shorterWindowsCovered = !shorterWindowsIncomplete && hasUsableTranscript(assembled);
               transcript = chooseAudioWindowText(transcript, assembled, shorterWindowsCovered);
             }
@@ -1428,6 +1452,14 @@ export async function transcribeStoredTrackRecording(
             await subwindows.dispose().catch(() => undefined);
           }
         }
+      }
+      if (shorterWindowsAllSilent) {
+        completed[next.index] = true;
+        transcripts[next.index] = "";
+        options.onSilentWindow?.(next.chunk.durationSeconds ?? 0);
+        await options.chunkStore?.save(next.index, chunks.length, "").catch(() => undefined);
+        await rm(next.chunk.path, { force: true }).catch(() => undefined);
+        continue;
       }
       const chunkTranscriptText = cleanTranscriptionText(transcript);
       if (hasUsableTranscript(chunkTranscriptText) && (shorterWindowsIncomplete || (!shorterWindowsCovered && looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)))) {
@@ -1440,20 +1472,23 @@ export async function transcribeStoredTrackRecording(
       // long recording does not leave twenty copies of itself in the
       // function's temporary storage while it works through them.
       await rm(next.chunk.path, { force: true }).catch(() => undefined);
-      // A window counts as done only if it produced enough speech for its
-      // duration. Empty or implausibly short output stays partial and is
-      // picked up again from the saved audio on the next pass.
+      // Long-recording windows count as done only after short-listen coverage;
+      // empty or underfilled results stay partial for the next pass.
       const windowHasSpeech = hasUsableTranscript(chunkTranscriptText);
       const windowIsComplete = windowHasSpeech && !shorterWindowsIncomplete &&
-        (shorterWindowsCovered || !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds));
+        !hasAbbreviatedSpokenNumber(chunkTranscriptText) &&
+        (shorterWindowsCovered || (!requireSubwindows && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)));
       const bestText = chooseAudioWindowText(earlierText, chunkTranscriptText, shorterWindowsCovered);
       transcripts[next.index] = bestText;
       completed[next.index] = windowIsComplete && bestText === chunkTranscriptText;
       // Written down the moment it succeeds, not at the end: the request can
       // be cut off at any point, and a window not recorded here has to be
       // paid for all over again next time.
-      const savedText = completed[next.index] ? bestText : `${INCOMPLETE_AUDIO_CHUNK_PREFIX}${bestText}`;
-      if (options.chunkStore && bestText && savedText !== alreadyDone[next.index]) {
+      const savedText = completed[next.index]
+        ? requireShortCoverage ? `${COVERED_AUDIO_CHUNK_PREFIX}${bestText}` : bestText
+        : savedSubwindows ? packPartialAudioSubwindows(earlierText, savedSubwindows)
+        : `${INCOMPLETE_AUDIO_CHUNK_PREFIX}${bestText}`;
+      if (options.chunkStore && (bestText || savedSubwindows) && savedText !== alreadyDone[next.index]) {
         await options.chunkStore.save(next.index, chunks.length, savedText).catch(() => undefined);
       }
     }

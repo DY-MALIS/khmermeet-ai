@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assembleSavedAudioChunks, chooseAudioWindowText, INCOMPLETE_AUDIO_CHUNK_PREFIX, unpackSavedAudioChunkText } from "./transcript-progress";
+import { assembleSavedAudioChunks, chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, unpackSavedAudioChunkText } from "./transcript-progress";
 
 test("timeout recovery returns saved audio windows in recording order", () => {
   assert.deepEqual(assembleSavedAudioChunks([
@@ -11,7 +11,8 @@ test("timeout recovery returns saved audio windows in recording order", () => {
   ]), {
     transcript: "Speaker 1: First part spoken\nSpeaker 1: Third part spoken",
     savedChunks: 4,
-    totalChunks: 4
+    totalChunks: 4,
+    completedSubwindows: 0
   });
 });
 
@@ -19,10 +20,27 @@ test("incomplete window state survives a retry without leaking into displayed te
   const stored = `${INCOMPLETE_AUDIO_CHUNK_PREFIX}Speaker 1: Partial words`;
   assert.deepEqual(unpackSavedAudioChunkText(stored), {
     text: "Speaker 1: Partial words",
-    incomplete: true
+    incomplete: true,
+    covered: false
   });
   assert.equal(assembleSavedAudioChunks([{ chunkIndex: 0, totalChunks: 1, text: stored }]).transcript,
     "Speaker 1: Partial words");
+});
+
+test("only verified short-window coverage is marked complete in saved text", () => {
+  const words = "Speaker 1: ten billion and sixty six";
+  assert.deepEqual(unpackSavedAudioChunkText(`${COVERED_AUDIO_CHUNK_PREFIX}${words}`), {
+    text: words,
+    incomplete: false,
+    covered: true
+  });
+  assert.deepEqual(unpackSavedAudioChunkText(words), {
+    text: words,
+    incomplete: false,
+    covered: false
+  });
+  assert.equal(assembleSavedAudioChunks([{ chunkIndex: 0, totalChunks: 1, text: `${COVERED_AUDIO_CHUNK_PREFIX}${words}` }]).transcript, words);
+  assert.equal(assembleSavedAudioChunks([{ chunkIndex: 0, totalChunks: 1, text: `${COVERED_AUDIO_CHUNK_PREFIX}${words}` }]).completedSubwindows, 4);
 });
 
 test("saved partial transcript preserves spoken number words", () => {
@@ -38,4 +56,22 @@ test("complete short listens replace a longer answer that skipped the middle", (
   assert.equal(chooseAudioWindowText(earlier, covered, true), covered);
   assert.equal(chooseAudioWindowText(earlier, covered, false), earlier);
   assert.equal(chooseAudioWindowText(earlier, "", true), earlier);
+});
+
+test("partial short listens survive a request boundary without losing their order", () => {
+  const fallback = "Speaker 1: An older long answer covering the start and end only";
+  const first = { text: "Speaker 1: Opening words", complete: true };
+  const last = { text: "Speaker 2: Closing words", complete: false };
+  const pending = packPartialAudioSubwindows(fallback, [first, null, last]);
+  assert.deepEqual(unpackSavedAudioChunkText(pending), {
+    text: fallback,
+    incomplete: true,
+    covered: false,
+    subwindows: [first, null, last]
+  });
+  assert.equal(assembleSavedAudioChunks([{ chunkIndex: 0, totalChunks: 1, text: pending }]).completedSubwindows, 1);
+  const middle = { text: "Speaker 2: Missing middle words", complete: true };
+  const covered = unpackSavedAudioChunkText(packPartialAudioSubwindows(fallback, [first, middle, { ...last, complete: true }]));
+  assert.equal(covered.text, [first.text, middle.text, last.text].join("\n"));
+  assert.equal(covered.covered, true);
 });

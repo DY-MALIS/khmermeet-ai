@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasRunawayRepetition, hasUsableTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "./transcript-quality";
+import { hasAbbreviatedSpokenNumber, hasRunawayRepetition, hasUsableTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "./transcript-quality";
 
 test("unknown-only model output is not treated as spoken content", () => {
   const placeholders = "Unknown Speaker: Unknown\nLisa: Unknown\nUnknown Speaker: [unclear]";
@@ -24,6 +24,11 @@ test("Khmer numeral glyphs become 0-9 digits without changing words", () => {
   assert.equal(normalizeTranscriptDigits("តម្លៃ ១៥០ ដុល្លារ និង 25 សេន"), "តម្លៃ 150 ដុល្លារ និង 25 សេន");
   assert.equal(normalizeTranscriptDigits("ប្រាំរយប៊ីលានហុកសិបប្រាំមួយ"), "ប្រាំរយប៊ីលានហុកសិបប្រាំមួយ");
   assert.equal(normalizeTranscriptDigits("ដប់ប៊ីលានប្រាំមួយពាន់ប្រាំមួយរយប៉ែតសិបមួយ"), "ដប់ប៊ីលានប្រាំមួយពាន់ប្រាំមួយរយប៉ែតសិបមួយ");
+});
+
+test("abbreviated large amounts keep an audio window open for review", () => {
+  assert.equal(hasAbbreviatedSpokenNumber("10B 600 ហុក 681M"), true);
+  assert.equal(hasAbbreviatedSpokenNumber("ដប់ប៊ីលានប្រាំមួយរយហុកសិបមួយ"), false);
 });
 
 test("a number-only spoken turn is kept while timestamps are rejected", () => {

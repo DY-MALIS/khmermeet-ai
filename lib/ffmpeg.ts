@@ -298,15 +298,15 @@ export async function splitAudioIntoChunks(
 }
 
 // A saved window with no audible signal must never be sent to the speech
-// model: it can invent words for silence. Require near-total silence at a
-// conservative -45 dB threshold so quiet but real speech remains eligible.
+// model: it can invent words for silence. Only skip near-total silence below
+// -55 dB so a quiet but real voice is still sent for transcription.
 export async function isAudioWindowSilent(inputPath: string, durationSeconds: number | null): Promise<boolean> {
   if (!ffmpegPath || !durationSeconds || durationSeconds < 2) return false;
   await ensureFfmpegExecutable();
   try {
     const { stderr } = await execFileAsync(
       ffmpegPath,
-      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-45dB:d=1", "-f", "null", "-"],
+      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-55dB:d=1", "-f", "null", "-"],
       { timeout: 20000, maxBuffer: 2 * 1024 * 1024 }
     );
     const starts = [...stderr.matchAll(/silence_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
@@ -316,6 +316,30 @@ export async function isAudioWindowSilent(inputPath: string, durationSeconds: nu
     return silentSeconds >= durationSeconds - Math.min(2, durationSeconds * 0.01);
   } catch {
     return false;
+  }
+}
+
+// Use only for the transcript-length check, never to remove or skip audio.
+// A one-minute window with a brief utterance and a long silent tail should
+// not be retried forever because its text is shorter than a full minute of
+// continuous speech. On analysis failure, use the full duration so coverage
+// is never certified from a failed silence estimate.
+export async function estimatedAudibleAudioSeconds(inputPath: string, durationSeconds: number | null): Promise<number | null> {
+  if (!ffmpegPath || !durationSeconds || durationSeconds < 2) return durationSeconds;
+  await ensureFfmpegExecutable();
+  try {
+    const { stderr } = await execFileAsync(
+      ffmpegPath,
+      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-55dB:d=0.5", "-f", "null", "-"],
+      { timeout: 20000, maxBuffer: 2 * 1024 * 1024 }
+    );
+    const starts = [...stderr.matchAll(/silence_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+    const ends = [...stderr.matchAll(/silence_end:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+    const silentSeconds = starts.reduce((sum, start, index) =>
+      sum + Math.max(0, Math.min(durationSeconds, ends[index] ?? durationSeconds) - start), 0);
+    return Math.max(0, durationSeconds - silentSeconds);
+  } catch {
+    return durationSeconds;
   }
 }
 
