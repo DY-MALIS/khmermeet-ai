@@ -22,6 +22,8 @@ test("brief spoken repetition stays valid", () => {
 
 test("Khmer numeral glyphs become 0-9 digits without changing words", () => {
   assert.equal(normalizeTranscriptDigits("តម្លៃ ១៥០ ដុល្លារ និង 25 សេន"), "តម្លៃ 150 ដុល្លារ និង 25 សេន");
+  assert.equal(normalizeTranscriptDigits("ប្រាំរយប៊ីលានហុកសិបប្រាំមួយ"), "ប្រាំរយប៊ីលានហុកសិបប្រាំមួយ");
+  assert.equal(normalizeTranscriptDigits("ដប់ប៊ីលានប្រាំមួយពាន់ប្រាំមួយរយប៉ែតសិបមួយ"), "ដប់ប៊ីលានប្រាំមួយពាន់ប្រាំមួយរយប៉ែតសិបមួយ");
 });
 
 test("a number-only spoken turn is kept while timestamps are rejected", () => {

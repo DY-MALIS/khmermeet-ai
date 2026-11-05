@@ -25,8 +25,8 @@ test("incomplete window state survives a retry without leaking into displayed te
     "Speaker 1: Partial words");
 });
 
-test("saved partial transcript also formats a clearly spoken billion", () => {
+test("saved partial transcript preserves spoken number words", () => {
   assert.equal(assembleSavedAudioChunks([
     { chunkIndex: 0, totalChunks: 1, text: "Speaker 1: មួយប៊ីលាន" }
-  ]).transcript, "Speaker 1: 1000000000");
+  ]).transcript, "Speaker 1: មួយប៊ីលាន");
 });
