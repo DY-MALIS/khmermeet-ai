@@ -229,10 +229,9 @@ export async function splitAudioIntoChunks(
     // means the cut almost always falls in a real gap between words instead.
     const estimatedTotalSeconds = durationSeconds ?? buffer.length / bytesPerSecond;
     const targetBoundaries: number[] = [];
-    // 20% headroom past the estimate for the common case (webm with no
-    // header duration) where estimatedTotalSeconds is only a byte-rate
-    // guess - findSilenceAdjustedCutTimes trims anything past the real
-    // decoded length once it knows it, so overshooting here is harmless.
+    // These boundaries are used only when the container has a real duration.
+    // A WebM without one may contain hours of highly compressed silence;
+    // estimating its length from bytes would leave one enormous final part.
     for (let t = segmentSeconds; t < estimatedTotalSeconds * 1.2; t += segmentSeconds) {
       targetBoundaries.push(t);
     }
@@ -245,7 +244,7 @@ export async function splitAudioIntoChunks(
     // Past this length, cut on the clock and spend the time transcribing.
     const silenceSearchMaxSeconds = 40 * 60;
     const segmentTimes =
-      targetBoundaries.length && estimatedTotalSeconds <= silenceSearchMaxSeconds
+      durationSeconds !== null && targetBoundaries.length && estimatedTotalSeconds <= silenceSearchMaxSeconds
         ? await findSilenceAdjustedCutTimes(inputPath, targetBoundaries)
         : [];
 
@@ -298,22 +297,23 @@ export async function splitAudioIntoChunks(
 }
 
 // A saved window with no audible signal must never be sent to the speech
-// model: it can invent words for silence. Only skip near-total silence below
-// -55 dB so a quiet but real voice is still sent for transcription.
+// model: it can invent words for silence. A brief utterance anywhere in a
+// long window is still speech, so only skip a window with essentially no
+// signal above -55 dB across its entire duration.
 export async function isAudioWindowSilent(inputPath: string, durationSeconds: number | null): Promise<boolean> {
   if (!ffmpegPath || !durationSeconds || durationSeconds < 2) return false;
   await ensureFfmpegExecutable();
   try {
     const { stderr } = await execFileAsync(
       ffmpegPath,
-      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-55dB:d=1", "-f", "null", "-"],
+      ["-nostats", "-i", inputPath, "-af", "silencedetect=noise=-55dB:d=0.1", "-f", "null", "-"],
       { timeout: 20000, maxBuffer: 2 * 1024 * 1024 }
     );
     const starts = [...stderr.matchAll(/silence_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
     const ends = [...stderr.matchAll(/silence_end:\s*([\d.]+)/g)].map((match) => Number(match[1]));
     const silentSeconds = starts.reduce((sum, start, index) =>
       sum + Math.max(0, Math.min(durationSeconds, ends[index] ?? durationSeconds) - start), 0);
-    return silentSeconds >= durationSeconds - Math.min(2, durationSeconds * 0.01);
+    return silentSeconds >= durationSeconds - 0.02;
   } catch {
     return false;
   }
