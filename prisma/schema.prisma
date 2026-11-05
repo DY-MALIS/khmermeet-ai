@@ -8,12 +8,18 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  name      String
-  email     String    @unique
-  createdAt DateTime  @default(now())
-  meetings  Meeting[]
+  id           String             @id @default(cuid())
+  name         String
+  email        String             @unique
+  subscribed   SubscriptionStatus @default(FALSE)
+  createdAt    DateTime           @default(now())
+  meetings     Meeting[]
   voiceSamples VoiceSample[]
+}
+
+enum SubscriptionStatus {
+  TRUE
+  FALSE
 }
 
 model Meeting {
