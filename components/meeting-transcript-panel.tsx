@@ -1,11 +1,13 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ActionButton } from "@/components/action-button";
 import { TranscribeAudioButton } from "@/components/transcribe-audio-button";
 import { updateTranscript } from "@/lib/actions";
+import { seekAudioPlayer } from "@/lib/audio-player";
 import { useBilingualText } from "@/lib/display-language";
+import type { AudioReviewRange } from "@/lib/transcript-progress";
 
 type MeetingTranscriptPanelProps = {
   meetingId: string;
@@ -15,6 +17,7 @@ type MeetingTranscriptPanelProps = {
   rawTranscript?: string | null;
   transcriptIsUsable: boolean;
   hasUnfinishedTranscription?: boolean;
+  reviewRanges?: AudioReviewRange[];
   speakerNames?: string[] | null;
   autoStartTranscription?: boolean;
 };
@@ -30,6 +33,16 @@ function downloadTranscriptText(text: string, title: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatAudioTime(seconds: number) {
+  const whole = Math.floor(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const remaining = whole % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
+    : `${minutes}:${String(remaining).padStart(2, "0")}`;
+}
+
 export function MeetingTranscriptPanel({
   meetingId,
   title = "meeting",
@@ -38,6 +51,7 @@ export function MeetingTranscriptPanel({
   rawTranscript,
   transcriptIsUsable,
   hasUnfinishedTranscription = false,
+  reviewRanges = [],
   speakerNames,
   autoStartTranscription = false
 }: MeetingTranscriptPanelProps) {
@@ -94,6 +108,31 @@ export function MeetingTranscriptPanel({
         <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-900" role="status">
           {t("ការបម្លែងសំឡេងនេះនៅមានផ្នែកមិនទាន់បញ្ចប់។ អត្ថបទដែលមើលឃើញអាចខ្វះពាក្យ។ ចុចបម្លែងសំឡេងឡើងវិញដើម្បីបន្តពីផ្នែកដែលបានរក្សាទុក។", "This recording still has unfinished transcription parts. The visible text may be missing words. Use Re-transcribe audio to continue from the saved progress.")}
         </p>
+      ) : null}
+
+      {audioUrl && reviewRanges.length ? (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            {t("ពេលវេលាសំឡេងដែលត្រូវផ្ទៀងផ្ទាត់", "Audio times to review")}
+          </p>
+          <p className="mt-1 leading-6">
+            {t("ចុចពេលវេលាដើម្បីស្តាប់សំឡេងផ្ទាល់ ហើយកែពាក្យដែលខ្វះក្នុងអត្ថបទខាងក្រោម។", "Select a time to listen to the recording, then correct missing words in the transcript below.")}
+          </p>
+          <div className="mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+            {reviewRanges.map((range) => (
+              <button
+                key={`${range.startSeconds}-${range.endSeconds}`}
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-amber-400 bg-white px-2 py-1 font-medium hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+                onClick={() => seekAudioPlayer(range.startSeconds * 1000)}
+                aria-label={t(`ស្តាប់សំឡេងពី ${formatAudioTime(range.startSeconds)} ដល់ ${formatAudioTime(range.endSeconds)}`, `Listen from ${formatAudioTime(range.startSeconds)} to ${formatAudioTime(range.endSeconds)}`)}
+              >
+                <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                {formatAudioTime(range.startSeconds)}–{formatAudioTime(range.endSeconds)}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       {(audioUrl || meetingSpeakerNames.length) ? (

@@ -1,7 +1,8 @@
 import { hasUsableTranscript, normalizeTranscriptDigits } from "@/lib/transcript-quality";
 import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
 
-type SavedAudioChunk = { chunkIndex: number; totalChunks: number; text: string };
+export type SavedAudioChunk = { chunkIndex: number; totalChunks: number; text: string };
+export type AudioReviewRange = { startSeconds: number; endSeconds: number };
 
 // The chunk table has no completion column. Keep the retry state alongside
 // its text without exposing this internal marker in the displayed transcript.
@@ -95,6 +96,51 @@ export function stitchOverlappingAudioTranscripts(first: string, second: string)
     rest
   ].filter(Boolean).join("\n");
   return next ? `${left}\n${next}` : left;
+}
+
+// Show the exact short listens still awaiting review instead of only saying
+// that a long transcript is incomplete. Times are approximate if a provider
+// size limit forced the source into windows shorter than the preferred size.
+export function unfinishedAudioReviewRanges(chunks: SavedAudioChunk[], durationSeconds: number) {
+  if (!chunks.length || !Number.isFinite(durationSeconds) || durationSeconds <= 0) return [] as AudioReviewRange[];
+  const totalChunks = Math.max(...chunks.map((chunk) => chunk.totalChunks));
+  if (totalChunks <= 0) return [] as AudioReviewRange[];
+  const preferredWindowSeconds = durationSeconds > 20 * 60 ? 240 : 120;
+  const windowSeconds = totalChunks > Math.ceil(durationSeconds / preferredWindowSeconds)
+    ? Math.ceil(durationSeconds / totalChunks)
+    : preferredWindowSeconds;
+  const saved = new Map(chunks.map((chunk) => [chunk.chunkIndex, chunk.text]));
+  const ranges: AudioReviewRange[] = [];
+  const add = (startSeconds: number, endSeconds: number) => {
+    const end = Math.min(durationSeconds, endSeconds);
+    if (end <= startSeconds) return;
+    const previous = ranges.at(-1);
+    if (previous && startSeconds <= previous.endSeconds + 1) {
+      previous.endSeconds = Math.max(previous.endSeconds, end);
+    } else {
+      ranges.push({ startSeconds, endSeconds: end });
+    }
+  };
+  for (let index = 0; index < totalChunks; index++) {
+    const text = saved.get(index);
+    const start = index * windowSeconds;
+    if (text === "") continue; // verified silent window
+    if (text === undefined) {
+      add(start, start + windowSeconds);
+      continue;
+    }
+    const state = unpackSavedAudioChunkText(text);
+    if (state.covered || (!state.incomplete && durationSeconds <= 20 * 60)) continue;
+    if (state.subwindows?.length) {
+      const subwindowSeconds = windowSeconds / state.subwindows.length;
+      state.subwindows.forEach((part, partIndex) => {
+        if (!part?.complete) add(start + partIndex * subwindowSeconds, start + (partIndex + 1) * subwindowSeconds);
+      });
+    } else {
+      add(start, start + windowSeconds);
+    }
+  }
+  return ranges;
 }
 
 export function assembleSavedAudioChunks(chunks: SavedAudioChunk[]) {

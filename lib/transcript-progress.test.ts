@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assembleSavedAudioChunks, chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unpackSavedAudioChunkText } from "./transcript-progress";
+import { assembleSavedAudioChunks, chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unfinishedAudioReviewRanges, unpackSavedAudioChunkText } from "./transcript-progress";
 
 test("timeout recovery returns saved audio windows in recording order", () => {
   assert.deepEqual(assembleSavedAudioChunks([
@@ -86,4 +86,18 @@ test("overlapping retry audio keeps new Khmer speech without repeating an exact 
   assert.equal(joined, `${first}\nSpeaker 1: ណា។ ដាក់ហើយអត់មក`);
   assert.equal(stitchOverlappingAudioTranscripts(first, "Speaker 2: អគ្គគាត់ក្ដៅណាស់ណា។"),
     `${first}\nSpeaker 2: អគ្គគាត់ក្ដៅណាស់ណា។`);
+});
+
+test("review times identify unfinished minutes while excluding the silent tail", () => {
+  const chunks = Array.from({ length: 41 }, (_, chunkIndex) => ({ chunkIndex, totalChunks: 41, text: "" }));
+  const complete = { text: "Speaker 1: words", complete: true };
+  const incomplete = { text: "Speaker 1: partial words", complete: false };
+  chunks[0].text = packPartialAudioSubwindows("", [incomplete, complete, complete, complete]);
+  chunks[1].text = packPartialAudioSubwindows("", [complete, incomplete, incomplete, complete]);
+  chunks[6].text = packPartialAudioSubwindows("", [complete, incomplete, complete, complete]);
+  assert.deepEqual(unfinishedAudioReviewRanges(chunks, 9818), [
+    { startSeconds: 0, endSeconds: 60 },
+    { startSeconds: 300, endSeconds: 420 },
+    { startSeconds: 1500, endSeconds: 1560 }
+  ]);
 });

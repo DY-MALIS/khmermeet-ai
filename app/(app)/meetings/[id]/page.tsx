@@ -9,6 +9,7 @@ import { MeetingAskChat } from "@/components/meeting-ask-chat";
 import { extractTasks, generateSummary, getMeetingById } from "@/lib/actions";
 import { formatMeetingDuration } from "@/lib/time-format";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { unfinishedAudioReviewRanges } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 import { applyKnownSpeakerLabels, isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { AUDIO_PLAYER_ELEMENT_ID } from "@/lib/audio-player";
@@ -97,6 +98,9 @@ export default async function MeetingDetailPage({
   const transcriptIsUsable = hasUsableTranscript(labeledTranscript);
   const transcriptText = transcriptIsUsable ? labeledTranscript : "";
   const summaryText = transcriptIsUsable ? meeting.summary : null;
+  const reviewRanges = meeting.audioUrl
+    ? unfinishedAudioReviewRanges(meeting.audioChunks, meeting.duration)
+    : [];
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -157,7 +161,8 @@ export default async function MeetingDetailPage({
           initialTranscript={transcriptText}
           rawTranscript={labeledTranscript}
           transcriptIsUsable={transcriptIsUsable}
-          hasUnfinishedTranscription={meeting._count.audioChunks > 0}
+          hasUnfinishedTranscription={reviewRanges.length > 0}
+          reviewRanges={reviewRanges}
           speakerNames={speakerNames}
           autoStartTranscription={query.transcribe === "1" || query.transcribe === "true"}
         />
