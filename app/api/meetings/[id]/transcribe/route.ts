@@ -14,6 +14,7 @@ import {
 } from "@/lib/storage";
 import type { StoredChunkTranscripts } from "@/lib/storage";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
+import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
 import { assembleSavedAudioChunks } from "@/lib/transcript-progress";
 import { checkOpenRouterKeyStatus } from "@/lib/ai/openrouter";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
@@ -267,9 +268,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // A long recording may need several requests. Refining the incomplete
     // transcript on every pass spends up to a minute rewriting text that the
     // next pass will immediately replace. Refine once when every part is in.
-    const transcript = !incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
+    const transcript = spellTranscriptNumberWords(!incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget).catch(() => rawTranscript)
-      : rawTranscript;
+      : rawTranscript);
     const silenceNotice = silentAudioSeconds >= 30
       ? ` The saved recording contains about ${Math.round(Math.min(silentAudioSeconds, meeting.duration || silentAudioSeconds) / 60)} minutes of silence; there are no spoken words to recover from those parts.`
       : "";

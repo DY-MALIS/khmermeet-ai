@@ -20,6 +20,7 @@ import {
   type ChunkedAudioManifest
 } from "@/lib/chunked-audio";
 import { hasAbbreviatedSpokenNumber, hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
+import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
 import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
@@ -34,6 +35,9 @@ export type TranscriptionLanguageMode = "km" | "en" | "km-en";
 type TranscriptionOptions = {
   timeoutMs?: number;
   mode?: "final" | "live";
+  // Long-recording workers inspect raw numeric shorthand before deciding a
+  // window is complete. User-facing live responses spell numbers as words.
+  formatNumberWords?: boolean;
   // True when audioFile is known in advance to be one specific person's own
   // microphone track (client-mesh Server Rec's per-participant segments) -
   // stops the model from hallucinating a "Speaker 2:" turn inside audio
@@ -901,12 +905,14 @@ export async function transcribeAudio(
     if (hasUsableTranscript(cleanedTranscript) && !isLikelyIncompleteTranscript(cleanedTranscript)) break;
   }
 
-  if (!cleanedTranscript || options.mode === "live") return cleanedTranscript;
+  if (!cleanedTranscript || options.mode === "live") {
+    return options.formatNumberWords === false ? cleanedTranscript : spellTranscriptNumberWords(cleanedTranscript);
+  }
   assertUsableSavedTranscript(cleanedTranscript);
 
   // The default mode is a record of the words actually spoken. A text-only
   // model cannot check the audio and may silently replace a correct word.
-  if (normalizedLanguageMode === "km-en") return cleanedTranscript;
+  if (normalizedLanguageMode === "km-en") return spellTranscriptNumberWords(cleanedTranscript);
 
   const refinedTranscript = await refineOpenRouterTranscript(
     cleanedTranscript,
@@ -921,7 +927,7 @@ export async function transcribeAudio(
   );
   const bestTranscript = chooseBetterSavedTranscript(cleanedTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
   assertUsableSavedTranscript(bestTranscript);
-  return bestTranscript;
+  return spellTranscriptNumberWords(bestTranscript);
 }
 
 async function transcribeAndCleanAudioBuffer(
@@ -1064,7 +1070,8 @@ export async function transcribeStoredTrackRecording(
     mode: "live",
     timeoutMs,
     singleSpeaker: options.singleSpeaker ?? true,
-    skipPrimaryModel: true
+    skipPrimaryModel: true,
+    formatNumberWords: false
   };
   const { compressWholeAudioForTranscription, splitAudioIntoChunks, isAudioWindowSilent, estimatedAudibleAudioSeconds } = await import("@/lib/ffmpeg");
   // Deliberately reassignable: on a multi-hour recording this is hundreds of
@@ -1199,7 +1206,7 @@ export async function transcribeStoredTrackRecording(
       : "";
 
   if (hasUsableTranscript(wholeTranscript) && !wholeAudioAttempt.looksIncomplete) {
-    return cleanTranscriptionText(wholeTranscript);
+    return spellTranscriptNumberWords(cleanTranscriptionText(wholeTranscript));
   }
 
   // Reuse the already-enhanced whole-file encode as the chunk source - but
@@ -1513,28 +1520,28 @@ export async function transcribeStoredTrackRecording(
       transcriptTurns(chunkTranscript).length > 0 &&
       chunkTranscript.length >= wholeTranscript.length * 0.65
     ) {
-      return chunkTranscript;
+      return spellTranscriptNumberWords(chunkTranscript);
     }
     options.onIncomplete?.();
-    return cleanTranscriptionText(wholeTranscript);
+    return spellTranscriptNumberWords(cleanTranscriptionText(wholeTranscript));
   }
   if (completed.some((done) => !done)) {
     const wholeAudioTranscript = cleanTranscriptionText(wholeTranscript);
     if (hasUsableTranscript(wholeAudioTranscript) && !wholeAudioAttempt.looksIncomplete) {
-      return wholeAudioTranscript;
+      return spellTranscriptNumberWords(wholeAudioTranscript);
     }
     options.onIncomplete?.();
-    return hasUsableTranscript(chunkTranscript) ? chunkTranscript : wholeAudioTranscript;
+    return spellTranscriptNumberWords(hasUsableTranscript(chunkTranscript) ? chunkTranscript : wholeAudioTranscript);
   }
 
   if (wholeAudioAttempt.looksIncomplete) {
     if (hasUsableTranscript(chunkTranscript)) {
       if (chunkOutcome.anyStillTruncated) options.onIncomplete?.();
-      return chunkTranscript;
+      return spellTranscriptNumberWords(chunkTranscript);
     }
     if (hasUsableTranscript(wholeTranscript)) {
       options.onIncomplete?.();
-      return cleanTranscriptionText(wholeTranscript);
+      return spellTranscriptNumberWords(cleanTranscriptionText(wholeTranscript));
     }
   }
 
@@ -1542,7 +1549,7 @@ export async function transcribeStoredTrackRecording(
   // Only when the chunked run is what we are actually returning - a
   // whole-audio transcript that won covers the recording end to end.
   if (chunkOutcome.anyStillTruncated && bestTranscript === chunkTranscript) options.onIncomplete?.();
-  return bestTranscript;
+  return spellTranscriptNumberWords(bestTranscript);
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",
@@ -1605,7 +1612,7 @@ export async function refineSavedTranscript(
   // In the original-language mode the audio-grounded words are the source
   // of truth. Keep deterministic spacing and digit cleanup, but do not let
   // a text-only proofreader rewrite speech it cannot hear.
-  if (normalizedLanguageMode === "km-en") return cleanedTranscript;
+  if (normalizedLanguageMode === "km-en") return spellTranscriptNumberWords(cleanedTranscript);
 
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const chunks = splitTranscriptForRefine(cleanedTranscript, REFINE_CHUNK_MAX_CHARS);
@@ -1628,7 +1635,7 @@ export async function refineSavedTranscript(
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(
     keepTrustedSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames), normalizedSpeakerNames
   );
-  return chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
+  return spellTranscriptNumberWords(chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode));
 }
 
 export async function transcribeAudioChunks(
@@ -1648,7 +1655,7 @@ export async function transcribeAudioChunks(
     if (text && !isTimestampOnlyTranscript(text)) transcripts.push(text);
   }
 
-  return cleanTranscriptionText(transcripts.join("\n"));
+  return spellTranscriptNumberWords(cleanTranscriptionText(transcripts.join("\n")));
 }
 
 function normalizeSpeakerNames(speakerNames: string[]) {

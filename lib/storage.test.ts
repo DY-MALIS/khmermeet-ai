@@ -9,7 +9,7 @@ test("an omitted transcript mode keeps words in their spoken languages", () => {
   assert.equal(normalizeTranscriptionLanguageMode("en"), "en");
 });
 
-test("original-language transcript cleanup does not ask a text model to rewrite speech", async () => {
+test("original-language transcript spells digits without asking a text model to rewrite speech", async () => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.OPEN_ROUTER_API_KEY;
   let fetchCalls = 0;
@@ -22,7 +22,7 @@ test("original-language transcript cleanup does not ask a text model to rewrite 
   try {
     const raw = "Speaker 1: We will meet at 10 tomorrow.\nSpeaker 2: Yes, at 10.";
     const result = await refineSavedTranscript(raw, "km-en", []);
-    assert.equal(result, raw);
+    assert.equal(result, "Speaker 1: We will meet at ten tomorrow.\nSpeaker 2: Yes, at ten.");
     assert.equal(fetchCalls, 0);
   } finally {
     globalThis.fetch = previousFetch;

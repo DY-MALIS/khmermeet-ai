@@ -1,4 +1,5 @@
 import { hasUsableTranscript, normalizeTranscriptDigits } from "@/lib/transcript-quality";
+import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
 
 type SavedAudioChunk = { chunkIndex: number; totalChunks: number; text: string };
 
@@ -71,7 +72,7 @@ export function assembleSavedAudioChunks(chunks: SavedAudioChunk[]) {
     .map((chunk) => unpackSavedAudioChunkText(chunk.text).text)
     .filter((text) => hasUsableTranscript(text));
   return {
-    transcript: normalizeTranscriptDigits(usable.map((text) => text.trim()).join("\n")),
+    transcript: spellTranscriptNumberWords(normalizeTranscriptDigits(usable.map((text) => text.trim()).join("\n"))),
     savedChunks: saved.length,
     totalChunks,
     completedSubwindows: saved.reduce((count, chunk) => {

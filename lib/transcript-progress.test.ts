@@ -47,6 +47,9 @@ test("saved partial transcript preserves spoken number words", () => {
   assert.equal(assembleSavedAudioChunks([
     { chunkIndex: 0, totalChunks: 1, text: "Speaker 1: មួយប៊ីលាន" }
   ]).transcript, "Speaker 1: មួយប៊ីលាន");
+  assert.equal(assembleSavedAudioChunks([
+    { chunkIndex: 0, totalChunks: 1, text: "Speaker 1: តម្លៃ 1000000000 ដុល្លារ" }
+  ]).transcript, "Speaker 1: តម្លៃ មួយប៊ីលាន ដុល្លារ");
 });
 
 test("complete short listens replace a longer answer that skipped the middle", () => {
