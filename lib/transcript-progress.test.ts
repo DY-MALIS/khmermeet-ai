@@ -61,6 +61,20 @@ test("complete short listens replace a longer answer that skipped the middle", (
   assert.equal(chooseAudioWindowText(earlier, "", true), earlier);
 });
 
+test("a near-length ordered retry can replace missing words without claiming completion", () => {
+  const fallback = `Speaker 1: ${"ពាក្យចាស់".repeat(15)}`;
+  const updated = `Speaker 1: ${"ពាក្យថ្មី".repeat(13)}`;
+  assert.ok(updated.length < fallback.length);
+  const saved = packPartialAudioSubwindows(fallback, [
+    { text: updated.slice(0, Math.floor(updated.length / 2)), complete: false },
+    { text: updated.slice(Math.floor(updated.length / 2)), complete: false }
+  ]);
+  const restored = unpackSavedAudioChunkText(saved);
+  assert.equal(restored.text, updated.slice(0, Math.floor(updated.length / 2)) + "\n" + updated.slice(Math.floor(updated.length / 2)));
+  assert.equal(restored.incomplete, true);
+  assert.equal(chooseAudioWindowText(fallback, "Speaker 1: too short", false, true), fallback);
+});
+
 test("partial short listens survive a request boundary without losing their order", () => {
   const fallback = "Speaker 1: An older long answer covering the start and end only";
   const first = { text: "Speaker 1: Opening words", complete: true };

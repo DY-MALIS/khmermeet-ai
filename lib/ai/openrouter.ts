@@ -317,13 +317,11 @@ export async function transcribeOpenRouterAudio(
   return "";
 }
 
-// Cost-driven choice (owner decision, 2026-08-31): flash is the default
-// listener for cost savings, with pro kept as the safety-net retry
-// (transcribeOpenRouterAudioViaChat) for the ~1/6 of calls where flash
-// comes back empty - confirmed via OpenRouter's published pricing this
-// only adds ~36% versus flash-only (pro is billed on that fraction of
-// calls only), while avoiding pro-only cost entirely on the rest.
-const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.7-flash";
+// Flash is the default listener to keep long-recording costs bounded. The
+// newer 3.8 model supports audio at the same listed price as 3.7. A short
+// Khmer sample returned speech in Khmer; a Whisper STT comparison returned
+// unrelated Vietnamese text, so it is not a safe fallback for this use case.
+const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.8-flash";
 const DEFAULT_TRANSCRIPTION_SAFETY_NET_MODEL = "";
 
 export function multimodalTranscriptionModel() {

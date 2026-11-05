@@ -41,7 +41,7 @@ export function unpackSavedAudioChunkText(value: string): UnpackedAudioChunk {
         : [];
       const assembled = subwindows.map((part) => part?.text ?? "").filter(Boolean).join("\n");
       const covered = subwindows.length > 0 && subwindows.every((part) => part?.complete) && hasUsableTranscript(assembled);
-      return { text: chooseAudioWindowText(fallback, assembled, covered), incomplete: !covered, covered, subwindows };
+      return { text: chooseAudioWindowText(fallback, assembled, covered, listenedToEverySubwindow(subwindows)), incomplete: !covered, covered, subwindows };
     } catch {
       return { text: "", incomplete: true, covered: false };
     }
@@ -58,9 +58,18 @@ export function unpackSavedAudioChunkText(value: string): UnpackedAudioChunk {
 // A complete set of short, ordered listens covers the whole window. A
 // longer single-pass answer can still skip speech in the middle, so length
 // must not override that coverage. Partial short listens remain provisional.
-export function chooseAudioWindowText(previous: string, candidate: string, coversEverySubwindow: boolean) {
+export function listenedToEverySubwindow(parts: Array<SavedAudioSubwindow | null>) {
+  return parts.length > 0 && parts.every((part) => part !== null && (part.complete || hasUsableTranscript(part.text)));
+}
+
+export function chooseAudioWindowText(previous: string, candidate: string, coversEverySubwindow: boolean, listenedEverySubwindow = false) {
   if (!hasUsableTranscript(candidate)) return previous;
-  if (coversEverySubwindow || candidate.length > previous.length) return candidate;
+  // A newer listen of every short piece can contain a recovered phrase even
+  // when it is slightly shorter than the old one-pass response. Keep the old
+  // response if the new text is substantially shorter, and keep the window
+  // marked incomplete until every short piece passes its quality check.
+  if (coversEverySubwindow || candidate.length > previous.length ||
+    (listenedEverySubwindow && candidate.length >= previous.length * 0.8)) return candidate;
   return previous;
 }
 

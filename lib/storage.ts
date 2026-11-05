@@ -21,7 +21,7 @@ import {
 } from "@/lib/chunked-audio";
 import { hasAbbreviatedSpokenNumber, hasTranscriptionPromptLeakage, hasUsableTranscript, isTimestampOnlyTranscript, normalizeTranscriptDigits, stripUnknownOnlyLines } from "@/lib/transcript-quality";
 import { spellTranscriptNumberWords } from "@/lib/transcript-number-words";
-import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
+import { chooseAudioWindowText, COVERED_AUDIO_CHUNK_PREFIX, INCOMPLETE_AUDIO_CHUNK_PREFIX, listenedToEverySubwindow, packPartialAudioSubwindows, stitchOverlappingAudioTranscripts, unpackSavedAudioChunkText, type SavedAudioSubwindow } from "@/lib/transcript-progress";
 import { keepTrustedSpeakerLabels } from "@/lib/speaker-labels";
 
 const uploadRoot = process.env.VERCEL ? path.join("/tmp", "khmermeet-uploads") : path.join(process.cwd(), "uploads");
@@ -857,7 +857,7 @@ export async function transcribeAudio(
   const timeoutMs = options.timeoutMs ?? Number(process.env.OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS ?? 55000);
 
   // All languages use the configured multimodal transcription model
-  // (default: google/gemini-2.5-pro). Keeping one audio-grounded path
+  // (default: google/gemini-3.8-flash). Keeping one audio-grounded path
   // across Khmer, English, and mixed meetings avoids switching English-only
   // recordings through a separate STT model with different behavior.
   let cleanedTranscript = "";
@@ -1394,6 +1394,7 @@ export async function transcribeStoredTrackRecording(
       // window. Shorter recordings use them only when a whole-window answer
       // appears severely truncated.
       let shorterWindowsIncomplete = false;
+      let shorterWindowsListened = false;
       let shorterWindowsCovered = requireShortCoverage && !requireSubwindows &&
         hasUsableTranscript(transcript) && !hasAbbreviatedSpokenNumber(transcript) &&
         !looksSeverelyTruncated(transcript, next.chunk.durationSeconds);
@@ -1465,7 +1466,11 @@ export async function transcribeStoredTrackRecording(
                             stitchOverlappingAudioTranscripts(pieces[0].text, pieces[1].text)
                           );
                           const complete = pieces.every((piece) => piece.complete) && hasUsableTranscript(assembled);
-                          return { text: chooseAudioWindowText(cached.text, assembled, complete), complete };
+                          return {
+                            text: chooseAudioWindowText(cached.text, assembled, complete,
+                              listenedToEverySubwindow(pieces)),
+                            complete
+                          };
                         }
                       } finally {
                         await shorter.dispose().catch(() => undefined);
@@ -1498,10 +1503,11 @@ export async function transcribeStoredTrackRecording(
                 }
               }
               shorterWindowsIncomplete = subparts.some((part) => !part?.complete);
+              shorterWindowsListened = listenedToEverySubwindow(subparts);
               shorterWindowsAllSilent = subparts.every((part) => part?.complete && !part.text);
               const assembled = cleanTranscriptionText(subparts.map((part) => part?.text ?? "").filter(Boolean).join("\n"));
               shorterWindowsCovered = !shorterWindowsIncomplete && hasUsableTranscript(assembled);
-              transcript = chooseAudioWindowText(transcript, assembled, shorterWindowsCovered);
+              transcript = chooseAudioWindowText(transcript, assembled, shorterWindowsCovered, shorterWindowsListened);
             }
           } finally {
             await subwindows.dispose().catch(() => undefined);
@@ -1533,7 +1539,7 @@ export async function transcribeStoredTrackRecording(
       const windowIsComplete = windowHasSpeech && !shorterWindowsIncomplete &&
         !hasAbbreviatedSpokenNumber(chunkTranscriptText) &&
         (shorterWindowsCovered || (!requireSubwindows && !looksSeverelyTruncated(chunkTranscriptText, next.chunk.durationSeconds)));
-      const bestText = chooseAudioWindowText(earlierText, chunkTranscriptText, shorterWindowsCovered);
+      const bestText = chooseAudioWindowText(earlierText, chunkTranscriptText, shorterWindowsCovered, shorterWindowsListened);
       transcripts[next.index] = bestText;
       completed[next.index] = windowIsComplete && bestText === chunkTranscriptText;
       // Written down the moment it succeeds, not at the end: the request can
