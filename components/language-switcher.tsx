@@ -8,7 +8,7 @@ import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/nav
 
 export { languageStorageKey, readDisplayLanguage };
 
-export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
+export function LanguageSwitcher({ compact = false, variant = "default" }: { compact?: boolean; variant?: "default" | "auth" }) {
   const router = useRouter();
   const [language, setLanguage] = useDisplayLanguage();
   const labels = navigationLabels[language];
@@ -16,6 +16,28 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   function changeLanguage(next: DisplayLanguage) {
     setLanguage(next);
     router.refresh();
+  }
+
+  if (variant === "auth") {
+    return (
+      <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1" aria-label={labels.language}>
+        {(["km", "en"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            lang={item}
+            aria-pressed={language === item}
+            onClick={() => changeLanguage(item)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf",
+              language === item ? "bg-white text-leaf shadow-sm" : "text-slate-500 hover:text-ink"
+            )}
+          >
+            {item === "km" ? "ខ្មែរ" : "EN"}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   return (

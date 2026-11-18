@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useBilingualText } from "@/lib/display-language";
 
@@ -19,7 +20,7 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-ink shadow-sm transition hover:-translate-y-0.5 hover:border-leaf/30 hover:shadow-lg hover:shadow-leaf/10 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-ink shadow-[0_4px_16px_rgba(18,72,62,0.06)] transition hover:-translate-y-0.5 hover:border-leaf/40 hover:shadow-[0_12px_25px_rgba(18,72,62,0.12)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         onClick={async () => {
           setPending(true);
@@ -43,6 +44,7 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
           <path fill="#FBBC05" d="M4.41 11.9a6 6 0 0 1 0-3.8V5.5H1.06a10 10 0 0 0 0 9l3.35-2.6z" />
           <path fill="#EA4335" d="M10 3.98c1.47 0 2.79.5 3.83 1.5l2.87-2.87A9.6 9.6 0 0 0 10 0a10 10 0 0 0-8.94 5.5l3.35 2.6C5.2 5.74 7.4 3.98 10 3.98z" />
         </svg>
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
         {pending ? t("កំពុងបញ្ជូនទៅ Google...", "Redirecting to Google...") : t("បន្តជាមួយ Google", "Continue with Google")}
       </button>
     </div>
