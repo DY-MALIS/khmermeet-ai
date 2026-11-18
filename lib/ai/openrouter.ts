@@ -322,7 +322,7 @@ export async function transcribeOpenRouterAudio(
 // Khmer sample returned speech in Khmer; a Whisper STT comparison returned
 // unrelated Vietnamese text, so it is not a safe fallback for this use case.
 const DEFAULT_TRANSCRIPTION_FALLBACK_MODEL = "google/gemini-3.8-flash";
-const DEFAULT_TRANSCRIPTION_SAFETY_NET_MODEL = "";
+const DEFAULT_TRANSCRIPTION_SAFETY_NET_MODEL = "google/gemini-3.7-flash";
 
 export function multimodalTranscriptionModel() {
   return process.env.OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL?.trim() || DEFAULT_TRANSCRIPTION_FALLBACK_MODEL;

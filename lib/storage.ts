@@ -1240,7 +1240,9 @@ export async function transcribeStoredTrackRecording(
   // window complete; legacy length-only cache rows need that verification.
   const requireShortCoverage = Boolean(knownDuration && knownDuration > 20 * 60);
   const fallbackSegmentSeconds =
-    knownDuration && knownDuration <= 20 * 60
+    knownDuration && knownDuration <= 10 * 60
+      ? 60
+      : knownDuration && knownDuration <= 20 * 60
       ? 2 * 60
       : STORED_TRANSCRIPTION_SEGMENT_SECONDS;
   const split = await splitAudioIntoChunks(
@@ -1335,7 +1337,7 @@ export async function transcribeStoredTrackRecording(
       // period per chunk.
       // Leave time for genuinely shorter listens if this clip returns no
       // words. Otherwise the first call can consume the entire deadline.
-      const chunkTimeoutMs = Math.min(canSplitEmptyChunk ? 45000 : 150000, remainingMs - 5000);
+      const chunkTimeoutMs = Math.min(canSplitEmptyChunk ? 60000 : 150000, remainingMs - 5000);
       // A size-limited outer chunk may already be at most a minute long.
       // Transcribe that chunk directly instead of asking it to split again.
       const requireSubwindows = requireShortCoverage &&

@@ -75,7 +75,6 @@ export function TranscribeAudioButton({
       let stillPartial = false;
       let partialMessage = "";
       let completeMessage = "";
-      let retriedEmptyTranscript = false;
       let freshPending = processingMode === "fresh";
       for (;;) {
         // A second pass must resume the newly saved windows, not clear them.
@@ -87,11 +86,6 @@ export function TranscribeAudioButton({
           body: JSON.stringify({ languageMode, fresh })
         });
         const data = await readJsonResponse<{ transcript?: string; error?: string; code?: string; message?: string; partial?: boolean; savedChunks?: number; completedSubwindows?: number }>(response);
-        if (!response.ok && data.code === "EMPTY_TRANSCRIPT" && !retriedEmptyTranscript) {
-          retriedEmptyTranscript = true;
-          setMessage(t("AI មិនបានបញ្ជូនអត្ថបទមកទេ។ កំពុងសាកល្បងសំឡេងដែលបានរក្សាទុកម្ដងទៀត...", "The AI returned no text. Trying the saved audio once more automatically..."));
-          continue;
-        }
         if (!response.ok) throw new Error(data.error ?? t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio."));
         if (fresh) setProcessingMode("resume");
         nextTranscript = typeof data.transcript === "string" ? data.transcript.trim() : "";
@@ -140,6 +134,7 @@ export function TranscribeAudioButton({
       );
       window.setTimeout(() => router.refresh(), 50);
     } catch (error) {
+      setMessage("");
       const detail = error instanceof Error ? error.message : t("មិនអាចបំលែងសំឡេងជាអក្សរបានទេ។", "Could not transcribe audio.");
       setError(
         detail.includes("more time") || detail.toLowerCase().includes("timed out")

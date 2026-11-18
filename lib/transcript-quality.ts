@@ -139,31 +139,15 @@ export function hasLowSpeechSignal(text: string) {
   if (letters.length < 8 && timestampMatches.length >= 2) return true;
   if (hasRunawayRepetition(compact)) return true;
 
-  const tokens = compact.split(/\s+/).filter(Boolean);
-  // A short transcript that is mostly one word repeated (e.g. a model
-  // hallucinating "Sanyasu Sanyasu Sanyasu..." on unrecognized audio) is
-  // caught here even below the length gate used for the ratio checks below,
-  // which need more tokens to avoid flagging real short Khmer utterances.
-  if (tokens.length >= 3) {
-    const repetitionRatio = new Set(tokens.map((token) => token.toLowerCase())).size / tokens.length;
-    if (repetitionRatio < 0.34) return true;
-  }
-
-  if (tokens.length >= 8) {
-    const uniqueTokenRatio = new Set(tokens.map((token) => token.toLowerCase())).size / tokens.length;
-    const veryShortTokenRatio = tokens.filter((token) => [...token].length <= 2).length / tokens.length;
-
-    if (uniqueTokenRatio < 0.25) return true;
-    if (veryShortTokenRatio > 0.75) return true;
-  }
-
+  // A repeated chorus or a short sung syllable can have very few distinct
+  // words. Text-only token ratios cannot distinguish that from hallucination.
+  // Keep short vocal phrases and reject only the sustained loops above.
   return false;
 }
 
 // Khmer text often has no spaces between words. A model can repeat the same
-// invented phrase for thousands of characters while the word-based uniqueness
-// checks above see only one token. Check overlapping character windows so an
-// otherwise useful transcript is not accepted with a long hallucinated tail.
+// invented phrase for thousands of characters. Check overlapping character
+// windows so a useful transcript is not accepted with a long hallucinated tail.
 export function hasRunawayRepetition(text: string) {
   // Repetitive Khmer output can vary a few syllables on every pass, so its
   // 24-character sequences remain nearly unique even while it is visibly a

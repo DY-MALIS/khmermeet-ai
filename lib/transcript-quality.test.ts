@@ -18,6 +18,8 @@ test("rejects a long Khmer hallucination loop without spaces", () => {
 
 test("brief spoken repetition stays valid", () => {
   assert.equal(hasRunawayRepetition("ចាស ចាស ខ្ញុំយល់ហើយ"), false);
+  assert.equal(hasUsableTranscript("Speaker 1: I love you, I love you, I love you"), true);
+  assert.equal(hasUsableTranscript("Speaker 1: la la la la la"), true);
 });
 
 test("Khmer numeral glyphs become 0-9 digits without changing words", () => {
