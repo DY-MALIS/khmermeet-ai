@@ -38,10 +38,10 @@ export default async function DashboardPage() {
   const { meetings, tasks, segments, dbUnavailable } = data;
   const now = new Date();
   const stats = [
-    { label: text.totalMeetings, value: meetings.length, icon: FileAudio, tone: "bg-leaf/10 text-leaf", accent: "bg-leaf" },
-    { label: text.totalTasks, value: tasks.length, icon: ListTodo, tone: "bg-sky/10 text-sky", accent: "bg-sky" },
-    { label: text.completedStat, value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700", accent: "bg-emerald-500" },
-    { label: text.overdueStat, value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-red-100 text-red-700", accent: "bg-red-500" }
+    { label: text.totalMeetings, value: meetings.length, icon: FileAudio, tone: "bg-[#e0f5ed] text-[#087862]", accent: "bg-[#087862]" },
+    { label: text.totalTasks, value: tasks.length, icon: ListTodo, tone: "bg-[#e2f2ef] text-[#0b7a70]", accent: "bg-[#0b7a70]" },
+    { label: text.completedStat, value: tasks.filter((task) => task.status === "completed").length, icon: CheckCircle2, tone: "bg-[#e7f5e7] text-[#3e7e4b]", accent: "bg-[#3e7e4b]" },
+    { label: text.overdueStat, value: tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed").length, icon: Clock, tone: "bg-[#fff2dc] text-[#9b690d]", accent: "bg-[#e5ad33]" }
   ];
 
   const qualityScores = meetings
@@ -56,39 +56,40 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-leaf/15 bg-gradient-to-r from-emerald-50 via-teal-50 to-amber-50/70 p-4 shadow-xl shadow-leaf/10 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div>
-          <p className="text-xs font-bold uppercase text-leaf">{text.welcome}</p>
-          <h1 className="mt-1 text-3xl font-black tracking-normal text-ink sm:text-4xl">{text.dashboardTitle}</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+      <div className="relative flex flex-col gap-5 overflow-hidden rounded-[1.75rem] bg-gradient-to-r from-[#073f39] via-[#075b4e] to-[#0b8b6c] p-6 text-white shadow-xl shadow-[#073f39]/15 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-28 h-64 w-64 rounded-full border-[42px] border-white/5" />
+        <div className="relative">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#f5cb3f]">{text.welcome}</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{text.dashboardTitle}</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/85">
             {t("ថតប្រជុំ ផ្ទុកសំឡេង និងបំលែងការនិយាយជាខ្មែរ ឬអង់គ្លេសទៅជាកំណត់ត្រាមានរបៀប។", "Record meetings, upload audio, and turn Khmer or English speech into organized notes.")}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <a href="/meetings/new" className="kh-button-primary">
+        <div className="relative flex flex-wrap gap-2">
+          <a href="/meetings/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-[#075b4e] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-emerald-50">
             <Plus className="h-4 w-4" />
             {t("ចាប់ផ្ដើមឥឡូវ", "Start now")}
           </a>
-          <a href="/meetings/call" className="kh-button-secondary">
+          <a href="/meetings/call" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20">
             <Video className="h-4 w-4" />
             {t("បើកការហៅ", "Open call")}
           </a>
         </div>
       </div>
       <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
-        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-2xl border border-leaf/20 bg-gradient-to-br from-emerald-100/85 via-teal-50 to-sky-100/80 p-6 shadow-2xl shadow-leaf/20 transition hover:-translate-y-0.5 hover:shadow-leaf/25 sm:p-8">
-          <div className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-leaf via-sky to-saffron" />
-          <div className="absolute right-6 top-6 hidden rounded-full border border-leaf/20 bg-white/75 px-3 py-2 text-xs font-bold text-leaf shadow-sm xl:block">
+        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-[1.5rem] border border-[#d3e7df] bg-[#fbfdf9] p-6 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#073f39]/12 sm:p-8">
+          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#087862] via-[#0cb288] to-[#f5cb3f]" />
+          <div className="absolute right-6 top-6 hidden rounded-full border border-[#cde6da] bg-[#e8f6ef] px-3 py-2 text-xs font-bold text-[#087862] xl:block">
             {t("រួចរាល់សម្រាប់ថតផ្ទាល់", "Live capture ready")}
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
               <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-leaf text-white shadow-lg shadow-leaf/30">
+                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#087862] text-white shadow-lg shadow-[#087862]/20">
                 <Mic className="h-6 w-6" />
               </span>
                 <div>
-                  <p className="text-xs font-bold uppercase text-leaf">{text.primaryFeature}</p>
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{text.primaryFeature}</p>
                   <h2 className="text-2xl font-black text-ink sm:text-4xl">{text.startMeetingRecording}</h2>
                 </div>
               </div>
@@ -96,21 +97,21 @@ export default async function DashboardPage() {
                 {text.dashboardRecordDescription}
               </p>
               <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold">
-                <span className="rounded-full bg-leaf/10 px-3 py-2 text-leaf shadow-sm ring-1 ring-leaf/15">{t("សំឡេង", "Audio")}</span>
-                <span className="rounded-full bg-sky/10 px-3 py-2 text-sky shadow-sm ring-1 ring-sky/15">{t("អត្ថបទប្រជុំ", "Transcript")}</span>
-                <span className="rounded-full bg-saffron/15 px-3 py-2 text-saffron shadow-sm ring-1 ring-saffron/20">{t("សេចក្ដីសង្ខេប", "Summary")}</span>
+                <span className="rounded-full bg-[#e1f3eb] px-3 py-2 text-[#087862] ring-1 ring-[#cde6da]">{t("សំឡេង", "Audio")}</span>
+                <span className="rounded-full bg-[#e8f3ef] px-3 py-2 text-[#0a6e63] ring-1 ring-[#d3e7df]">{t("អត្ថបទប្រជុំ", "Transcript")}</span>
+                <span className="rounded-full bg-[#fff4dc] px-3 py-2 text-[#9a680c] ring-1 ring-[#f5e6b9]">{t("សេចក្ដីសង្ខេប", "Summary")}</span>
               </div>
             </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-leaf px-5 py-3 text-sm font-bold text-white shadow-lg shadow-leaf/30 transition group-hover:bg-sky">
+            <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#087862] px-5 py-3 text-sm font-bold text-white shadow-md shadow-[#087862]/20 transition group-hover:bg-[#065d50]">
               {t("ចាប់ផ្ដើមថត", "Start recording")}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </div>
         </a>
         <div className="grid gap-4">
-          <a href="/meetings/call" className="group rounded-2xl border border-sky/20 bg-sky-50/85 p-5 shadow-xl shadow-sky/10 backdrop-blur-xl transition hover:-translate-y-0.5">
+          <a href="/meetings/call" className="group rounded-[1.5rem] border border-[#d3e7df] bg-white p-5 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl">
             <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-sky/10 text-sky shadow-sm ring-1 ring-sky/10">
+              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e1f3eb] text-[#087862]">
                 <Video className="h-6 w-6" />
               </span>
               <div>
@@ -119,12 +120,12 @@ export default async function DashboardPage() {
               </div>
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white/80 px-4 py-2 text-sm font-bold text-ink shadow-sm ring-1 ring-sky/10 transition group-hover:text-sky">
+            <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#cde6da] bg-[#f2faf5] px-4 py-2 text-sm font-bold text-[#075b4e] transition group-hover:bg-[#e1f3eb]">
               {t("បើកការហៅ", "Open call")}
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </a>
-          <div className="rounded-2xl border border-saffron/25 bg-gradient-to-br from-amber-50 via-orange-50/60 to-emerald-50 p-5 shadow-xl shadow-saffron/10 backdrop-blur-xl">
+          <div className="rounded-[1.5rem] border border-[#f2dfad] bg-[#fffaf0] p-5 shadow-lg shadow-[#a46f1a]/8">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-leaf/10 text-leaf shadow-sm">
                 <Radio className="h-5 w-5" />
@@ -147,22 +148,19 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <div className="kh-card relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50/80 p-5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-leaf/15" key={stat.label}>
+          <div className="relative overflow-hidden rounded-[1.4rem] border border-[#dbe9df] bg-white p-5 shadow-sm shadow-[#073f39]/5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#073f39]/10" key={stat.label}>
             <div className={`absolute inset-x-0 top-0 h-1 ${stat.accent}`} />
             <div className="flex items-center justify-between">
-              <p className="text-sm text-slate-500">{stat.label}</p>
+              <p className="text-sm font-medium text-slate-500">{stat.label}</p>
               <span className={`rounded-xl p-2 ${stat.tone}`}><stat.icon className="h-5 w-5" /></span>
             </div>
-            <p className="mt-4 text-3xl font-bold text-ink">{stat.value}</p>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-leaf" style={{ width: `${Math.max(8, Math.min(100, Number(stat.value) * 5 || 8))}%` }} />
-            </div>
+            <p className="mt-5 text-4xl font-bold tracking-tight text-[#073f39]">{stat.value}</p>
           </div>
         ))}
       </div> : null}
       {!dbUnavailable ? (
-        <section className="kh-card overflow-hidden bg-emerald-50/80 p-0 shadow-xl shadow-leaf/10">
-          <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-100/80 via-teal-50 to-sky-50 px-5 py-4">
+        <section className="overflow-hidden rounded-[1.5rem] border border-[#dbe9df] bg-white shadow-sm shadow-[#073f39]/5">
+          <div className="border-b border-[#dbe9df] bg-[#f3faf5] px-5 py-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase text-leaf">{t("ទិន្នន័យសង្ខេប", "Insights")}</p>
@@ -200,8 +198,8 @@ export default async function DashboardPage() {
       ) : null}
       {!dbUnavailable ? <PersonalAssistant /> : null}
       {!dbUnavailable ? <div className="grid gap-5 xl:grid-cols-2">
-        <section className="kh-card overflow-hidden bg-teal-50/70">
-          <div className="border-b border-leaf/10 bg-gradient-to-r from-emerald-100/70 to-teal-50 px-5 py-4">
+        <section className="overflow-hidden rounded-[1.5rem] border border-[#dbe9df] bg-white shadow-sm shadow-[#073f39]/5">
+          <div className="border-b border-[#dbe9df] bg-[#f3faf5] px-5 py-4">
             <h2 className="text-lg font-bold">{text.recentMeetings}</h2>
           </div>
           <div className="p-5">
@@ -217,8 +215,8 @@ export default async function DashboardPage() {
           ) : <EmptyState title={text.noMeetingsYet} description={text.noMeetingsYetDescription} />}
           </div>
         </section>
-        <section className="kh-card overflow-hidden bg-sky-50/65">
-          <div className="border-b border-sky/10 bg-gradient-to-r from-sky-100/70 to-emerald-50 px-5 py-4">
+        <section className="overflow-hidden rounded-[1.5rem] border border-[#dbe9df] bg-white shadow-sm shadow-[#073f39]/5">
+          <div className="border-b border-[#dbe9df] bg-[#f3faf5] px-5 py-4">
             <h2 className="text-lg font-bold">{text.pendingTasks}</h2>
           </div>
           <div className="p-5">
@@ -241,13 +239,13 @@ export default async function DashboardPage() {
 
 function AnalyticsTile({ label, value, tone }: { label: string; value: string; tone: "leaf" | "sky" | "saffron" | "ink" }) {
   const toneClass = {
-    leaf: "bg-leaf",
-    sky: "bg-sky",
-    saffron: "bg-saffron",
-    ink: "bg-ink"
+    leaf: "bg-[#087862]",
+    sky: "bg-[#0b7a70]",
+    saffron: "bg-[#e5ad33]",
+    ink: "bg-[#073f39]"
   }[tone];
   return (
-    <div className="rounded-xl border border-leaf/10 bg-white/65 p-4 shadow-sm transition hover:-translate-y-0.5 hover:bg-white/80 hover:shadow-md">
+    <div className="rounded-xl border border-[#dbe9df] bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-md">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-ink">{value}</p>
       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">

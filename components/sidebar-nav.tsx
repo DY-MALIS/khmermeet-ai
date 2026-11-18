@@ -63,13 +63,13 @@ export function SidebarNav() {
             className={cn(
               "group relative flex min-h-11 min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition lg:gap-3 lg:px-4",
               active
-                ? "bg-leaf text-white shadow-lg shadow-leaf/20"
-                : "text-slate-600 hover:bg-white/80 hover:text-leaf hover:shadow-sm"
+                ? "bg-[#0b9b78] text-white shadow-lg shadow-black/10"
+                : "text-emerald-50/80 hover:bg-white/10 hover:text-white"
             )}
             aria-current={active ? "page" : undefined}
           >
-            {active ? <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full bg-saffron" /> : null}
-            <item.icon className={cn("h-4 w-4", active ? "text-white" : "text-slate-500 group-hover:text-leaf")} />
+            {active ? <span className="absolute left-0 top-2 h-7 w-1 rounded-r-full bg-[#f5cb3f]" /> : null}
+            <item.icon className={cn("h-4 w-4", active ? "text-white" : "text-emerald-100/70 group-hover:text-white")} />
             <span className="min-w-0 truncate leading-5">{labels[item.labelKey]}</span>
             <NavigationPending language={language} />
           </Link>

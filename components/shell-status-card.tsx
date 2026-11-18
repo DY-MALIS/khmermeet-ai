@@ -7,9 +7,9 @@ import { useBilingualText } from "@/lib/display-language";
 export function ShellStatusCard({ user }: { user: { name: string; email: string } }) {
   const t = useBilingualText();
   return (
-    <div className="mb-3 rounded-lg bg-slate-50 p-3">
-      <p className="truncate text-sm font-semibold text-ink">{user.name || user.email}</p>
-      <p className="truncate text-xs text-slate-500">{user.email}</p>
+    <div className="mb-3 rounded-xl border border-white/10 bg-white/10 p-3">
+      <p className="truncate text-sm font-semibold text-white">{user.name || user.email}</p>
+      <p className="truncate text-xs text-emerald-100/70">{user.email}</p>
       <button
         type="button"
         onClick={async () => {
@@ -33,7 +33,7 @@ export function ShellStatusCard({ user }: { user: { name: string; email: string 
           // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.href = "/login";
         }}
-        className="mt-2 text-xs font-semibold text-leaf hover:underline"
+        className="mt-2 text-xs font-semibold text-[#f5cb3f] hover:underline"
       >
         {t("ចាកចេញពីគណនី", "Sign out")}
       </button>

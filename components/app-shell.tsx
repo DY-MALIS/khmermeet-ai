@@ -4,7 +4,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ShellStatusCard } from "@/components/shell-status-card";
 import { LocalizedText } from "@/components/localized-text";
-import { Menu } from "lucide-react";
+import { Menu, Video } from "lucide-react";
 import Link from "next/link";
 
 export function AppShell({
@@ -15,22 +15,22 @@ export function AppShell({
   user: { name: string; email: string };
 }) {
   return (
-    <div className="min-h-screen lg:flex">
-      <div className="sticky top-0 z-30 border-b border-leaf/10 bg-emerald-50/95 shadow-sm shadow-leaf/10 backdrop-blur-2xl lg:hidden">
+    <div className="min-h-screen bg-[#eff6f2] lg:flex">
+      <div className="sticky top-0 z-30 border-b border-white/10 bg-[#064d43] text-white shadow-lg backdrop-blur-2xl lg:hidden">
         <details>
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between px-4 py-3">
             <Link href="/dashboard" className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-leaf text-base font-black text-white shadow-sm shadow-leaf/20">K</div>
+              <div className="grid h-9 w-9 place-items-center rounded-xl border border-white/30 bg-[#0a9472] text-white shadow-sm"><Video className="h-5 w-5 fill-white" /></div>
               <div>
-                <p className="font-bold text-ink">KhmerMeet AI</p>
-                <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
+                <p className="font-bold text-white">KhmerMeet <span className="text-[#f5cb3f]">AI</span></p>
+                <p className="text-xs text-emerald-100/70"><LocalizedText k="appSubtitle" /></p>
               </div>
             </Link>
-            <span className="grid h-10 w-10 place-items-center rounded-xl border border-leaf/15 bg-white/80 text-leaf shadow-sm">
+            <span className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 text-white shadow-sm">
               <Menu className="h-5 w-5" />
             </span>
           </summary>
-          <div className="max-h-[70vh] overflow-y-auto border-t border-leaf/10 bg-emerald-50/95 px-2 py-3 shadow-xl">
+          <div className="max-h-[70vh] overflow-y-auto border-t border-white/10 bg-[#064d43] px-2 py-3 shadow-xl">
             <SidebarNav />
             <div className="px-2 pt-2">
               <LanguageSwitcher compact />
@@ -39,13 +39,13 @@ export function AppShell({
         </details>
       </div>
 
-      <aside className="sticky top-0 z-20 hidden shrink-0 border-r border-leaf/15 bg-gradient-to-b from-emerald-50 via-teal-50 to-sky-50 text-ink shadow-xl shadow-leaf/10 backdrop-blur-2xl lg:flex lg:h-screen lg:w-80 lg:flex-col">
+      <aside className="sticky top-0 z-20 hidden shrink-0 border-r border-white/10 bg-gradient-to-b from-[#064d43] via-[#07594b] to-[#06473f] text-white shadow-xl shadow-[#073f39]/20 lg:flex lg:h-screen lg:w-72 lg:flex-col">
         <div className="flex items-center justify-between px-4 py-5 lg:block lg:px-6">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-xl bg-leaf text-lg font-black text-white shadow-lg shadow-leaf/20">K</div>
+            <div className="grid h-11 w-11 place-items-center rounded-xl border border-white/30 bg-[#0a9472] text-white shadow-lg shadow-black/10"><Video className="h-6 w-6 fill-white" /></div>
             <div>
-              <p className="font-bold text-ink">KhmerMeet AI</p>
-              <p className="text-xs text-slate-500"><LocalizedText k="appSubtitle" /></p>
+              <p className="font-bold text-white">KhmerMeet <span className="text-[#f5cb3f]">AI</span></p>
+              <p className="text-xs text-emerald-100/70"><LocalizedText k="appSubtitle" /></p>
             </div>
           </Link>
         </div>
@@ -53,7 +53,7 @@ export function AppShell({
         <div className="px-4 pb-4">
           <LanguageSwitcher compact />
         </div>
-        <div className="mt-auto hidden border-t border-leaf/10 p-4 lg:block">
+        <div className="mt-auto hidden border-t border-white/10 p-4 lg:block">
           <ShellStatusCard user={user} />
         </div>
       </aside>

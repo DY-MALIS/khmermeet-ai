@@ -40,7 +40,7 @@ export function PersonalAssistant() {
   }
 
   return (
-    <section className="kh-card p-5">
+    <section className="rounded-[1.5rem] border border-[#dbe9df] bg-white p-5 shadow-sm shadow-[#073f39]/5">
       <p className="mb-3 flex items-center gap-2 text-lg font-bold">
         <UserRound className="h-4 w-4 text-leaf" />
         {t("ជំនួយការផ្ទាល់ខ្លួន AI", "AI Personal Assistant")}
