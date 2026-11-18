@@ -394,7 +394,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
     accuracyInstruction,
     "Write every spoken number as words, including one, two, dates, phone numbers, money, and large amounts. For Khmer speech use Khmer number words exactly as heard, including units such as ពាន់, លាន, ប៊ីលាន, and ទ្រីលាន. Do not put Arabic digits 0-9 or Khmer numeral glyphs in spoken content. Keep each word and unit in the order heard; never calculate a total, shorten to B/M/K, or substitute a plausible value. Speaker label numbers are metadata, not spoken content.",
     "Every audible numeric phrase matters, including large money amounts in millions, billions, and trillions. Keep it at the exact point where it is spoken, even if nearby words are unclear. If a number cannot be heard clearly, write [unclear number] for that span; never silently omit it, infer its value, or invent missing words or units.",
-    "Listen to the entire attached audio file from start to end and transcribe every spoken sentence in chronological order.",
+    "Listen to the entire attached audio file from start to end and transcribe every audible word in chronological order, whether spoken or sung. Singing over background music is still a voice to transcribe. Ignore instrumental music, beats, and other non-vocal sounds; do not describe them or insert music markers. If a sung word is masked by music, use [unclear] for only that word instead of guessing from a familiar song or chorus.",
     "Work through the recording carefully before writing: replay a quiet, fast, or distant span in your mind and try to resolve it from the sound itself, including faint syllables and changes of voice. Trying harder means listening again - it never means reconstructing a word from context or repeating a nearby phrase to fill a quiet span.",
     "Every span of the recording ends in exactly one of three outcomes. Words you can make out: write them exactly as spoken. Speech you can hear but cannot make out after that effort: write [unclear] for that span - do not leave it out, and do not replace it with a plausible word. Stretches where nobody speaks: write nothing at all.",
     "Greetings, filler words, repeated words, side comments, short acknowledgements, incomplete phrases, and quiet replies are all speech: write the ones you can make out, and [unclear] where you can hear that someone spoke but not what they said.",
@@ -426,7 +426,7 @@ function transcriptionChatPrompt(language: "km" | "en" | "km-en", speakerNames: 
         : "If multiple speakers are audible, split the transcript into separate speaker turns. Start every turn with a generic speaker label such as Speaker 1:, Speaker 2:, etc. Do not use self-introduced names as speaker labels. If only one speaker is audible in this mixed recording, still label lines Speaker 1:.",
     "If a short phrase is inaudible or unclear, write [unclear] for that phrase only - never invent words.",
     "For quiet or distant speech, listen closely and write the words you can resolve, and [unclear] for the ones you cannot - not a fluent guess, and not silence. For noisy, overlapped, or muted speech, the same: [unclear] rather than a guess. Do not add any text for silence or non-speech sounds.",
-    "If the audio contains no discernible speech at all, respond with exactly: [no speech detected]",
+    "If the audio contains no discernible spoken or sung words at all, respond with exactly: [no speech detected]",
     "Return the transcript text only - no title, no heading, no preamble, no explanation, no markdown formatting, and no commentary about the audio. Never write phrases like \"Verbatim transcript\", \"Here is the transcript\", or \"Transcript:\" unless those exact words were spoken in the audio."
   ].join(" ");
 }
@@ -445,7 +445,8 @@ async function callMultimodalTranscription(
   language: "km" | "en" | "km-en",
   timeoutMs: number,
   speakerNames: string[],
-  singleSpeaker: boolean
+  singleSpeaker: boolean,
+  concisePrompt = false
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
@@ -473,7 +474,9 @@ async function callMultimodalTranscription(
           {
             role: "user",
             content: [
-              { type: "text", text: transcriptionChatPrompt(language, speakerNames, singleSpeaker) },
+              { type: "text", text: concisePrompt
+                ? `Transcribe every audible spoken or sung word in this recording in chronological order, including vocals over music. Ignore instrumental music and beats; do not describe them. Keep Khmer words in Khmer script and English words in English. Do not translate, summarize, guess missing words from song context, or add commentary. Use [unclear] for vocal words you cannot understand. ${singleSpeaker ? "This is one speaker; return plain text without speaker labels." : "Put each speaker turn on a separate line with a consistent generic Speaker 1:, Speaker 2: label."} If there are no discernible spoken or sung words, return [no speech detected]. Return only the transcript.`
+                : transcriptionChatPrompt(language, speakerNames, singleSpeaker) },
               {
                 type: "input_audio",
                 input_audio: {
@@ -528,34 +531,45 @@ export async function transcribeOpenRouterAudioViaChat(
   const deadline = Date.now() + Math.max(1000, timeoutMs);
   const primaryModel = multimodalTranscriptionModel();
   const safetyNetModel = multimodalTranscriptionSafetyNetModel();
-  const result = await callMultimodalTranscription(
-    primaryModel,
-    audio,
-    mimeType,
-    filename,
-    language,
-    deadline - Date.now(),
-    speakerNames,
-    singleSpeaker
-  );
+  // Reserve time for a simpler second listen. Some providers return an empty
+  // completion for the long detailed prompt even when the audio has speech.
+  const firstAttemptBudget = timeoutMs >= 30000 ? Math.max(15000, Math.floor(timeoutMs * 0.7)) : timeoutMs;
+  let result = "";
+  try {
+    result = await callMultimodalTranscription(
+      primaryModel,
+      audio,
+      mimeType,
+      filename,
+      language,
+      Math.min(firstAttemptBudget, deadline - Date.now()),
+      speakerNames,
+      singleSpeaker
+    );
+  } catch (error) {
+    // A provider timeout can recover with the shorter request. Auth, credit,
+    // bad-request and rate-limit errors need to reach the caller unchanged.
+    if (!(error instanceof OpenRouterApiError) || ![408, 500, 502, 503, 504].includes(error.status)) {
+      if (!(error instanceof Error) || !error.message.includes("timed out")) throw error;
+    }
+  }
   if (hasUsableTranscript(result)) return result;
-
-  if (!safetyNetModel || primaryModel === safetyNetModel) return result;
 
   const remaining = deadline - Date.now();
   if (remaining < 8000) return result;
 
-  // The primary model returned empty or unusable text (including a repeated
-  // hallucination loop). Give the safety-net model the remaining time.
+  // Retry an empty answer without participant hints and with a short prompt.
+  // This also works when no separate safety-net model was configured.
   return callMultimodalTranscription(
-    safetyNetModel,
+    safetyNetModel && safetyNetModel !== primaryModel ? safetyNetModel : primaryModel,
     audio,
     mimeType,
     filename,
     language,
     remaining,
-    speakerNames,
-    singleSpeaker
+    [],
+    singleSpeaker,
+    true
   );
 }
 
@@ -641,11 +655,11 @@ export async function refineOpenRouterTranscript(
     "- Standard Khmer writing does not put spaces between the words of a sentence (only between separate phrases/clauses, around numerals, and around embedded English/Latin terms). The raw transcript below was produced by a speech recognizer that space-separates every syllable/word - rejoin those into normal, correctly-spaced Khmer script rather than copying its spacing.",
     "- Keep the speaker's wording and word order as close as possible to the raw transcript.",
     "- Do not rewrite awkward, informal, repeated, or broken speech into a polished sentence.",
-    "- Preserve all real spoken content, including short replies, hesitations, repeated words, corrections, names, numbers, dates, and question endings.",
+    "- Preserve all real vocal content, including spoken words, sung lyrics, repeated chorus lines, short replies, hesitations, corrections, names, numbers, dates, and question endings. Do not add instrumental sounds or descriptions of music.",
     "- Write every spoken number as words in the selected output language, including small numbers and million, billion, or trillion amounts. Preserve number words and units from the raw transcript in their original order. If the raw transcript contains digits, spell their explicit value as words; spell leading-zero sequences digit by digit. Do not guess an unclear value, abbreviate large units as B/M/K, or put numeral glyphs in spoken content. Keep nonnumeric uses of words such as 'one' or 'មួយ' as words.",
     "- Treat [unclear] as evidence from the audio; preserve it exactly and do not replace it with a guessed phrase.",
     "- Multi-word proper/product/brand names (e.g. company names, app names, payment providers) must stay complete and exact - never drop, shorten, merge, or transliterate part of a multi-word name. If the raw transcript already has the full name (e.g. \"ABA PayWay\"), never shorten it (e.g. to \"ABA Pay\") even if it looks redundant.",
-    "- Remove hallucinated words, timestamp-only lines, exact duplicate adjacent lines, and obvious non-speech boilerplate. [unclear] is none of those - it is the transcriber's record that someone spoke there and could not be made out, so keep every one of them.",
+    "- Remove hallucinated words, timestamp-only lines, and obvious non-speech boilerplate. Keep repeated words or lines when they are sung or spoken in the raw transcript, including a repeated chorus. [unclear] is the transcriber's record that a voice could not be made out, so keep every one of them.",
     "- If a phrase is unclear, write [unclear] instead of guessing.",
     "- Return transcript text only.",
     "",

@@ -1328,11 +1328,14 @@ export async function transcribeStoredTrackRecording(
         chunks.length === 1 ? `recording.${chunkSourceExt}` : `recording-part-${String(next.index + 1).padStart(3, "0")}.${chunkSourceExt}`,
         { type: chunkSourceMimeType }
       );
+      const canSplitEmptyChunk = Boolean(next.chunk.durationSeconds && next.chunk.durationSeconds > 45);
       // Cap sized for STORED_TRANSCRIPTION_SEGMENT_SECONDS (4 min chunks,
       // not 4s) - a much longer chunk needs more than 90s to transcribe.
       // Workers run in parallel, so a long meeting does not need one timeout
       // period per chunk.
-      const chunkTimeoutMs = Math.min(150000, remainingMs - 5000);
+      // Leave time for genuinely shorter listens if this clip returns no
+      // words. Otherwise the first call can consume the entire deadline.
+      const chunkTimeoutMs = Math.min(canSplitEmptyChunk ? 45000 : 150000, remainingMs - 5000);
       // A size-limited outer chunk may already be at most a minute long.
       // Transcribe that chunk directly instead of asking it to split again.
       const requireSubwindows = requireShortCoverage &&
@@ -1347,7 +1350,7 @@ export async function transcribeStoredTrackRecording(
             ...transcribeOptions,
             timeoutMs: chunkTimeoutMs
           }).catch(() => "");
-      if (!requireSubwindows && !hasUsableTranscript(transcript)) {
+      if (!requireSubwindows && !canSplitEmptyChunk && !hasUsableTranscript(transcript)) {
         const retryRemainingMs = deadline - Date.now();
         if (retryRemainingMs >= 35000) {
           const { prepareAudioForTranscription } = await import("@/lib/ffmpeg");
@@ -1373,7 +1376,7 @@ export async function transcribeStoredTrackRecording(
           }
         }
       }
-      if (!requireSubwindows && !hasUsableTranscript(transcript) && speakerNames.length) {
+      if (!requireSubwindows && !canSplitEmptyChunk && !hasUsableTranscript(transcript) && speakerNames.length) {
         // Confirmed live: a specific known-participant name can make the
         // model return an empty completion for every chunk regardless of
         // audio content or quality (e.g. "probe" - a real user's own test
@@ -1391,8 +1394,8 @@ export async function transcribeStoredTrackRecording(
         }
       }
       // Long recordings use short, ordered listens for every audible outer
-      // window. Shorter recordings use them only when a whole-window answer
-      // appears severely truncated.
+      // window. For shorter recordings, also split an empty answer: repeating
+      // the same long clip cannot recover speech the model never returned.
       let shorterWindowsIncomplete = false;
       let shorterWindowsListened = false;
       let shorterWindowsCovered = requireShortCoverage && !requireSubwindows &&
@@ -1400,12 +1403,14 @@ export async function transcribeStoredTrackRecording(
         !looksSeverelyTruncated(transcript, next.chunk.durationSeconds);
       let shorterWindowsAllSilent = false;
       if (
-        next.chunk.durationSeconds && next.chunk.durationSeconds > 90 &&
-        (requireSubwindows || (hasUsableTranscript(transcript) &&
-          looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds))) &&
+        next.chunk.durationSeconds &&
+        (next.chunk.durationSeconds > 90 || (canSplitEmptyChunk && !hasUsableTranscript(transcript))) &&
+        (requireSubwindows || !hasUsableTranscript(transcript) ||
+          looksSeverelyTruncated(cleanTranscriptionText(transcript), next.chunk.durationSeconds)) &&
         deadline - Date.now() >= 30000
       ) {
-        const subwindowSeconds = requireSubwindows || transcript.length < next.chunk.durationSeconds ? 60 : 120;
+        const subwindowSeconds = next.chunk.durationSeconds <= 90 ? 30
+          : requireSubwindows || transcript.length < next.chunk.durationSeconds ? 60 : 120;
         const subwindows = await splitAudioIntoChunks(
           Buffer.from(chunkBytes), chunkSourceExt, openRouterAudioLimit, subwindowSeconds
         ).catch(() => null);
