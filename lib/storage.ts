@@ -1710,6 +1710,13 @@ export async function refineSavedTranscript(
   const cleanedRefinedTranscript = applyKnownSpeakerLabels(
     keepTrustedSpeakerLabels(cleanTranscriptionText(refinedTranscript), normalizedSpeakerNames), normalizedSpeakerNames
   );
+  const rawLatinSpeechWords = countLatinWords(cleanedTranscript.replace(/^\s*[^:\n]{1,60}:\s*/gm, ""));
+  const translatedLatinSpeechWords = countLatinWords(cleanedRefinedTranscript.replace(/^\s*[^:\n]{1,60}:\s*/gm, ""));
+  if (normalizedLanguageMode === "km" && rawLatinSpeechWords >= 12 &&
+      (countKhmerChars(cleanedRefinedTranscript) < 12 ||
+        translatedLatinSpeechWords > rawLatinSpeechWords * 0.6)) {
+    throw new Error("Translation did not produce Khmer text. Please try again.");
+  }
   const selected = chooseBetterSavedTranscript(labeledTranscript, cleanedRefinedTranscript, normalizedLanguageMode);
   if (selected === labeledTranscript && cleanedRefinedTranscript !== labeledTranscript) {
     throw new Error("Translation omitted too much speech. Please retry transcription.");
@@ -1823,7 +1830,10 @@ function chooseBetterSavedTranscript(
 
   const rawScore = transcriptTokenScore(rawTranscript);
   const refinedScore = transcriptTokenScore(refinedTranscript);
-  if (rawScore >= 6 && refinedScore < rawScore * 0.8) return rawTranscript;
+  // Token counts are comparable only when the source language is preserved.
+  // Khmer normally has no word spaces, so a complete English-to-Khmer
+  // translation can otherwise appear shorter and be discarded.
+  if (languageMode === "km-en" && rawScore >= 6 && refinedScore < rawScore * 0.8) return rawTranscript;
 
   const rawTurns = countTranscriptTurns(rawTranscript);
   const refinedTurns = countTranscriptTurns(refinedTranscript);

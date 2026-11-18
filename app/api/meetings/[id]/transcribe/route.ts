@@ -33,6 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const workDeadline = Date.now() + WORK_DEADLINE_MS;
   let authorizedMeetingId = "";
   let translatingFinalTranscript = false;
+  let requestedTranslationMode: "km" | "en" | null = null;
   try {
     const user = await requireUser();
     const limited = await rateLimitResponse(user.id, "ai-transcribe");
@@ -52,12 +53,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     authorizedMeetingId = id;
 
+    const body = await readTranscriptionBody(request);
+    const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
+    requestedTranslationMode = languageMode === "km-en" ? null : languageMode;
+    if (body.translateOnly) {
+      if (languageMode === "km-en") {
+        return NextResponse.json({ error: "Choose Khmer or English to translate the saved transcript." }, { status: 400 });
+      }
+      if (!hasUsableTranscript(meeting.transcript ?? "")) {
+        return NextResponse.json({ error: "No saved transcript is available to translate." }, { status: 400 });
+      }
+      translatingFinalTranscript = true;
+      const transcript = await refineSavedTranscript(meeting.transcript as string, languageMode, meeting.speakerNames, 55000);
+      await prisma.meeting.update({ where: { id }, data: { transcript, language: languageMode, summary: null } });
+      revalidatePath(`/meetings/${id}`);
+      revalidatePath("/transcripts");
+      revalidatePath("/summaries");
+      return NextResponse.json({ transcript });
+    }
+
     if (!meeting.audioUrl && !meeting.transcriptSegments.length) {
       return NextResponse.json({ error: "No audio file found for this meeting." }, { status: 400 });
     }
-
-    const body = await readTranscriptionBody(request);
-    const languageMode = normalizeTranscriptionLanguageMode(body.languageMode ?? meeting.language);
     const participantAudioSegments = meeting.transcriptSegments.filter((segment) => segment.audioUrl);
     // Segment names come from call participants. Uploaded recordings have no
     // segments, so their saved names are the user-supplied transcription hint.
@@ -246,14 +263,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const completeMixedAudio = shouldUseMixedAudio && hasUsableTranscript(rawTranscript) && !incompleteLongRecording;
     const skippedPendingSegments = !completeMixedAudio && participantAudioSegments.some((segment) => !segment.text.trim());
     const refineBudget = workDeadline - Date.now() - FINALIZE_RESERVE_MS;
-    if (languageMode !== "km-en" && hasUsableTranscript(rawTranscript) && !incompleteLongRecording && !skippedPendingSegments && refineBudget < 5000) {
+    if (languageMode !== "km-en" && hasUsableTranscript(rawTranscript) && refineBudget < 5000) {
       throw new Error("Translation needs more time. The recording is saved; please try again.");
     }
-    // A long recording may need several requests. Refining the incomplete
-    // transcript on every pass spends up to a minute rewriting text that the
-    // next pass will immediately replace. Refine once when every part is in.
-    translatingFinalTranscript = languageMode !== "km-en" && !incompleteLongRecording && !skippedPendingSegments;
-    const transcript = spellTranscriptNumberWords(!incompleteLongRecording && !skippedPendingSegments && refineBudget >= 5000
+    // Save translated text even while some audio windows remain unfinished.
+    // The per-window cache retains the original words for the next pass.
+    translatingFinalTranscript = languageMode !== "km-en";
+    const transcript = spellTranscriptNumberWords((languageMode !== "km-en" || (!incompleteLongRecording && !skippedPendingSegments)) && refineBudget >= 5000
       ? await refineSavedTranscript(rawTranscript, languageMode, transcriptSpeakerNames, refineBudget)
       : rawTranscript);
     const silenceNotice = silentAudioSeconds >= 30
@@ -362,7 +378,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         message:
           (languageMode === "km-en"
             ? "Part of this recording did not transcribe completely. The audio is saved in full. Press Re-transcribe audio again to retry only the unfinished parts. The text shown so far may still be incomplete."
-            : "Part of this recording did not transcribe completely. The words shown so far are in the languages originally spoken. Translation will run after the remaining audio is processed. Press Re-transcribe audio again to continue.")
+            : "Part of this recording did not transcribe completely. The words captured so far have been translated. Press Re-transcribe audio again to continue the unfinished parts.")
           + silenceNotice
       });
     }
@@ -377,14 +393,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (authorizedMeetingId && !translatingFinalTranscript && error instanceof Error && error.message.toLowerCase().includes("timed out")) {
       const progress = await savedChunkProgress(authorizedMeetingId).catch(() => null);
       if (progress && hasUsableTranscript(progress.transcript)) {
+        const transcript = requestedTranslationMode
+          ? await refineSavedTranscript(progress.transcript, requestedTranslationMode, [], 50000).catch(() => "")
+          : progress.transcript;
+        if (!hasUsableTranscript(transcript)) {
+          return NextResponse.json({ error: "The audio progress was saved, but translation needs another attempt. Please continue transcription." }, { status: 504 });
+        }
         await prisma.meeting.update({
           where: { id: authorizedMeetingId },
-          data: { transcript: progress.transcript, summary: null, status: "transcribed" }
+          data: { transcript, language: requestedTranslationMode ?? undefined, summary: null, status: "transcribed" }
         }).catch(() => undefined);
         revalidatePath(`/meetings/${authorizedMeetingId}`);
         revalidatePath("/transcripts");
         return NextResponse.json({
           ...progress,
+          transcript,
           partial: true,
           message: `Processed ${progress.savedChunks} of ${progress.totalChunks} audio parts. Some parts may still be incomplete; continue transcription to retry them.`
         });
@@ -466,12 +489,12 @@ async function withinDeadline<T>(operation: Promise<T>, deadline: number): Promi
 
 async function readTranscriptionBody(request: Request) {
   if (!request.headers.get("content-type")?.includes("application/json")) {
-    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false };
+    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false, translateOnly: false };
   }
 
   const body = await request.json().catch(() => ({}));
   if (!body || typeof body !== "object") {
-    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false };
+    return { languageMode: undefined as unknown, speakerNames: [] as string[], fresh: false, translateOnly: false };
   }
 
   const rawSpeakerNames = "speakerNames" in body ? body.speakerNames : [];
@@ -491,6 +514,7 @@ async function readTranscriptionBody(request: Request) {
   return {
     languageMode: "languageMode" in body ? body.languageMode : undefined,
     speakerNames,
-    fresh: "fresh" in body && body.fresh === true
+    fresh: "fresh" in body && body.fresh === true,
+    translateOnly: "translateOnly" in body && body.translateOnly === true
   };
 }

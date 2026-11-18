@@ -41,6 +41,7 @@ export function TranscribeAudioButton({
   const t = useBilingualText();
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -147,6 +148,30 @@ export function TranscribeAudioButton({
     }
   }, [hasTranscript, languageMode, meetingId, onTranscribed, processingMode, router, t]);
 
+  const translateSavedTranscript = useCallback(async () => {
+    setTranslating(true);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ languageMode, translateOnly: true })
+      });
+      const result = await readJsonResponse<{ transcript?: string; error?: string }>(response);
+      if (!response.ok || !result.transcript) {
+        throw new Error(result.error ?? t("មិនអាចបកប្រែអត្ថបទបានទេ។", "Could not translate the transcript."));
+      }
+      onTranscribed?.(result.transcript);
+      setMessage(t("បានបកប្រែអត្ថបទដែលបានរក្សាទុករួច។", "Saved transcript translated."));
+      router.refresh();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t("មិនអាចបកប្រែអត្ថបទបានទេ។", "Could not translate the transcript."));
+    } finally {
+      setTranslating(false);
+    }
+  }, [languageMode, meetingId, onTranscribed, router, t]);
+
   const matchRememberedVoices = useCallback(async () => {
     setRecognizing(true);
     setMessage("");
@@ -210,7 +235,7 @@ export function TranscribeAudioButton({
             className="kh-input w-full"
             value={processingMode}
             onChange={(event) => setProcessingMode(event.target.value as "resume" | "fresh")}
-            disabled={pending}
+            disabled={pending || translating}
           >
             <option value="resume">{t("បន្តតែផ្នែកខ្វះ (សន្សំថ្លៃ)", "Continue unfinished parts (lower cost)")}</option>
             <option value="fresh">{t("ស្តាប់ពីដើមឡើងវិញ (ការហៅ AI ច្រើន)", "Recheck the full recording (many AI requests)")}</option>
@@ -228,13 +253,13 @@ export function TranscribeAudioButton({
           className="kh-input w-full sm:max-w-xs"
           value={languageMode}
           onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
-          disabled={pending}
+          disabled={pending || translating}
         >
           <option value="km-en">{t("តាមពាក្យដែលបាននិយាយ (ខ្មែរ និងអង់គ្លេស)", "As spoken (Khmer and English)")}</option>
           <option value="km">{t("ខ្មែរ (បកប្រែទាំងអស់ជាខ្មែរ)", "Khmer (translate all speech to Khmer)")}</option>
           <option value="en">{t("អង់គ្លេស (បកប្រែទាំងអស់ជាអង់គ្លេស)", "English (translate all speech to English)")}</option>
         </select>
-        <button className="kh-button-primary sm:w-auto" disabled={pending || recognizing} onClick={transcribe} type="button">
+        <button className="kh-button-primary sm:w-auto" disabled={pending || recognizing || translating} onClick={transcribe} type="button">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {pending ? t("កំពុងបំលែងសំឡេង...", "Transcribing audio...")
             : hasTranscript && hasUnfinishedTranscription && processingMode === "resume"
@@ -243,8 +268,16 @@ export function TranscribeAudioButton({
                 ? t("ស្តាប់ពីដើមឡើងវិញ", "Recheck full recording")
                 : hasTranscript ? t("បំលែងសំឡេងឡើងវិញ", "Re-transcribe audio") : t("បំលែងសំឡេងជាអក្សរ", "Transcribe audio")}
         </button>
+        {hasTranscript && languageMode !== "km-en" ? (
+          <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing || translating} onClick={translateSavedTranscript} type="button">
+            {translating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {translating
+              ? t("កំពុងបកប្រែអត្ថបទ...", "Translating transcript...")
+              : t("បកប្រែអត្ថបទដែលបានរក្សាទុក", "Translate saved transcript")}
+          </button>
+        ) : null}
         {/^\s*(?:Speaker\s+\d+|Woman|Man|Female|Male)\s*:/im.test(currentTranscript) ? (
-          <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing} onClick={matchRememberedVoices} type="button">
+          <button className="kh-button-secondary sm:w-auto" disabled={pending || recognizing || translating} onClick={matchRememberedVoices} type="button">
             {recognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {recognizing ? t("កំពុងផ្គូផ្គងសំឡេង...", "Matching voices...") : t("ផ្គូផ្គងសំឡេងដែលបានចងចាំ", "Match remembered voices")}
           </button>
