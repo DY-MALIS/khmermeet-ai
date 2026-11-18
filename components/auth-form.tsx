@@ -4,14 +4,15 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useBilingualText } from "@/lib/display-language";
+import type { DisplayLanguage } from "@/lib/navigation-labels";
 
 // Unlike a NextAuth native-form POST, Supabase's OAuth flow starts client-side:
 // signInWithOAuth() asks Supabase for the actual Google consent-screen URL
 // (it isn't a fixed, linkable path) and only then navigates there. The
 // redirectTo lands back on our own /auth/callback route, which exchanges the
 // one-time code for a real session.
-export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
-  const t = useBilingualText();
+export function GoogleSignInButton({ callbackUrl, initialLanguage = "km" }: { callbackUrl: string; initialLanguage?: DisplayLanguage }) {
+  const t = useBilingualText(initialLanguage);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,8 +52,8 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
   );
 }
 
-export function LoginForm({ errorCode, callbackUrl }: { errorCode: string | null; callbackUrl: string }) {
-  const t = useBilingualText();
+export function LoginForm({ errorCode, callbackUrl, initialLanguage = "km" }: { errorCode: string | null; callbackUrl: string; initialLanguage?: DisplayLanguage }) {
+  const t = useBilingualText(initialLanguage);
   const errorMessages: Record<string, string> = {
     CallbackMissingCode: t("Google មិនបានបញ្ជូនទិន្នន័យចូលដែលត្រូវការ។ សូមសាកម្ដងទៀត។", "Google sign-in did not return the expected data. Please try again."),
     CallbackFailed: t("មិនអាចបញ្ចប់ការចូលបានទេ។ សូមសាកម្ដងទៀត។", "Could not complete sign-in. Please try again.")
@@ -64,7 +65,7 @@ export function LoginForm({ errorCode, callbackUrl }: { errorCode: string | null
           {errorMessages[errorCode] ?? `${t("មិនអាចចូលបានទេ។ ព័ត៌មានបច្ចេកទេស៖", "Could not sign in. Technical detail:")} ${errorCode}`}
         </p>
       ) : null}
-      <GoogleSignInButton callbackUrl={callbackUrl} />
+      <GoogleSignInButton callbackUrl={callbackUrl} initialLanguage={initialLanguage} />
     </div>
   );
 }

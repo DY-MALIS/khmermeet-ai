@@ -19,8 +19,8 @@ export function writeDisplayLanguage(language: DisplayLanguage) {
   window.dispatchEvent(new CustomEvent<DisplayLanguage>(languageChangeEvent, { detail: language }));
 }
 
-export function useDisplayLanguage() {
-  const [language, setLanguage] = useState<DisplayLanguage>("km");
+export function useDisplayLanguage(initialLanguage: DisplayLanguage = "km") {
+  const [language, setLanguage] = useState<DisplayLanguage>(initialLanguage);
 
   useEffect(() => {
     const syncLanguage = (next = readDisplayLanguage()) => {
@@ -49,7 +49,7 @@ export function useDisplayLanguage() {
 }
 
 /** Use for feature copy that has not yet moved into the shared UI dictionary. */
-export function useBilingualText() {
-  const [language] = useDisplayLanguage();
+export function useBilingualText(initialLanguage: DisplayLanguage = "km") {
+  const [language] = useDisplayLanguage(initialLanguage);
   return useCallback((khmer: string, english: string) => language === "km" ? khmer : english, [language]);
 }

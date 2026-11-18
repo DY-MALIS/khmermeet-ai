@@ -8,9 +8,9 @@ import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/nav
 
 export { languageStorageKey, readDisplayLanguage };
 
-export function LanguageSwitcher({ compact = false, variant = "default" }: { compact?: boolean; variant?: "default" | "auth" | "loginHero" }) {
+export function LanguageSwitcher({ compact = false, variant = "default", initialLanguage = "km" }: { compact?: boolean; variant?: "default" | "auth" | "loginHero"; initialLanguage?: DisplayLanguage }) {
   const router = useRouter();
-  const [language, setLanguage] = useDisplayLanguage();
+  const [language, setLanguage] = useDisplayLanguage(initialLanguage);
   const labels = navigationLabels[language];
 
   function changeLanguage(next: DisplayLanguage) {
