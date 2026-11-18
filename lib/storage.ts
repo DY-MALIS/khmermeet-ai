@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
   hasOpenRouterKey,
+  OpenRouterApiError,
   refineOpenRouterTranscript,
   transcribeOpenRouterAudioViaChat
 } from "@/lib/ai/openrouter";
@@ -1066,6 +1067,17 @@ export async function transcribeStoredTrackRecording(
   // Cached windows therefore contain source speech regardless of the output
   // language selected for a later pass.
   const audioLanguageMode: TranscriptionLanguageMode = "km-en";
+  const transcriptionFailures: Error[] = [];
+  const rememberTranscriptionFailure = (error: unknown) => {
+    if (error instanceof Error) transcriptionFailures.push(error);
+    return "";
+  };
+  const throwTranscriptionFailureIfEmpty = (text: string) => {
+    if (!hasUsableTranscript(text) && transcriptionFailures.length) {
+      throw transcriptionFailures.find((error) => error instanceof OpenRouterApiError) ?? transcriptionFailures[0];
+    }
+    return text;
+  };
   const transcribeOptions: TranscriptionOptions = {
     mode: "live",
     timeoutMs,
@@ -1158,7 +1170,7 @@ export async function transcribeStoredTrackRecording(
               Math.min(WHOLE_AUDIO_TRANSCRIPTION_MAX_MS, retryTimeoutMs),
               speakerNames,
               options.singleSpeaker ?? true
-            ).catch(() => "");
+            ).catch(rememberTranscriptionFailure);
             if (hasUsableTranscript(retryTranscript) && !looksBroken(retryTranscript)) {
               transcript = retryTranscript;
               break;
@@ -1202,7 +1214,7 @@ export async function transcribeStoredTrackRecording(
           wholeAudioAttempt.looksIncomplete =
             looksSeverelyTruncated(transcript, durationSeconds) || wholeAudioAttempt.missingSpeakerLabels;
           return transcript;
-        })().catch(() => "")
+        })().catch(rememberTranscriptionFailure)
       : "";
 
   if (hasUsableTranscript(wholeTranscript) && !wholeAudioAttempt.looksIncomplete) {
@@ -1351,7 +1363,7 @@ export async function transcribeStoredTrackRecording(
         : requireSubwindows ? "" : await transcribeAudio(chunkFile, speakerNames, audioLanguageMode, {
             ...transcribeOptions,
             timeoutMs: chunkTimeoutMs
-          }).catch(() => "");
+          }).catch(rememberTranscriptionFailure);
       if (!requireSubwindows && !canSplitEmptyChunk && !hasUsableTranscript(transcript)) {
         const retryRemainingMs = deadline - Date.now();
         if (retryRemainingMs >= 35000) {
@@ -1373,7 +1385,7 @@ export async function transcribeStoredTrackRecording(
                 Math.min(45000, enhancedRemainingMs),
                 speakerNames,
                 options.singleSpeaker ?? true
-              ).catch(() => "");
+              ).catch(rememberTranscriptionFailure);
             }
           }
         }
@@ -1392,7 +1404,7 @@ export async function transcribeStoredTrackRecording(
           transcript = await transcribeAudio(chunkFile, [], audioLanguageMode, {
             ...transcribeOptions,
             timeoutMs: Math.min(90000, noNameRemainingMs - 5000)
-          }).catch(() => "");
+          }).catch(rememberTranscriptionFailure);
         }
       }
       // Long recordings use short, ordered listens for every audible outer
@@ -1461,7 +1473,7 @@ export async function transcribeStoredTrackRecording(
                             const result = cleanTranscriptionText(await transcribeAudio(
                               pieceFile, speakerNames, audioLanguageMode,
                               { ...transcribeOptions, timeoutMs: Math.min(60000, pieceBudget) }
-                            ).catch(() => ""));
+                            ).catch(rememberTranscriptionFailure));
                             const audible = await estimatedAudibleAudioSeconds(piece.path, piece.durationSeconds);
                             return {
                               text: result,
@@ -1492,7 +1504,7 @@ export async function transcribeStoredTrackRecording(
                   const text = await transcribeAudio(file, speakerNames, audioLanguageMode, {
                     ...transcribeOptions,
                     timeoutMs: Math.min(90000, budget)
-                  }).catch(() => "");
+                  }).catch(rememberTranscriptionFailure);
                   const cleaned = cleanTranscriptionText(text);
                   const audibleSeconds = await estimatedAudibleAudioSeconds(part.path, part.durationSeconds);
                   const complete = hasUsableTranscript(cleaned) && !hasAbbreviatedSpokenNumber(cleaned) &&
@@ -1592,7 +1604,9 @@ export async function transcribeStoredTrackRecording(
       return spellTranscriptNumberWords(wholeAudioTranscript);
     }
     options.onIncomplete?.();
-    return spellTranscriptNumberWords(hasUsableTranscript(chunkTranscript) ? chunkTranscript : wholeAudioTranscript);
+    return spellTranscriptNumberWords(throwTranscriptionFailureIfEmpty(
+      hasUsableTranscript(chunkTranscript) ? chunkTranscript : wholeAudioTranscript
+    ));
   }
 
   if (wholeAudioAttempt.looksIncomplete) {
@@ -1610,7 +1624,7 @@ export async function transcribeStoredTrackRecording(
   // Only when the chunked run is what we are actually returning - a
   // whole-audio transcript that won covers the recording end to end.
   if (chunkOutcome.anyStillTruncated && bestTranscript === chunkTranscript) options.onIncomplete?.();
-  return spellTranscriptNumberWords(bestTranscript);
+  return spellTranscriptNumberWords(throwTranscriptionFailureIfEmpty(bestTranscript));
 }
 
 // The live per-chunk transcription path (transcribeAudio with mode:"live",

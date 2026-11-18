@@ -504,11 +504,26 @@ async function callMultimodalTranscription(
   }
 
   const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+    choices?: Array<{
+      finish_reason?: string;
+      native_finish_reason?: string;
+      message?: { content?: string | Array<{ type?: string; text?: string }> };
+    }>;
   };
-  const content = payload.choices?.[0]?.message?.content;
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content;
   const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => part.text ?? "").join("\n") : "";
   const trimmed = text.trim();
+  if (!trimmed) {
+    // Keep audio and transcript contents out of logs. These fields distinguish
+    // a filtered/length-limited provider reply from an ordinary empty result.
+    console.warn("OpenRouter audio completion was empty", {
+      model,
+      finishReason: choice?.finish_reason ?? null,
+      nativeFinishReason: choice?.native_finish_reason ?? null,
+      hasChoice: Boolean(choice)
+    });
+  }
   return trimmed === "[no speech detected]" || hasTranscriptionPromptLeakage(trimmed) ? "" : trimmed;
 }
 
