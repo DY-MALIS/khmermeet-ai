@@ -39,7 +39,7 @@ select {
 }
 
 .kh-card {
-  @apply rounded-xl border border-leaf/10 bg-emerald-50/70 shadow-soft backdrop-blur-xl;
+  @apply rounded-2xl border border-[#d7e9df] bg-white shadow-lg shadow-[#073f39]/5;
 }
 
 .kh-input {
@@ -61,7 +61,28 @@ textarea.kh-input {
 }
 
 .kh-button-secondary {
-  @apply kh-button border border-leaf/15 bg-emerald-50 text-ink shadow-sm shadow-leaf/10 hover:-translate-y-0.5 hover:border-leaf/30 hover:bg-leaf/10 hover:text-leaf;
+  @apply kh-button border border-[#cfe5da] bg-white text-[#075b4e] shadow-sm hover:-translate-y-0.5 hover:border-leaf/40 hover:bg-[#edf8f2];
+}
+
+.kh-page-hero {
+  @apply relative overflow-hidden rounded-[1.75rem] bg-gradient-to-r from-[#073f39] via-[#075b4e] to-[#0b8b6c] p-6 text-white shadow-xl shadow-[#073f39]/15 sm:p-8;
+}
+
+.kh-page-hero::after {
+  content: "";
+  @apply pointer-events-none absolute -right-16 -top-28 h-64 w-64 rounded-full border-[42px] border-white/5;
+}
+
+.kh-page-hero > h1 {
+  @apply relative z-10 mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl;
+}
+
+.kh-page-hero > p:first-child {
+  @apply relative z-10 text-xs font-bold uppercase tracking-[0.16em] text-[#f5cb3f];
+}
+
+.kh-page-hero > p:not(:first-child) {
+  @apply relative z-10 mt-2 max-w-3xl text-sm leading-6 text-emerald-50/85;
 }
 
 .kh-badge {

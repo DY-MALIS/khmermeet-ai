@@ -111,8 +111,8 @@ export function ExternalMediaUploadPanel() {
   }
 
   return (
-    <section className="kh-card overflow-hidden p-0">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 p-5">
+    <section className="kh-card overflow-hidden border-t-[5px] border-t-[#f5cb3f] p-0">
+      <div className="border-b border-[#e4eee8] bg-white p-5">
       <div className="mb-4 flex items-start gap-3">
         <div className="rounded-2xl bg-leaf/10 p-3 text-leaf shadow-sm ring-1 ring-leaf/10">
           <UploadCloud className="h-5 w-5" />

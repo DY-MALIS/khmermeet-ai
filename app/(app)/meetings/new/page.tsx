@@ -26,17 +26,13 @@ export default async function NewMeetingPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="kh-card overflow-hidden">
-        <div className="grid gap-0 lg:grid-cols-[1fr_auto]">
-          <div className="p-6 sm:p-7">
-            <p className="text-sm font-semibold text-leaf">{text.recordingEyebrow}</p>
-            <h1 className="mt-1 text-3xl font-bold text-ink sm:text-4xl">{text.newMeeting}</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{text.newMeetingDescription}</p>
-          </div>
-          <div className="border-t border-slate-200 bg-slate-50/70 p-6 sm:p-7 lg:border-l lg:border-t-0">
-            <a className="kh-button-secondary w-full whitespace-nowrap" href="/meetings/call">{text.openVideoMeeting}</a>
-          </div>
+      <div className="kh-page-hero flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative z-10">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#f5cb3f]">{text.recordingEyebrow}</p>
+          <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{text.newMeeting}</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-50/85">{text.newMeetingDescription}</p>
         </div>
+        <a className="relative z-10 inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20" href="/meetings/call">{text.openVideoMeeting}</a>
       </div>
       <NextMeetingPrep user={user} language={language} />
       <RecordingPanel />

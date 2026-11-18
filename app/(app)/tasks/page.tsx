@@ -42,7 +42,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="text-sm font-semibold text-leaf">{text.actionTracker}</p>
         <h1 className="text-3xl font-bold text-ink">{text.tasksTitle}</h1>
         <p className="mt-2 text-sm text-slate-500">{text.tasksDescription}</p>

@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   const { text } = await getServerUiText();
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="text-sm font-semibold text-leaf">{text.accountAndLanguage}</p>
         <h1 className="text-3xl font-bold text-ink">{text.settingsTitle}</h1>
       </div>

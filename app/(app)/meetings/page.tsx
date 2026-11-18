@@ -32,7 +32,7 @@ export default async function MeetingsPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="text-sm font-semibold text-leaf">{text.meetingHistoryEyebrow}</p>
         <h1 className="text-3xl font-bold text-ink">{text.meetingHistoryTitle}</h1>
       </div>

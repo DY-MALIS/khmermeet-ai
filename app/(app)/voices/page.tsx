@@ -31,7 +31,7 @@ export default async function VoicesPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="flex items-center gap-2 text-sm font-semibold text-leaf">
           <AudioLines className="h-4 w-4" />
           KhmerMeet AI

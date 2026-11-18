@@ -36,7 +36,7 @@ export default async function TranscriptsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="text-sm font-semibold text-leaf">{language === "km" ? "អត្ថបទប្រជុំ" : "Transcript"}</p>
         <h1 className="text-3xl font-bold text-ink">{text.transcriptTitle}</h1>
         <p className="mt-2 text-sm text-slate-500">{text.transcriptDescription}</p>

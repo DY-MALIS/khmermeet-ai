@@ -963,8 +963,8 @@ export function RecordingPanel() {
   }
 
   return (
-    <div className="kh-card overflow-hidden">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-emerald-50/70 px-5 py-4 sm:px-6">
+    <div className="kh-card overflow-hidden border-t-[5px] border-t-[#0b9b78]">
+      <div className="border-b border-[#e4eee8] bg-white px-5 py-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-leaf">{text.recorderPanelEyebrow}</p>
@@ -976,16 +976,18 @@ export function RecordingPanel() {
         </div>
       </div>
       <div className="p-5 sm:p-6">
-      <div className="mb-4 rounded-xl border border-saffron/25 bg-saffron/10 p-3 text-sm text-ink">
+      <div className="mb-5 grid gap-3 lg:grid-cols-2">
+      <div className="rounded-xl border border-[#efdca1] bg-[#fff9e9] p-4 text-sm leading-6 text-ink">
         {text.recordingConsent}
       </div>
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600">
+      <div className="rounded-xl border border-[#d7e9df] bg-[#f5faf7] p-4 text-sm leading-6 text-slate-600">
         {text.recorderScreenHelp}
         {state === "recording" ? (
           <span className={`mt-2 block font-semibold ${wakeLockActive ? "text-leaf" : "text-amber-700"}`}>
             {wakeLockActive ? text.recorderScreenAwake : text.recorderScreenAwakeFailed}
           </span>
         ) : null}
+      </div>
       </div>
       {dbUnavailable ? (
         <div className="mb-4 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-ink">
@@ -1199,7 +1201,7 @@ export function RecordingPanel() {
           ) : null}
         </div>
       </div>
-      <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 shadow-inner sm:p-5">
+      <div className="rounded-2xl border border-[#d7e9df] bg-[#f5faf7] p-4 sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-slate-500">{text.recordingTime}</p>

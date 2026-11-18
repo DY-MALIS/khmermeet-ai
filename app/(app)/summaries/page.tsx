@@ -27,7 +27,7 @@ export default async function SummariesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="kh-page-hero">
         <p className="text-sm font-semibold text-leaf">{text.aiSummaryEyebrow}</p>
         <h1 className="text-3xl font-bold text-ink">{text.aiSummaryTitle}</h1>
         <p className="mt-2 text-sm text-slate-500">{text.aiSummaryDescription}</p>
