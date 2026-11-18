@@ -20,7 +20,7 @@ export function GoogleSignInButton({ callbackUrl }: { callbackUrl: string }) {
       {error ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
       <button
         type="button"
-        className="flex min-h-12 w-full items-center justify-center gap-3 rounded-lg bg-[#466b49] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#365a3a] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#466b49] disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#087f66] to-[#05775f] px-5 py-3 text-base font-semibold text-white shadow-md shadow-emerald-900/15 transition hover:from-[#096e5a] hover:to-[#075f4f] hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#087f66] disabled:cursor-not-allowed disabled:opacity-60"
         disabled={pending}
         onClick={async () => {
           setPending(true);

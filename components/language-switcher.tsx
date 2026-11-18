@@ -8,7 +8,7 @@ import { languageNames, navigationLabels, type DisplayLanguage } from "@/lib/nav
 
 export { languageStorageKey, readDisplayLanguage };
 
-export function LanguageSwitcher({ compact = false, variant = "default" }: { compact?: boolean; variant?: "default" | "auth" }) {
+export function LanguageSwitcher({ compact = false, variant = "default" }: { compact?: boolean; variant?: "default" | "auth" | "loginHero" }) {
   const router = useRouter();
   const [language, setLanguage] = useDisplayLanguage();
   const labels = navigationLabels[language];
@@ -16,6 +16,31 @@ export function LanguageSwitcher({ compact = false, variant = "default" }: { com
   function changeLanguage(next: DisplayLanguage) {
     setLanguage(next);
     router.refresh();
+  }
+
+  if (variant === "loginHero") {
+    return (
+      <div className="grid grid-cols-2 gap-3" aria-label={labels.language}>
+        {(["km", "en"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            lang={item}
+            aria-pressed={language === item}
+            onClick={() => changeLanguage(item)}
+            className={cn(
+              "flex min-h-14 items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf sm:text-base",
+              language === item
+                ? "border-[#087862] bg-[#087862] text-white shadow-emerald-900/15"
+                : "border-slate-200 bg-white text-[#174d44] hover:border-[#0f8a70] hover:bg-emerald-50"
+            )}
+          >
+            <span aria-hidden="true" className="text-xl">{item === "km" ? "🇰🇭" : "🇺🇸"}</span>
+            <span>{item === "km" ? "ខ្មែរ" : "English"}</span>
+          </button>
+        ))}
+      </div>
+    );
   }
 
   if (variant === "auth") {
