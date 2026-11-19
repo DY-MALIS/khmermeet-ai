@@ -13,6 +13,7 @@ model User {
   email        String             @unique
   subscribed   SubscriptionStatus @default(FALSE)
   billing      BillingAccount?
+  manualPayments ManualPayment[]
   createdAt    DateTime           @default(now())
   meetings     Meeting[]
   voiceSamples VoiceSample[]
@@ -40,6 +41,33 @@ model BillingAccount {
   stripePeriodStart     DateTime?
   stripePeriodEnd       DateTime?
   unlimitedAccess       Boolean  @default(false)
+  manualPaymentId       String?  @unique
+  manualPeriodStart     DateTime?
+  manualPeriodEnd       DateTime?
+}
+
+model BillingSettings {
+  id          String   @id
+  qrImage     Bytes
+  qrMimeType  String
+  payeeName   String?
+  merchantId  String?
+  updatedAt   DateTime @updatedAt
+}
+
+model ManualPayment {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionRef  String   @unique
+  receipt         Bytes?
+  receiptMimeType String?
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  reviewedAt      DateTime?
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 enum SubscriptionStatus {

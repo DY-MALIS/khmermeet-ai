@@ -9,6 +9,9 @@ type Account = {
     stripeSubscriptionId: string | null;
     stripePeriodStart: Date | null;
     stripePeriodEnd: Date | null;
+    manualPaymentId: string | null;
+    manualPeriodStart: Date | null;
+    manualPeriodEnd: Date | null;
   } | null;
 };
 
@@ -24,6 +27,10 @@ export function planFor(account: Account, now: Date) {
   const paid = billing?.stripeStatus === "active" &&
     Boolean(billing.stripeSubscriptionId && billing.stripePeriodStart && billing.stripePeriodEnd) &&
     billing.stripePeriodStart!.getTime() <= now.getTime() && billing.stripePeriodEnd!.getTime() > now.getTime();
+  const manuallyPaid = Boolean(
+    billing?.manualPaymentId && billing.manualPeriodStart && billing.manualPeriodEnd &&
+    billing.manualPeriodStart.getTime() <= now.getTime() && billing.manualPeriodEnd.getTime() > now.getTime()
+  );
   return paid
     ? {
         name: "pro" as const,
@@ -31,7 +38,14 @@ export function planFor(account: Account, now: Date) {
         periodEnd: billing!.stripePeriodEnd!,
         limitSeconds: PRO_SECONDS
       }
-    : {
+    : manuallyPaid
+      ? {
+          name: "pro" as const,
+          periodKey: `manual:${billing!.manualPaymentId}:${billing!.manualPeriodStart!.toISOString()}`,
+          periodEnd: billing!.manualPeriodEnd!,
+          limitSeconds: PRO_SECONDS
+        }
+      : {
         name: "free" as const,
         periodKey: `free:${now.toISOString().slice(0, 7)}`,
         periodEnd: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)),
@@ -43,17 +57,28 @@ export async function getUsageQuota(userId: string) {
   await refreshStripeSubscription(userId);
   const account = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
   const plan = planFor(account, new Date());
-  const usage = await prisma.usageCharge.aggregate({
-    where: { userId, periodKey: plan.periodKey },
-    _sum: { seconds: true }
-  });
+  const [usage, latestManualPayment, qrSettings] = await Promise.all([
+    prisma.usageCharge.aggregate({
+      where: { userId, periodKey: plan.periodKey },
+      _sum: { seconds: true }
+    }),
+    prisma.manualPayment.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, createdAt: true }
+    }),
+    prisma.billingSettings.findUnique({ where: { id: "default" }, select: { id: true } })
+  ]);
   const usedSeconds = usage._sum.seconds ?? 0;
   return {
     plan: account.billing?.unlimitedAccess ? "unlimited" as const : plan.name,
     usedSeconds,
     limitSeconds: account.billing?.unlimitedAccess ? null : plan.limitSeconds,
     remainingSeconds: account.billing?.unlimitedAccess ? null : Math.max(0, plan.limitSeconds - usedSeconds),
-    periodEnd: plan.periodEnd
+    periodEnd: plan.periodEnd,
+    manualPaymentStatus: latestManualPayment?.status ?? null,
+    manualPaymentCreatedAt: latestManualPayment?.createdAt ?? null,
+    qrAvailable: Boolean(qrSettings)
   };
 }
 

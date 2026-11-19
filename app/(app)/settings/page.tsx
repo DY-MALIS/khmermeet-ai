@@ -4,6 +4,7 @@ import { getServerUiText } from "@/lib/server-ui-text";
 import { requireUser } from "@/lib/session";
 import { getUsageQuota } from "@/lib/usage-quota";
 import { BillingPanel } from "@/components/billing-panel";
+import { ManualPaymentAdmin } from "@/components/manual-payment-admin";
 
 const integrations = [
   "Google Calendar",
@@ -36,7 +37,14 @@ export default async function SettingsPage() {
           <div><p className="text-sm text-slate-500">{text.email}</p><p className="font-semibold">{user.email}</p></div>
         </div>
       </section>
-      <BillingPanel quota={{ ...quota, periodEnd: quota.periodEnd.toISOString() }} isAdmin={user.isAdmin} />
+      <BillingPanel quota={{
+        plan: quota.plan,
+        usedSeconds: quota.usedSeconds,
+        limitSeconds: quota.limitSeconds,
+        remainingSeconds: quota.remainingSeconds,
+        periodEnd: quota.periodEnd.toISOString()
+      }} isAdmin={user.isAdmin} />
+      {user.isAdmin && <ManualPaymentAdmin />}
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
         <div className="grid gap-3 sm:grid-cols-2">

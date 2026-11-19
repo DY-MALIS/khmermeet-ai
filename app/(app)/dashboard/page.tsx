@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
 import { PersonalAssistant } from "@/components/personal-assistant";
+import { DashboardBillingCard } from "@/components/dashboard-billing-card";
 import { getServerUiText } from "@/lib/server-ui-text";
+import { getUsageQuota } from "@/lib/usage-quota";
 import {
   computeAverageMeetingMinutes,
   computeMeetingQualityScore,
@@ -17,9 +19,9 @@ export const revalidate = 0;
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const { language, text } = await getServerUiText();
-  const t = (km: string, en: string) => language === "km" ? km : en;
-  const data = await Promise.all([
+  const uiPromise = getServerUiText();
+  const quotaPromise = getUsageQuota(user.id);
+  const dataPromise = Promise.all([
     prisma.meeting.findMany({
       where: ownerWhere(user),
       include: { tasks: true, decisions: true },
@@ -35,6 +37,8 @@ export default async function DashboardPage() {
   ])
     .then(([meetings, tasks, segments]) => ({ meetings, tasks, segments, dbUnavailable: false }))
     .catch(() => ({ meetings: [], tasks: [], segments: [], dbUnavailable: true }));
+  const [{ language, text }, quota, data] = await Promise.all([uiPromise, quotaPromise, dataPromise]);
+  const t = (km: string, en: string) => language === "km" ? km : en;
   const { meetings, tasks, segments, dbUnavailable } = data;
   const now = new Date();
   const stats = [
@@ -76,6 +80,11 @@ export default async function DashboardPage() {
           </a>
         </div>
       </div>
+      <DashboardBillingCard quota={{
+        ...quota,
+        periodEnd: quota.periodEnd.toISOString(),
+        manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
+      }} language={language} />
       <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
         <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-[1.5rem] border border-[#d3e7df] bg-[#fbfdf9] p-6 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#073f39]/12 sm:p-8">
           <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#087862] via-[#0cb288] to-[#f5cb3f]" />
