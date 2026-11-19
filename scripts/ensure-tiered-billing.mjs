@@ -12,6 +12,7 @@ try {
     await tx.$executeRawUnsafe('ALTER TABLE "BillingAccount" ADD COLUMN IF NOT EXISTS "stripePlan" TEXT NOT NULL DEFAULT \'starter\'');
     await tx.$executeRawUnsafe('ALTER TABLE "BillingAccount" ADD COLUMN IF NOT EXISTS "manualPlan" TEXT NOT NULL DEFAULT \'starter\'');
     await tx.$executeRawUnsafe('ALTER TABLE "ManualPayment" ADD COLUMN IF NOT EXISTS "plan" TEXT NOT NULL DEFAULT \'starter\'');
+    await tx.$executeRawUnsafe('ALTER TABLE "ManualPayment" ADD COLUMN IF NOT EXISTS "reviewedById" TEXT');
     await tx.$executeRawUnsafe('ALTER TABLE "UsageCharge" ADD COLUMN IF NOT EXISTS "kind" TEXT NOT NULL DEFAULT \'upload\'');
     await tx.$executeRawUnsafe('UPDATE "UsageCharge" SET "kind" = \'live\' WHERE "kind" = \'upload\' AND ("sourceKey" LIKE \'live:%\' OR "sourceKey" LIKE \'audio:meeting:%\')');
     await tx.$executeRawUnsafe('CREATE INDEX IF NOT EXISTS "UsageCharge_userId_periodKey_kind_idx" ON "UsageCharge"("userId", "periodKey", "kind")');

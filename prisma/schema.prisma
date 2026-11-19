@@ -69,6 +69,7 @@ model ManualPayment {
   status          String   @default("pending")
   createdAt       DateTime @default(now())
   reviewedAt      DateTime?
+  reviewedById    String?
 
   @@index([status, createdAt])
   @@index([userId, createdAt])

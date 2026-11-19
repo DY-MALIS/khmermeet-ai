@@ -1,0 +1,1 @@
+ALTER TABLE "ManualPayment" ADD COLUMN IF NOT EXISTS "reviewedById" TEXT;

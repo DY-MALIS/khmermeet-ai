@@ -49,7 +49,7 @@ export default async function SettingsPage() {
         liveRemainingSeconds: quota.liveRemainingSeconds,
         periodEnd: quota.periodEnd.toISOString()
       }} isAdmin={user.isAdmin} />
-      {user.isAdmin && <ManualPaymentAdmin />}
+      {user.isAdmin && <div id="manual-payments"><ManualPaymentAdmin /></div>}
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
         <div className="grid gap-3 sm:grid-cols-2">

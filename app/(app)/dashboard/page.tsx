@@ -80,6 +80,7 @@ export default async function DashboardPage() {
           </a>
         </div>
       </div>
+      {user.isAdmin && <a href="/settings#manual-payments" className="inline-flex min-h-11 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800">{t("គ្រប់គ្រងការបង់ប្រាក់តាមអ៊ីមែល", "Manage payments by email")}</a>}
       <DashboardBillingCard quota={{
         ...quota,
         periodEnd: quota.periodEnd.toISOString(),
