@@ -3,11 +3,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
-import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
+import { verifiedStoredAudioDuration } from "@/lib/verified-audio-duration";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 15;
+export const maxDuration = 300;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -17,13 +18,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const audioUrl = typeof body.audioUrl === "string" ? body.audioUrl.trim() : "";
     if (!audioUrl) return NextResponse.json({ error: "audioUrl is required." }, { status: 400 });
 
-    const duration = "duration" in body ? clampMeetingDurationSeconds(body.duration) : undefined;
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
     const room = typeof body.room === "string" ? body.room.trim() : "";
     const liveKitSpeakerNames = room ? await listLiveKitParticipantNames(room).catch(() => []) : [];
     const speakerNames = normalizeSpeakerNames([...normalizeSpeakerNames(body.speakerNames), ...liveKitSpeakerNames]);
     const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
+    const verifiedDuration = await verifiedStoredAudioDuration(audioUrl);
+    await chargeAudioUsage(meeting.createdById, `audio:${audioUrl}`, verifiedDuration);
     const nextSpeakerNames = [
       ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
     ].slice(0, 100);
@@ -40,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         data: {
           audioUrl,
           language: languageMode,
-          duration: duration ?? meeting.duration,
+          duration: verifiedDuration,
           speakerNames: nextSpeakerNames,
           status: meeting.status === "recording" ? "recorded" : meeting.status
         }
@@ -54,6 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ attached: true });
   } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not attach audio to the meeting." },
       { status: 500 }

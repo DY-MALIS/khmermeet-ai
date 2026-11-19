@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
 import { publicAiTranscriptionError } from "@/lib/api-error-messages";
-import { normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
+import { deleteStoredAudio, normalizeTranscriptionLanguageMode, saveLocalAudio, transcribeAudio, transcribeAudioChunks, type TranscriptionLanguageMode } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { chargeAudioUsage, requireAudioAllowance, UsageLimitError } from "@/lib/usage-quota";
+import { measureMediaDurationSeconds } from "@/lib/ffmpeg";
 
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const user = await requireUser();
+  try {
+    await requireAudioAllowance(user.id);
+  } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
+    throw error;
+  }
   const limited = await rateLimitResponse(user.id, "ai-transcribe");
   if (limited) return limited;
   let formData: FormData;
@@ -36,6 +44,17 @@ export async function POST(request: Request) {
   }
   if (skipTranscription) {
     return NextResponse.json({ audioUrl, transcript: "", speakerNames });
+  }
+  try {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const seconds = await measureMediaDurationSeconds(bytes, file.name.split(".").pop() || "webm");
+    await chargeAudioUsage(user.id, `audio:${audioUrl}`, seconds);
+  } catch (error) {
+    await deleteStoredAudio(audioUrl).catch(() => undefined);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not check audio allowance." },
+      { status: error instanceof UsageLimitError ? 402 : 400 }
+    );
   }
   try {
     const speakerAudioFiles = formData.getAll("speakerAudio").filter((item): item is File => item instanceof File && item.size > 0);

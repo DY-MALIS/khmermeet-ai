@@ -109,6 +109,7 @@ export function RecordingPanel() {
   const previewUrlRef = useRef<string | null>(null);
   const startedAtRef = useRef(0);
   const accumulatedMsRef = useRef(0);
+  const monthlyRecordingLimitMsRef = useRef(MAX_MEETING_DURATION_MS);
   const chunks = useRef<Blob[]>([]);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
@@ -197,7 +198,7 @@ export function RecordingPanel() {
     const updateElapsed = () => {
       const elapsedMs = accumulatedMsRef.current + (startedAtRef.current ? Date.now() - startedAtRef.current : 0);
       setSeconds(clampMeetingDurationSeconds(Math.floor(elapsedMs / 1000)));
-      if (elapsedMs >= MAX_MEETING_DURATION_MS) stop();
+      if (elapsedMs >= monthlyRecordingLimitMsRef.current) stop();
     };
     updateElapsed();
     const timer = setInterval(updateElapsed, 250);
@@ -644,6 +645,18 @@ export function RecordingPanel() {
     }
     if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
       setError(text.secureContextRequired);
+      return;
+    }
+    try {
+      const response = await fetch("/api/billing/quota", { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not check the monthly audio limit.");
+      const quota = await response.json() as { remainingSeconds: number | null };
+      if (quota.remainingSeconds !== null && quota.remainingSeconds <= 0) {
+        throw new Error("Monthly audio limit reached. Subscribe in Settings to continue.");
+      }
+      monthlyRecordingLimitMsRef.current = Math.min(MAX_MEETING_DURATION_MS, (quota.remainingSeconds ?? 12 * 60 * 60) * 1000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not check audio allowance.");
       return;
     }
     try {

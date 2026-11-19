@@ -12,9 +12,28 @@ model User {
   name         String
   email        String             @unique
   subscribed   SubscriptionStatus @default(FALSE)
+  stripeCustomerId       String?   @unique
+  stripeSubscriptionId   String?   @unique
+  stripeStatus           String    @default("inactive")
+  stripePeriodStart      DateTime?
+  stripePeriodEnd        DateTime?
+  unlimitedAccess        Boolean   @default(false)
   createdAt    DateTime           @default(now())
   meetings     Meeting[]
   voiceSamples VoiceSample[]
+  usageCharges UsageCharge[]
+}
+
+model UsageCharge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceKey String   @unique
+  periodKey String
+  seconds   Int
+  createdAt DateTime @default(now())
+
+  @@index([userId, periodKey])
 }
 
 enum SubscriptionStatus {

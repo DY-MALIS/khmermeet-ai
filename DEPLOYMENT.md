@@ -12,34 +12,29 @@ Use this checklist before giving the app to real users.
 
 ## 2. Environment Variables
 
-Set these in Vercel Project Settings -> Environment Variables:
+Set the variables listed in `.env.example` in Vercel Project Settings. Use
+`STRIPE_SECRET_KEY` from the Stripe integration, and add the webhook signing
+secret as `STRIPE_WEBHOOK_SECRET` after creating the endpoint. Keep all secret
+values in Vercel, outside the repository.
 
-```env
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=require"
-OPEN_ROUTER_API_KEY="..."
-OPEN_ROUTER_TEXT_MODEL="openai/gpt-4o-mini"
-OPEN_ROUTER_TRANSCRIBE_MODEL="google/chirp-3"
-OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL="google/gemini-2.5-pro"
-OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS="55000"
-NEXTAUTH_SECRET="generate-a-long-random-secret"
-NEXTAUTH_URL="https://your-production-domain.com"
+The $15/month plan uses Stripe Checkout and a signed webhook. Configure a Stripe
+webhook endpoint at `https://your-production-domain.com/api/billing/webhook` for
+`checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, and `customer.subscription.deleted`. Set the
+endpoint's signing secret as `STRIPE_WEBHOOK_SECRET`. Enable the Stripe customer
+portal so subscribers can manage or cancel their plan. The Vercel Stripe sandbox
+must be claimed and switched to a live Stripe account before charging real users.
 
-SUPABASE_URL="https://your-project-ref.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY="..."
-SUPABASE_STORAGE_BUCKET="meeting-recordings"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
+Apply the `20261119000000_add_subscription_usage` Prisma migration before
+deploying the new app. Free accounts receive 30 minutes per UTC calendar month;
+paid accounts receive 10 hours per Stripe billing period. Admins can grant
+unlimited access by email in Settings.
 
-NEXT_PUBLIC_LIVEKIT_URL="wss://your-livekit-project.livekit.cloud"
-LIVEKIT_API_KEY="..."
-LIVEKIT_API_SECRET="..."
-```
+With a database connection that has migration permissions, run
+`npx prisma migrate deploy`. Do not turn on the new quota routes before this
+migration succeeds.
 
-Optional email reset support:
-
-```env
-RESEND_API_KEY="..."
-RESEND_FROM_EMAIL="KhmerMeet AI <noreply@your-domain.com>"
-```
+Optional email reset uses `RESEND_API_KEY` and `RESEND_FROM_EMAIL`.
 
 ## 3. Database
 
@@ -49,18 +44,8 @@ After setting `DATABASE_URL`, create the tables:
 npm run prisma:migrate
 ```
 
-For a fresh demo account:
-
-```bash
-npm run prisma:seed
-```
-
-Demo login from the seed:
-
-- Email: `demo@khmermeet.ai`
-- Password: `password123`
-
-Change or remove this demo user before inviting real users.
+Use Google sign-in to create a user after the migration. Do not seed a shared
+demo login into production.
 
 ## 4. Storage
 
@@ -99,19 +84,7 @@ Then test the real workflow:
 
 For large calls, use LiveKit Cloud plus LiveKit Egress. The app now starts LiveKit server recording first and only falls back to browser mixed recording for small calls of 12 participants or fewer. This avoids making one user's browser subscribe to, mix, and upload audio for a large room.
 
-Required for large-call recording:
-
-```env
-NEXT_PUBLIC_LIVEKIT_URL="wss://your-livekit-project.livekit.cloud"
-LIVEKIT_API_KEY="..."
-LIVEKIT_API_SECRET="..."
-LIVEKIT_EGRESS_S3_ENDPOINT="https://<project-ref>.supabase.co/storage/v1/s3"
-LIVEKIT_EGRESS_S3_REGION="auto"
-LIVEKIT_EGRESS_S3_BUCKET="meeting-recordings"
-LIVEKIT_EGRESS_S3_ACCESS_KEY="..."
-LIVEKIT_EGRESS_S3_SECRET="..."
-LIVEKIT_EGRESS_S3_FORCE_PATH_STYLE="true"
-```
+Required variables are the LiveKit and Egress entries in `.env.example`.
 
 For 100 people, keep the default audio-first call setup: camera off by default, microphone on only for speakers, and screen share only when needed.
 

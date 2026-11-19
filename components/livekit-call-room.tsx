@@ -976,6 +976,7 @@ function LiveKitMeetingAgent({
   const segmentsRef = useRef<Blob[]>([]);
   const segmentingRef = useRef(false);
   const startedAtRef = useRef(0);
+  const monthlyRecordingLimitMsRef = useRef(MAX_MEETING_DURATION_MS);
   const cleanupRef = useRef<(() => void) | null>(null);
   const mixAudioContextRef = useRef<AudioContext | null>(null);
   const mixDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
@@ -1016,7 +1017,7 @@ function LiveKitMeetingAgent({
     const timer = window.setInterval(() => {
       const elapsedMs = Date.now() - startedAt;
       setSeconds(clampMeetingDurationSeconds(Math.floor(elapsedMs / 1000)));
-      if (elapsedMs >= MAX_MEETING_DURATION_MS) {
+      if (elapsedMs >= monthlyRecordingLimitMsRef.current) {
         if (egressRecording || serverRecording) void stopServerRecording();
         else if (recording) stopRecording();
       }
@@ -1709,11 +1710,12 @@ function LiveKitMeetingAgent({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: meetingTitle, languageMode: transcriptionLanguage, room: recordingRoom, speakerNames: speakers, participantCount: expectedParticipants })
       });
-      const data = await readJsonResponse<{ meetingId?: string; error?: string }>(response);
+      const data = await readJsonResponse<{ meetingId?: string; remainingSeconds?: number | null; error?: string }>(response);
       if (!response.ok || !data.meetingId) {
         throw new Error(data.error ?? t("មិនអាចចាប់ផ្ដើមថតបានទេ។", "Could not start recording."));
       }
 
+      monthlyRecordingLimitMsRef.current = Math.min(MAX_MEETING_DURATION_MS, (data.remainingSeconds ?? 12 * 60 * 60) * 1000);
       const recordingStartedAt = Date.now();
       trackLanguageModeRef.current = transcriptionLanguage;
       startServerMixedBackup();

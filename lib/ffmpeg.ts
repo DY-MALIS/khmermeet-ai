@@ -72,6 +72,33 @@ async function probeDurationSeconds(inputPath: string): Promise<number | null> {
   throw new Error("Could not determine audio duration (no Duration line in ffmpeg output).");
 }
 
+// Billing needs the media's real length, rather than a duration supplied by
+// the browser. WebM recordings often omit the duration header, so decode them
+// to the null output and use FFmpeg's final stream time when necessary.
+export async function measureMediaDurationSeconds(bytes: Buffer, extension: string) {
+  if (!ffmpegPath) throw new Error("Audio duration could not be verified.");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "khmermeet-duration-"));
+  const inputPath = path.join(directory, `source.${extension.replace(/[^a-z0-9]/gi, "") || "webm"}`);
+  try {
+    await writeFile(inputPath, bytes);
+    await probeDurationSeconds(inputPath);
+    await ensureFfmpegExecutable();
+    let stderr = "";
+    try {
+      const result = await execFileAsync(ffmpegPath, ["-hide_banner", "-i", inputPath, "-map", "0:a:0", "-vn", "-f", "null", "-"], { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+      stderr = result.stderr;
+    } catch (error) {
+      stderr = (error as { stderr?: string }).stderr ?? "";
+    }
+    const times = [...stderr.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
+    const last = times[times.length - 1];
+    if (last) return Math.ceil(Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]));
+    throw new Error("Audio duration could not be verified.");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 // Decodes the stream once with ffmpeg's silencedetect filter to find real
 // gaps between words, then nudges each rough target boundary to the nearest
 // detected silence within a few seconds either side - so a chunk split
