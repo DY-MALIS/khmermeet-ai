@@ -4,7 +4,7 @@ import { deleteStoredAudio, normalizeTranscriptionLanguageMode, saveLocalAudio, 
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { chargeAudioUsage, requireAudioAllowance, UsageLimitError } from "@/lib/usage-quota";
-import { measureMediaDurationSeconds } from "@/lib/ffmpeg";
+import { measureMediaUsageSeconds } from "@/lib/ffmpeg";
 
 export const maxDuration = 300;
 
@@ -47,8 +47,8 @@ export async function POST(request: Request) {
   }
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
-    const seconds = await measureMediaDurationSeconds(bytes, file.name.split(".").pop() || "webm");
-    await chargeAudioUsage(user.id, `audio:${audioUrl}`, seconds);
+    const usage = await measureMediaUsageSeconds(bytes, file.name.split(".").pop() || "webm");
+    await chargeAudioUsage(user.id, `audio:${audioUrl}`, usage.spokenSeconds);
   } catch (error) {
     await deleteStoredAudio(audioUrl).catch(() => undefined);
     return NextResponse.json(

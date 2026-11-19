@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 
-export const FREE_SECONDS = 30 * 60;
+export const FREE_SECONDS = 20 * 60;
 export const PRO_SECONDS = 10 * 60 * 60;
 export const PRO_MONTHLY_CENTS = 1500;
 
@@ -78,4 +78,3 @@ export async function refreshStripeSubscription(userId: string) {
     console.error("Stripe subscription refresh failed", error);
   }
 }
-

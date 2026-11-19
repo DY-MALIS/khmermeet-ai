@@ -4,7 +4,7 @@ import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/stora
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
-import { measureMediaDurationSeconds } from "@/lib/ffmpeg";
+import { measureMediaUsageSeconds } from "@/lib/ffmpeg";
 import { createHash } from "crypto";
 
 export const maxDuration = 60;
@@ -25,9 +25,9 @@ export async function POST(request: Request) {
   }
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
-    const seconds = await measureMediaDurationSeconds(bytes, file.name.split(".").pop() || "webm");
+    const usage = await measureMediaUsageSeconds(bytes, file.name.split(".").pop() || "webm");
     const hash = createHash("sha256").update(bytes).digest("hex");
-    await chargeAudioUsage(user.id, `live:${user.id}:${hash}`, seconds);
+    await chargeAudioUsage(user.id, `live:${user.id}:${hash}`, usage.spokenSeconds);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not check audio allowance." },

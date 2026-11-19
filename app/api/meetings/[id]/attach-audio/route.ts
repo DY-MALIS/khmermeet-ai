@@ -5,7 +5,7 @@ import { ownerWhere, requireUser } from "@/lib/session";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
-import { verifiedStoredAudioDuration } from "@/lib/verified-audio-duration";
+import { verifiedStoredAudioUsage } from "@/lib/verified-audio-duration";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -24,8 +24,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const speakerNames = normalizeSpeakerNames([...normalizeSpeakerNames(body.speakerNames), ...liveKitSpeakerNames]);
     const meeting = await prisma.meeting.findFirst({ where: { id, ...ownerWhere(user) } });
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
-    const verifiedDuration = await verifiedStoredAudioDuration(audioUrl);
-    await chargeAudioUsage(meeting.createdById, `audio:${audioUrl}`, verifiedDuration);
+    const usage = await verifiedStoredAudioUsage(audioUrl);
+    const verifiedDuration = usage.durationSeconds;
+    const alreadyChargedForTracks = await prisma.usageCharge.findUnique({ where: { sourceKey: `audio:meeting:${id}` } });
+    if (!alreadyChargedForTracks) {
+      await chargeAudioUsage(meeting.createdById, `audio:${audioUrl}`, usage.spokenSeconds);
+    }
     const nextSpeakerNames = [
       ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
     ].slice(0, 100);

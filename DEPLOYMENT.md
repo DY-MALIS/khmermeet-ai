@@ -28,8 +28,9 @@ portal so subscribers can manage or cancel their plan. The Vercel Stripe sandbox
 must be claimed and switched to a live Stripe account before charging real users.
 
 Apply the `20261119000000_add_subscription_usage` Prisma migration before
-deploying the new app. Free accounts receive 30 minutes per UTC calendar month;
-paid accounts receive 10 hours per Stripe billing period. Admins can grant
+deploying the new app. Free accounts receive 20 minutes per UTC calendar month;
+paid accounts receive 10 hours per Stripe billing period. Audio usage excludes
+detected silent intervals. Admins can grant
 unlimited access by email in Settings.
 
 With a database connection that has migration permissions, run

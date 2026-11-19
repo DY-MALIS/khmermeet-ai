@@ -8,7 +8,7 @@ import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
 import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
-import { verifiedStoredAudioDuration } from "@/lib/verified-audio-duration";
+import { verifiedStoredAudioUsage } from "@/lib/verified-audio-duration";
 
 export const maxDuration = 300;
 
@@ -41,8 +41,9 @@ export async function POST(request: Request) {
       }
     });
 
-    const verifiedDuration = audioUrl ? await verifiedStoredAudioDuration(audioUrl) : duration;
-    if (audioUrl) await chargeAudioUsage(user.id, `audio:${audioUrl}`, verifiedDuration);
+    const usage = audioUrl ? await verifiedStoredAudioUsage(audioUrl) : null;
+    const verifiedDuration = usage?.durationSeconds ?? duration;
+    if (usage) await chargeAudioUsage(user.id, `audio:${audioUrl}`, usage.spokenSeconds);
     const meeting = await prisma.meeting.create({
       data: {
         title,

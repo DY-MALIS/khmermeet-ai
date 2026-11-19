@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Check, ExternalLink, QrCode, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Check, ExternalLink, RefreshCw, X } from "lucide-react";
 
 type Payment = {
   id: string;
@@ -27,16 +27,6 @@ export function ManualPaymentAdmin() {
     void loadPayments().catch((cause) => setMessage(cause instanceof Error ? cause.message : "មិនអាចទាញយកការបង់ប្រាក់បាន។"));
   }, [loadPayments]);
 
-  async function uploadQr(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setMessage("");
-    const response = await fetch("/api/billing/manual/qr", { method: "POST", body: new FormData(event.currentTarget) });
-    const result = await response.json() as { error?: string };
-    setBusy(false);
-    setMessage(response.ok ? "បានរក្សាទុក QR សម្រាប់ការបង់ប្រាក់។" : result.error || "មិនអាចរក្សាទុក QR បាន។");
-  }
-
   async function review(id: string, action: "approve" | "reject") {
     setBusy(true);
     setMessage("");
@@ -59,15 +49,9 @@ export function ManualPaymentAdmin() {
     <section className="kh-card space-y-5 p-5">
       <div>
         <p className="text-xs font-bold uppercase tracking-wide text-leaf">សម្រាប់អ្នកគ្រប់គ្រង</p>
-        <h2 className="mt-1 text-lg font-bold">QR និងការអនុម័តការបង់ប្រាក់</h2>
-        <p className="mt-1 text-sm text-slate-600">ដាក់រូប QR ដើមរបស់ធនាគារ។ អ្នកប្រើនឹងឃើញវានៅ Dashboard ពេលចុច “បង់តាម QR”។</p>
+        <h2 className="mt-1 text-lg font-bold">ការអនុម័តការបង់ប្រាក់</h2>
+        <p className="mt-1 text-sm text-slate-600">QR បង់ប្រាក់បច្ចុប្បន្ន៖ MALIS DY</p>
       </div>
-      <form onSubmit={(event) => void uploadQr(event)} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-        <label className="sm:col-span-2 text-sm font-semibold">រូប QR (PNG/JPG/WebP, អតិបរមា 5 MB)<input name="image" type="file" required accept="image/png,image/jpeg,image/webp" className="mt-1 block w-full rounded-lg border bg-white p-2 text-sm" /></label>
-        <label className="text-sm font-semibold">ឈ្មោះអ្នកទទួល<input name="payeeName" defaultValue="PHON THA" className="mt-1 w-full rounded-lg border bg-white px-3 py-2" /></label>
-        <label className="text-sm font-semibold">Merchant ID<input name="merchantId" defaultValue="32890217" className="mt-1 w-full rounded-lg border bg-white px-3 py-2" /></label>
-        <button type="submit" disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-lg bg-leaf px-4 py-2.5 font-semibold text-white disabled:opacity-50 sm:col-span-2"><QrCode className="h-4 w-4" />រក្សាទុក QR</button>
-      </form>
 
       <div className="border-t pt-5">
         <div className="flex items-center justify-between gap-3">

@@ -3,8 +3,9 @@
 import { SidebarNav } from "@/components/sidebar-nav";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ShellStatusCard } from "@/components/shell-status-card";
-import { LocalizedText } from "@/components/localized-text";
-import { Menu, Video } from "lucide-react";
+import { BilingualText, LocalizedText } from "@/components/localized-text";
+import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
+import { Menu, MessageCircle, Video } from "lucide-react";
 import Link from "next/link";
 
 export function AppShell({
@@ -57,9 +58,13 @@ export function AppShell({
           <ShellStatusCard user={user} />
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+      <main className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:px-6 sm:pt-6 lg:px-8">
         <div className="mx-auto w-full max-w-[88rem]">{children}</div>
       </main>
+      <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="fixed bottom-4 right-4 z-40 inline-flex min-h-12 max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full bg-[#087862] px-4 py-3 text-sm font-bold text-white shadow-xl shadow-[#073f39]/30 ring-2 ring-white transition hover:bg-[#065d50] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#087862]">
+        <MessageCircle className="h-5 w-5 shrink-0" />
+        <BilingualText km="ជំនួយបង់ប្រាក់ · @malis7171" en="Payment help · @malis7171" />
+      </a>
     </div>
   );
 }

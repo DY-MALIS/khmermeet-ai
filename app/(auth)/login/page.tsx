@@ -1,7 +1,8 @@
-import { CheckCircle2, FileText, Globe2, Mic2, ShieldCheck, Video } from "lucide-react";
+import { CheckCircle2, FileText, Globe2, MessageCircle, Mic2, ShieldCheck, Video } from "lucide-react";
 import { LoginForm } from "@/components/auth-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getServerUiText } from "@/lib/server-ui-text";
+import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
 
 // Kept in the HTML so a delayed static stylesheet cannot leave the sign-in
 // screen as unstyled browser defaults while a new deployment propagates.
@@ -202,6 +203,10 @@ export default async function LoginPage({
               <ShieldCheck className="h-5 w-5 shrink-0" />
               <span>{km ? "ចូលប្រើប្រាស់ដោយសុវត្ថិភាព និងការពារទិន្នន័យ" : "Secure sign-in and protected meeting data"}</span>
             </div>
+            <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex items-center justify-center gap-2 text-center text-sm font-semibold text-[#087862] underline underline-offset-2 hover:text-[#065d50]">
+              <MessageCircle className="h-4 w-4" />
+              {km ? "សួរអំពីអេប ការបង់ប្រាក់ ឬបញ្ហាប្រើប្រាស់៖ Telegram @malis7171" : "App, payment, or account help: Telegram @malis7171"}
+            </a>
             <div className="login-card-art" aria-hidden="true" />
           </section>
         </div>

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { ArrowRight, Clock3, CreditCard, QrCode, X } from "lucide-react";
+import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
 
 type Quota = {
   plan: "free" | "pro" | "unlimited";
@@ -30,7 +31,11 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
     ? t("ប្រើប្រាស់មិនកំណត់", "Unlimited access")
     : quota.plan === "pro"
       ? t("Pro · $15/ខែ · 10 ម៉ោង", "Pro · $15/month · 10 hours")
-      : t("ឥតគិតថ្លៃ · 30 នាទី/ខែ", "Free · 30 minutes/month");
+      : t("ឥតគិតថ្លៃ · 20 នាទី/ខែ", "Free · 20 minutes/month");
+  const remaining = quota.remainingSeconds;
+  const warning = remaining !== null && remaining <= (quota.plan === "free" ? 5 * 60 : 60 * 60);
+  const exhausted = remaining !== null && remaining <= 0;
+  const percentUsed = quota.limitSeconds ? Math.min(100, Math.round(quota.usedSeconds / quota.limitSeconds * 100)) : 0;
 
   async function openStripe() {
     setBusy(true);
@@ -81,6 +86,12 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
                 {t(`បានប្រើ ${usedMinutes} នាទី`, `${usedMinutes} minutes used`)}
                 {remainingMinutes !== null ? t(` · នៅសល់ ${remainingMinutes} នាទី`, ` · ${remainingMinutes} minutes remaining`) : ""}
               </p>
+              {quota.limitSeconds !== null && (
+                <div className="mt-3" role="progressbar" aria-label={t("ម៉ោងនិយាយបានប្រើ", "Speech time used")} aria-valuenow={Math.min(quota.usedSeconds, quota.limitSeconds)} aria-valuemin={0} aria-valuemax={quota.limitSeconds}>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${exhausted ? "bg-red-600" : warning ? "bg-amber-500" : "bg-[#087862]"}`} style={{ width: `${percentUsed}%` }} /></div>
+                  <p className={`mt-1 text-xs font-semibold ${exhausted ? "text-red-700" : warning ? "text-amber-700" : "text-slate-500"}`}>{exhausted ? t("ម៉ោងនិយាយបានអស់", "Speech time exhausted") : warning ? t("ម៉ោងនិយាយជិតអស់", "Speech time is running low") : t("គិតតែពេលមានការនិយាយ", "Only spoken time counts")}</p>
+                </div>
+              )}
               {quota.plan !== "unlimited" && <p className="mt-1 text-xs text-slate-500">{t("កំណត់ឡើងវិញ៖ ", "Resets: ")}{new Date(quota.periodEnd).toLocaleDateString(language === "km" ? "km-KH" : "en-US")}</p>}
               {pending && <p className="mt-2 text-sm font-semibold text-amber-700">{t("ការបង់តាម QR កំពុងរង់ចាំការត្រួតពិនិត្យ។", "Your QR payment is awaiting review.")}</p>}
               {quota.manualPaymentStatus === "rejected" && !pending && <p className="mt-2 text-sm text-red-600">{t("ការបង់មុនមិនត្រូវបានអនុម័ត។ សូមពិនិត្យលេខប្រតិបត្តិការ ហើយផ្ញើម្តងទៀត។", "The previous payment was not approved. Check the reference and resubmit.")}</p>}
@@ -112,7 +123,7 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
             <h2 id="qr-payment-title" className="pr-10 text-xl font-black text-[#073f39]">{t("បង់ $15 តាម QR", "Pay $15 by QR")}</h2>
             <p className="mt-1 text-sm text-slate-600">{t("ស្កេន QR រួចបញ្ចូលលេខប្រតិបត្តិការ។ ក្រោយអនុម័ត អ្នកទទួលបាន 10 ម៉ោងសម្រាប់ 1 ខែ។", "Scan the QR, then enter the transaction reference. Approval adds 10 hours for one month.")}</p>
             <div className="mx-auto mt-4 w-full max-w-sm overflow-hidden rounded-xl border bg-white">
-              <Image src="/api/billing/manual/qr" alt={t("ACLEDA QR សម្រាប់បង់ប្រាក់", "ACLEDA payment QR")} width={895} height={1263} className="h-auto w-full" unoptimized />
+              <Image src="/payment-qr-malis-dy.png" alt={t("QR បង់ប្រាក់ទៅ MALIS DY", "Payment QR for MALIS DY")} width={1258} height={1279} className="h-auto w-full" unoptimized />
             </div>
             <form onSubmit={(event) => void submitManualPayment(event)} className="mt-4 space-y-3">
               <label className="block text-sm font-semibold text-slate-700">{t("លេខប្រតិបត្តិការ", "Transaction reference")}<input name="transactionRef" required minLength={4} maxLength={100} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-[#087862]" placeholder={t("ឧ. លេខក្នុងបង្កាន់ដៃ", "Reference shown on your receipt")} /></label>
@@ -120,6 +131,9 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
               <button type="submit" disabled={busy} className="w-full rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? t("កំពុងផ្ញើ...", "Submitting...") : t("ផ្ញើឲ្យពិនិត្យ", "Submit for review")}</button>
               {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             </form>
+            <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex min-h-11 items-center justify-center rounded-xl border border-[#087862] px-4 py-3 text-center text-sm font-bold text-[#087862] hover:bg-[#eef9f4]">
+              {t("សួរអំពីការបង់ប្រាក់តាម Telegram · @malis7171", "Ask about payment on Telegram · @malis7171")}
+            </a>
           </div>
         </div>
       )}

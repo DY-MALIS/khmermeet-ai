@@ -4,6 +4,7 @@ import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "fs/promi
 import path from "path";
 import os from "os";
 import ffmpegPath from "ffmpeg-static";
+import { spokenSecondsFromFfmpegLog } from "@/lib/speech-duration";
 
 const execFileAsync = promisify(execFile);
 let ensuredExecutable = false;
@@ -72,10 +73,14 @@ async function probeDurationSeconds(inputPath: string): Promise<number | null> {
   throw new Error("Could not determine audio duration (no Duration line in ffmpeg output).");
 }
 
-// Billing needs the media's real length, rather than a duration supplied by
-// the browser. WebM recordings often omit the duration header, so decode them
-// to the null output and use FFmpeg's final stream time when necessary.
+// Read both the original media length and the audible time from a server-side
+// decode. WebM recordings often omit the duration header, so use FFmpeg's
+// final stream time and silence events rather than browser-supplied values.
 export async function measureMediaDurationSeconds(bytes: Buffer, extension: string) {
+  return (await measureMediaUsageSeconds(bytes, extension)).durationSeconds;
+}
+
+export async function measureMediaUsageSeconds(bytes: Buffer, extension: string) {
   if (!ffmpegPath) throw new Error("Audio duration could not be verified.");
   const directory = await mkdtemp(path.join(os.tmpdir(), "khmermeet-duration-"));
   const inputPath = path.join(directory, `source.${extension.replace(/[^a-z0-9]/gi, "") || "webm"}`);
@@ -85,14 +90,17 @@ export async function measureMediaDurationSeconds(bytes: Buffer, extension: stri
     await ensureFfmpegExecutable();
     let stderr = "";
     try {
-      const result = await execFileAsync(ffmpegPath, ["-hide_banner", "-i", inputPath, "-map", "0:a:0", "-vn", "-f", "null", "-"], { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+      const result = await execFileAsync(ffmpegPath, ["-hide_banner", "-i", inputPath, "-map", "0:a:0", "-vn", "-af", "silencedetect=noise=-35dB:d=0.5", "-f", "null", "-"], { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
       stderr = result.stderr;
     } catch (error) {
       stderr = (error as { stderr?: string }).stderr ?? "";
     }
     const times = [...stderr.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
     const last = times[times.length - 1];
-    if (last) return Math.ceil(Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]));
+    if (last) {
+      const exactDurationSeconds = Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]);
+      return { durationSeconds: Math.ceil(exactDurationSeconds), spokenSeconds: spokenSecondsFromFfmpegLog(stderr, exactDurationSeconds) };
+    }
     throw new Error("Audio duration could not be verified.");
   } finally {
     await rm(directory, { recursive: true, force: true });

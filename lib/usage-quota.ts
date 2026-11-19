@@ -57,7 +57,7 @@ export async function getUsageQuota(userId: string) {
   await refreshStripeSubscription(userId);
   const account = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
   const plan = planFor(account, new Date());
-  const [usage, latestManualPayment, qrSettings] = await Promise.all([
+  const [usage, latestManualPayment] = await Promise.all([
     prisma.usageCharge.aggregate({
       where: { userId, periodKey: plan.periodKey },
       _sum: { seconds: true }
@@ -66,8 +66,7 @@ export async function getUsageQuota(userId: string) {
       where: { userId },
       orderBy: { createdAt: "desc" },
       select: { status: true, createdAt: true }
-    }),
-    prisma.billingSettings.findUnique({ where: { id: "default" }, select: { id: true } })
+    })
   ]);
   const usedSeconds = usage._sum.seconds ?? 0;
   return {
@@ -78,13 +77,13 @@ export async function getUsageQuota(userId: string) {
     periodEnd: plan.periodEnd,
     manualPaymentStatus: latestManualPayment?.status ?? null,
     manualPaymentCreatedAt: latestManualPayment?.createdAt ?? null,
-    qrAvailable: Boolean(qrSettings)
+    qrAvailable: true
   };
 }
 
 // Lock the account row so simultaneous uploads cannot each spend the same remaining minutes.
 export async function chargeAudioUsage(userId: string, sourceKey: string, seconds: number) {
-  if (!Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 12 * 60 * 60) {
+  if (!Number.isSafeInteger(seconds) || seconds < 0 || seconds > 12 * 60 * 60) {
     throw new Error("A valid audio duration is required.");
   }
   await refreshStripeSubscription(userId);

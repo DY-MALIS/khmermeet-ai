@@ -50,8 +50,7 @@ test("expired or unpaid subscriptions use the free UTC calendar month", () => {
       : new Date("2026-12-10T00:00:00.000Z");
     const current = planFor(candidate, date);
     assert.equal(current.name, "free");
-    assert.equal(current.limitSeconds, 30 * 60);
+    assert.equal(current.limitSeconds, 20 * 60);
     assert.equal(current.periodKey, `free:${date.toISOString().slice(0, 7)}`);
   }
 });
-

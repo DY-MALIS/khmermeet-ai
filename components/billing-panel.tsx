@@ -56,7 +56,7 @@ export function BillingPanel({ quota, isAdmin }: { quota: Quota; isAdmin: boolea
       <div>
         <h2 className="text-lg font-bold">គម្រោងប្រើប្រាស់</h2>
         <p className="mt-1 text-sm text-slate-600">
-          {quota.plan === "unlimited" ? "ប្រើប្រាស់មិនកំណត់" : quota.plan === "pro" ? "Pro · $15/ខែ · 10 ម៉ោង/ខែ" : "Free · 30 នាទី/ខែ"}
+          {quota.plan === "unlimited" ? "ប្រើប្រាស់មិនកំណត់" : quota.plan === "pro" ? "Pro · $15/ខែ · 10 ម៉ោង/ខែ" : "Free · 20 នាទី/ខែ"}
         </p>
       </div>
       <div className="rounded-lg bg-slate-50 p-4 text-sm">
