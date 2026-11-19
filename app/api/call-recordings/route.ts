@@ -7,8 +7,10 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
+import { verifiedStoredAudioDuration } from "@/lib/verified-audio-duration";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
@@ -39,13 +41,15 @@ export async function POST(request: Request) {
       }
     });
 
+    const verifiedDuration = audioUrl ? await verifiedStoredAudioDuration(audioUrl) : duration;
+    if (audioUrl) await chargeAudioUsage(user.id, `audio:${audioUrl}`, verifiedDuration);
     const meeting = await prisma.meeting.create({
       data: {
         title,
         audioUrl,
         transcript: transcript || null,
         summary: null,
-        duration,
+        duration: verifiedDuration,
         language: languageMode,
         status: transcript ? "transcribed" : "recorded",
         speakerNames,
@@ -105,6 +109,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ meetingId: meeting.id, summaryGenerated, tasksCreated, aiError: aiError || null });
   } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     const message = error instanceof Error ? error.message : "Could not save call recording.";
     const isVercel = Boolean(process.env.VERCEL);
     const isDatabaseError =

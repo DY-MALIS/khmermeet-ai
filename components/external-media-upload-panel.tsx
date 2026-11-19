@@ -74,6 +74,13 @@ export function ExternalMediaUploadPanel() {
 
     try {
       const duration = await getMediaDuration(file);
+      const quotaResponse = await fetch("/api/billing/quota", { cache: "no-store" });
+      if (!quotaResponse.ok) throw new Error("Could not check the monthly audio limit.");
+      const quota = await quotaResponse.json() as { remainingSeconds: number | null };
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Could not read this file's duration.");
+      if (quota.remainingSeconds !== null && Math.ceil(duration) > quota.remainingSeconds) {
+        throw new Error("This file exceeds your remaining monthly audio time. Subscribe in Settings to continue.");
+      }
       const audioUrl = await uploadMediaDirect(file, (current, total) => {
         setStatus(text.uploadingPart.replace("{current}", String(current)).replace("{total}", String(total)));
       });

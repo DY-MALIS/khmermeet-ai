@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
-import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
+import { verifiedStoredAudioDuration } from "@/lib/verified-audio-duration";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -31,7 +32,6 @@ export async function POST(request: Request) {
     const title = cleanString(body.title) || "Uploaded meeting";
     const audioUrl = cleanString(body.audioUrl);
     const rawTranscript = cleanString(body.transcript);
-    const duration = clampMeetingDurationSeconds(body.duration);
     const transcript = hasUsableTranscript(rawTranscript) ? rawTranscript : "";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
     const rawSpeakerNames: unknown[] = Array.isArray(body.speakerNames) ? body.speakerNames : [];
@@ -55,6 +55,8 @@ export async function POST(request: Request) {
     }
   });
 
+    const verifiedDuration = await verifiedStoredAudioDuration(audioUrl);
+    await chargeAudioUsage(user.id, `audio:${audioUrl}`, verifiedDuration);
     const meeting = await prisma.meeting.create({
     data: {
       title,
@@ -63,7 +65,7 @@ export async function POST(request: Request) {
       summary: null,
       language: languageMode,
       status: transcript ? "transcribed" : "recorded",
-      duration,
+      duration: verifiedDuration,
       speakerNames,
       createdById: user.id
     }
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
     revalidateMeetingViews(meeting.id);
     return NextResponse.json({ id: meeting.id });
   } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     const code =
       typeof error === "object" && error && "code" in error && typeof error.code === "string"
         ? error.code

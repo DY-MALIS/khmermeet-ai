@@ -2,6 +2,8 @@ import { PlugZap } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getServerUiText } from "@/lib/server-ui-text";
 import { requireUser } from "@/lib/session";
+import { getUsageQuota } from "@/lib/usage-quota";
+import { BillingPanel } from "@/components/billing-panel";
 
 const integrations = [
   "Google Calendar",
@@ -13,6 +15,7 @@ const integrations = [
 export default async function SettingsPage() {
   const user = await requireUser();
   const { text } = await getServerUiText();
+  const quota = await getUsageQuota(user.id);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="kh-page-hero">
@@ -33,6 +36,7 @@ export default async function SettingsPage() {
           <div><p className="text-sm text-slate-500">{text.email}</p><p className="font-semibold">{user.email}</p></div>
         </div>
       </section>
+      <BillingPanel quota={{ ...quota, periodEnd: quota.periodEnd.toISOString() }} isAdmin={user.isAdmin} />
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
         <div className="grid gap-3 sm:grid-cols-2">

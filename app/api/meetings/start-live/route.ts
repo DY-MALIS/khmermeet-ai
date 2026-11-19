@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/session";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
 import { cleanRoomName } from "@/lib/livekit-invite";
+import { requireAudioAllowance, UsageLimitError } from "@/lib/usage-quota";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
@@ -16,6 +17,7 @@ export const maxDuration = 15;
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+    const quota = await requireAudioAllowance(user.id);
     const body = await request.json().catch(() => ({}));
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
@@ -47,8 +49,9 @@ export async function POST(request: Request) {
       }
     });
 
-    return NextResponse.json({ meetingId: meeting.id });
+    return NextResponse.json({ meetingId: meeting.id, remainingSeconds: quota.remainingSeconds });
   } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not start a live recording." },
       { status: 500 }

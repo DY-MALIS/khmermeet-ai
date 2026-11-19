@@ -13,6 +13,7 @@ import {
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
 
 // Segments are normally transcribed by the client calling
 // transcribe-stored-segment right after it stops recording (see
@@ -92,6 +93,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const body = await request.json().catch(() => ({}));
     const duration = "duration" in body ? clampMeetingDurationSeconds(body.duration) : undefined;
+    if (!meeting.audioUrl && duration && duration > 0) {
+      await chargeAudioUsage(meeting.createdById, `audio:meeting:${id}`, duration);
+    }
 
     const segments = await prisma.meetingTranscriptSegment.findMany({
       where: { meetingId: id },
@@ -218,6 +222,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         : {})
     });
   } catch (error) {
+    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not merge transcript segments." },
       { status: 500 }

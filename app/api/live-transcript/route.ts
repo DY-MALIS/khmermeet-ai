@@ -3,6 +3,9 @@ import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
+import { measureMediaDurationSeconds } from "@/lib/ffmpeg";
+import { createHash } from "crypto";
 
 export const maxDuration = 60;
 
@@ -19,6 +22,17 @@ export async function POST(request: Request) {
   const file = formData.get("audio");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing audio chunk." }, { status: 400 });
+  }
+  try {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const seconds = await measureMediaDurationSeconds(bytes, file.name.split(".").pop() || "webm");
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    await chargeAudioUsage(user.id, `live:${user.id}:${hash}`, seconds);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not check audio allowance." },
+      { status: error instanceof UsageLimitError ? 402 : 400 }
+    );
   }
 
   const speakersField = formData.get("speakers");
