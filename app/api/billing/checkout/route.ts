@@ -12,8 +12,8 @@ export async function POST() {
       return NextResponse.json({ error: "This account already has access." }, { status: 409 });
     }
     const stripe = stripeClient();
-    const account = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
-    if (account.stripeCustomerId && account.stripeSubscriptionId &&
+    const account = await prisma.billingAccount.findUnique({ where: { userId: user.id } });
+    if (account?.stripeCustomerId && account.stripeSubscriptionId &&
       ["active", "past_due", "unpaid", "incomplete"].includes(account.stripeStatus)) {
       const portal = await stripe.billingPortal.sessions.create({
         customer: account.stripeCustomerId,
@@ -21,11 +21,11 @@ export async function POST() {
       });
       return NextResponse.json({ url: portal.url });
     }
-    let customerId = account.stripeCustomerId;
+    let customerId = account?.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({ email: user.email, name: user.name, metadata: { userId: user.id } });
       customerId = customer.id;
-      await prisma.user.update({ where: { id: user.id }, data: { stripeCustomerId: customerId } });
+      await prisma.billingAccount.upsert({ where: { userId: user.id }, create: { userId: user.id, stripeCustomerId: customerId }, update: { stripeCustomerId: customerId } });
     }
     const prior = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 20 });
     if (prior.data.some((subscription) => subscription.status === "active" || subscription.status === "trialing")) {
@@ -54,3 +54,4 @@ export async function POST() {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not start checkout." }, { status: 500 });
   }
 }
+
