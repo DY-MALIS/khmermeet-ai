@@ -1,13 +1,18 @@
-ALTER TABLE "User"
-  ADD COLUMN "stripeCustomerId" TEXT,
-  ADD COLUMN "stripeSubscriptionId" TEXT,
-  ADD COLUMN "stripeStatus" TEXT NOT NULL DEFAULT 'inactive',
-  ADD COLUMN "stripePeriodStart" TIMESTAMP(3),
-  ADD COLUMN "stripePeriodEnd" TIMESTAMP(3),
-  ADD COLUMN "unlimitedAccess" BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE "BillingAccount" (
+  "userId" TEXT NOT NULL,
+  "stripeCustomerId" TEXT,
+  "stripeSubscriptionId" TEXT,
+  "stripeStatus" TEXT NOT NULL DEFAULT 'inactive',
+  "stripePeriodStart" TIMESTAMP(3),
+  "stripePeriodEnd" TIMESTAMP(3),
+  "unlimitedAccess" BOOLEAN NOT NULL DEFAULT false,
+  CONSTRAINT "BillingAccount_pkey" PRIMARY KEY ("userId")
+);
 
-CREATE UNIQUE INDEX "User_stripeCustomerId_key" ON "User"("stripeCustomerId");
-CREATE UNIQUE INDEX "User_stripeSubscriptionId_key" ON "User"("stripeSubscriptionId");
+CREATE UNIQUE INDEX "BillingAccount_stripeCustomerId_key" ON "BillingAccount"("stripeCustomerId");
+CREATE UNIQUE INDEX "BillingAccount_stripeSubscriptionId_key" ON "BillingAccount"("stripeSubscriptionId");
+ALTER TABLE "BillingAccount" ADD CONSTRAINT "BillingAccount_userId_fkey"
+  FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 CREATE TABLE "UsageCharge" (
   "id" TEXT NOT NULL,
@@ -24,6 +29,7 @@ CREATE INDEX "UsageCharge_userId_periodKey_idx" ON "UsageCharge"("userId", "peri
 ALTER TABLE "UsageCharge" ADD CONSTRAINT "UsageCharge_userId_fkey"
   FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- These records are only read and written by the server through Prisma.
-ALTER TABLE "User" ENABLE ROW LEVEL SECURITY;
+-- Billing records are only read and written by the server through Prisma.
+ALTER TABLE "BillingAccount" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "UsageCharge" ENABLE ROW LEVEL SECURITY;
+
