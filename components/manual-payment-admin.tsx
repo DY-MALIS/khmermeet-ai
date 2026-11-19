@@ -50,7 +50,7 @@ export function ManualPaymentAdmin() {
       <div>
         <p className="text-xs font-bold uppercase tracking-wide text-leaf">សម្រាប់អ្នកគ្រប់គ្រង</p>
         <h2 className="mt-1 text-lg font-bold">ការអនុម័តការបង់ប្រាក់</h2>
-        <p className="mt-1 text-sm text-slate-600">QR បង់ប្រាក់បច្ចុប្បន្ន៖ MALIS DY</p>
+        <p className="mt-1 text-sm text-slate-600">QR បង់ប្រាក់បច្ចុប្បន្ន៖ MALIS DY។ ពិនិត្យថាប្រាក់ចូលគណនីពិត មុនចុចអនុម័ត។</p>
       </div>
 
       <div className="border-t pt-5">
@@ -62,7 +62,7 @@ export function ManualPaymentAdmin() {
           {payments.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">មិនមានការបង់ប្រាក់កំពុងរង់ចាំទេ។</p> : payments.map((payment) => (
             <article key={payment.id} className="rounded-xl border border-slate-200 p-4">
               <p className="font-bold text-ink">{payment.user.name} · {payment.user.email}</p>
-              <p className="mt-1 text-sm text-slate-600">លេខប្រតិបត្តិការ៖ <span className="font-mono font-semibold text-ink">{payment.transactionRef}</span></p>
+              <p className="mt-1 text-sm text-slate-600">{payment.transactionRef.startsWith("request-") ? "លេខសម្គាល់សំណើ" : "លេខប្រតិបត្តិការ"}៖ <span className="font-mono font-semibold text-ink">{payment.transactionRef}</span></p>
               <p className="text-xs text-slate-500">{new Date(payment.createdAt).toLocaleString("km-KH")}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {payment.receiptMimeType && <a href={`/api/billing/manual/receipt/${payment.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold"><ExternalLink className="h-4 w-4" />មើលបង្កាន់ដៃ</a>}
