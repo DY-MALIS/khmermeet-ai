@@ -13,15 +13,17 @@ Use this checklist before giving the app to real users.
 ## 2. Environment Variables
 
 Set the variables listed in `.env.example` in Vercel Project Settings. Use
-`STRIPE_SECRET_KEY` from the Stripe integration, and add the webhook signing
-secret as `STRIPE_WEBHOOK_SECRET` after creating the endpoint. Keep all secret
-values in Vercel, outside the repository.
+`STRIPE_SECRET_KEY` comes from the Stripe integration. Keep all secret values in
+Vercel, outside the repository.
 
-The $15/month plan uses Stripe Checkout and a signed webhook. Configure a Stripe
-webhook endpoint at `https://your-production-domain.com/api/billing/webhook` for
+The $15/month plan verifies Checkout immediately on its success callback and
+refreshes the subscription state before enforcing quota. A signed Stripe webhook
+is recommended for faster background updates but is not required for access to
+activate. To enable it, configure an endpoint at
+`https://your-production-domain.com/api/billing/webhook` for
 `checkout.session.completed`, `customer.subscription.created`,
 `customer.subscription.updated`, and `customer.subscription.deleted`. Set the
-endpoint's signing secret as `STRIPE_WEBHOOK_SECRET`. Enable the Stripe customer
+its signing secret as `STRIPE_WEBHOOK_SECRET`. Enable the Stripe customer
 portal so subscribers can manage or cancel their plan. The Vercel Stripe sandbox
 must be claimed and switched to a live Stripe account before charging real users.
 
@@ -99,3 +101,4 @@ npm run build
 ```
 
 The production build completed successfully. Webpack cache warnings during build are non-blocking.
+
