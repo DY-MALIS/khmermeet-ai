@@ -12,6 +12,7 @@ export async function POST(request: Request) {
   }
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return NextResponse.json({ error: "Account not found." }, { status: 404 });
-  await prisma.user.update({ where: { id: user.id }, data: { unlimitedAccess: body.unlimited } });
+  await prisma.billingAccount.upsert({ where: { userId: user.id }, create: { userId: user.id, unlimitedAccess: body.unlimited }, update: { unlimitedAccess: body.unlimited } });
   return NextResponse.json({ ok: true });
 }
+
