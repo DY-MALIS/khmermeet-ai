@@ -9,7 +9,10 @@ const account = {
     stripeStatus: "active",
     stripeSubscriptionId: "sub-1",
     stripePeriodStart: new Date("2026-11-10T00:00:00.000Z"),
-    stripePeriodEnd: new Date("2026-12-10T00:00:00.000Z")
+    stripePeriodEnd: new Date("2026-12-10T00:00:00.000Z"),
+    manualPaymentId: null,
+    manualPeriodStart: null,
+    manualPeriodEnd: null
   }
 };
 
@@ -18,6 +21,26 @@ test("paid audio allowance follows the Stripe billing period", () => {
   assert.equal(current.name, "pro");
   assert.equal(current.limitSeconds, 10 * 60 * 60);
   assert.equal(current.periodEnd.toISOString(), "2026-12-10T00:00:00.000Z");
+});
+
+test("an approved manual QR payment grants ten hours for one month", () => {
+  const manualAccount = {
+    ...account,
+    billing: {
+      ...account.billing,
+      stripeStatus: "inactive",
+      stripeSubscriptionId: null,
+      stripePeriodStart: null,
+      stripePeriodEnd: null,
+      manualPaymentId: "payment-1",
+      manualPeriodStart: new Date("2026-11-19T00:00:00.000Z"),
+      manualPeriodEnd: new Date("2026-12-19T00:00:00.000Z")
+    }
+  };
+  const current = planFor(manualAccount, new Date("2026-11-30T00:00:00.000Z"));
+  assert.equal(current.name, "pro");
+  assert.equal(current.limitSeconds, 10 * 60 * 60);
+  assert.match(current.periodKey, /^manual:payment-1:/);
 });
 
 test("expired or unpaid subscriptions use the free UTC calendar month", () => {
