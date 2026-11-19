@@ -46,7 +46,7 @@ export async function POST() {
         quantity: 1
       }],
       subscription_data: { metadata: { userId: user.id } },
-      success_url: `${baseUrl}/settings?checkout=success`,
+      success_url: `${baseUrl}/api/billing/checkout/complete?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/settings?checkout=cancelled`
     });
     return NextResponse.json({ url: checkout.url });
