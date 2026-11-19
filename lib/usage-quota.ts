@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { FREE_SECONDS, PRO_SECONDS } from "@/lib/billing";
+import { FREE_SECONDS, PRO_SECONDS, refreshStripeSubscription } from "@/lib/billing";
 
 type Account = {
   id: string;
@@ -40,6 +40,7 @@ export function planFor(account: Account, now: Date) {
 }
 
 export async function getUsageQuota(userId: string) {
+  await refreshStripeSubscription(userId);
   const account = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
   const plan = planFor(account, new Date());
   const usage = await prisma.usageCharge.aggregate({
@@ -61,6 +62,7 @@ export async function chargeAudioUsage(userId: string, sourceKey: string, second
   if (!Number.isSafeInteger(seconds) || seconds <= 0 || seconds > 12 * 60 * 60) {
     throw new Error("A valid audio duration is required.");
   }
+  await refreshStripeSubscription(userId);
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
     const account = await tx.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
