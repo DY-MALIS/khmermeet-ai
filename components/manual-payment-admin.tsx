@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, ExternalLink, RefreshCw, X } from "lucide-react";
+import { BILLING_PLANS, type PaidPlan } from "@/lib/billing-plans";
 
 type Payment = {
   id: string;
   transactionRef: string;
+  plan: PaidPlan;
   receiptMimeType: string | null;
   createdAt: string;
   user: { name: string; email: string };
@@ -41,7 +43,7 @@ export function ManualPaymentAdmin() {
       setMessage(result.error || "មិនអាចពិនិត្យការបង់ប្រាក់បាន។");
       return;
     }
-    setMessage(action === "approve" ? "បានអនុម័ត និងបើក 10 ម៉ោងសម្រាប់ 1 ខែ។" : "បានបដិសេធការបង់ប្រាក់។");
+    setMessage(action === "approve" ? "បានអនុម័ត និងបើកគម្រោងសម្រាប់ 1 ខែ។" : "បានបដិសេធការបង់ប្រាក់។");
     await loadPayments();
   }
 
@@ -62,6 +64,7 @@ export function ManualPaymentAdmin() {
           {payments.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">មិនមានការបង់ប្រាក់កំពុងរង់ចាំទេ។</p> : payments.map((payment) => (
             <article key={payment.id} className="rounded-xl border border-slate-200 p-4">
               <p className="font-bold text-ink">{payment.user.name} · {payment.user.email}</p>
+              <p className="mt-1 font-semibold text-[#087862]">{BILLING_PLANS[payment.plan].name} · ${BILLING_PLANS[payment.plan].monthlyCents / 100} · Upload {BILLING_PLANS[payment.plan].uploadSeconds / 3600}h · LiveKit {BILLING_PLANS[payment.plan].liveSeconds / 3600}h</p>
               <p className="mt-1 text-sm text-slate-600">{payment.transactionRef.startsWith("request-") ? "លេខសម្គាល់សំណើ" : "លេខប្រតិបត្តិការ"}៖ <span className="font-mono font-semibold text-ink">{payment.transactionRef}</span></p>
               <p className="text-xs text-slate-500">{new Date(payment.createdAt).toLocaleString("km-KH")}</p>
               <div className="mt-3 flex flex-wrap gap-2">

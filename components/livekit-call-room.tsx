@@ -30,6 +30,7 @@ type TokenPayload = {
   identity: string;
   name: string;
   inviteToken?: string;
+  usageSessionId?: string | null;
 };
 
 function createRoomCode() {
@@ -190,6 +191,34 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
   const [notice, setNotice] = useState("");
   const [nameMissing, setNameMissing] = useState(false);
   const manualLeaveRef = useRef(false);
+
+  useEffect(() => {
+    const sessionId = tokenPayload?.usageSessionId;
+    if (!sessionId) return;
+    let active = true;
+    const tick = async () => {
+      try {
+        const response = await fetch("/api/billing/live-usage", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }), keepalive: true
+        });
+        if (active && response.status === 402) {
+          setError("LiveKit meeting time has run out for this month.");
+          setTokenPayload(null);
+        }
+      } catch { /* The next heartbeat retries after a connection problem. */ }
+    };
+    void tick();
+    const interval = window.setInterval(() => { void tick(); }, 30000);
+    const onPageHide = () => navigator.sendBeacon("/api/billing/live-usage", new Blob([JSON.stringify({ sessionId })], { type: "application/json" }));
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("pagehide", onPageHide);
+      void tick();
+    };
+  }, [tokenPayload?.usageSessionId]);
 
   useEffect(() => {
     syncMeetingParams({ setRoom, setTitle, setIsInviteGuest });
@@ -357,6 +386,7 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
           audio={callMedia.audio ? callAudioConstraints : false}
           video={callMedia.video ? callVideoConstraints : false}
           onDisconnected={(reason) => {
+            setTokenPayload(null);
             if (manualLeaveRef.current) {
               manualLeaveRef.current = false;
               setTokenPayload(null);
@@ -394,6 +424,7 @@ export function LiveKitCallRoom({ defaultName }: { defaultName?: string } = {}) 
             participantName={tokenPayload.name}
             recordingRoom={tokenPayload.room}
             inviteToken={tokenPayload.inviteToken ?? ""}
+            usageSessionId={tokenPayload.usageSessionId ?? null}
           />
         </LiveKitRoom>
         {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
@@ -932,12 +963,14 @@ function LiveKitMeetingAgent({
   meetingTitle,
   participantName,
   recordingRoom,
-  inviteToken
+  inviteToken,
+  usageSessionId
 }: {
   meetingTitle: string;
   participantName: string;
   recordingRoom: string;
   inviteToken: string;
+  usageSessionId: string | null;
 }) {
   const t = useBilingualText();
   const room = useRoomContext();
@@ -1937,6 +1970,12 @@ function LiveKitMeetingAgent({
         audioUrl = uploadJson.audioUrl;
       }
 
+      if (usageSessionId) {
+        await fetch("/api/billing/live-usage", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: usageSessionId })
+        }).catch(() => null);
+      }
       const saveResponse = await fetch("/api/call-recordings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1946,7 +1985,8 @@ function LiveKitMeetingAgent({
           transcript: "",
           duration: clampMeetingDurationSeconds((Date.now() - startedAtRef.current) / 1000),
           speakerNames: speakers,
-          languageMode: transcriptionLanguage
+          languageMode: transcriptionLanguage,
+          usageSessionId
         })
       });
       const saveJson = await readJsonResponse<{ meetingId?: string; error?: string; hint?: string }>(saveResponse);

@@ -20,6 +20,7 @@ export async function GET() {
     select: {
       id: true,
       transactionRef: true,
+      plan: true,
       receiptMimeType: true,
       createdAt: true,
       user: { select: { name: true, email: true } }
@@ -47,8 +48,8 @@ export async function POST(request: Request) {
       end.setUTCMonth(end.getUTCMonth() + 1);
       await tx.billingAccount.upsert({
         where: { userId: payment.userId },
-        create: { userId: payment.userId, manualPaymentId: payment.id, manualPeriodStart: now, manualPeriodEnd: end },
-        update: { manualPaymentId: payment.id, manualPeriodStart: now, manualPeriodEnd: end }
+        create: { userId: payment.userId, manualPaymentId: payment.id, manualPlan: payment.plan, manualPeriodStart: now, manualPeriodEnd: end },
+        update: { manualPaymentId: payment.id, manualPlan: payment.plan, manualPeriodStart: now, manualPeriodEnd: end }
       });
     }
     await tx.manualPayment.update({

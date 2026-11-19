@@ -3,9 +3,7 @@ import { publicAiTranscriptionError } from "@/lib/api-error-messages";
 import { normalizeTranscriptionLanguageMode, transcribeAudio } from "@/lib/storage";
 import { requireUser } from "@/lib/session";
 import { rateLimitResponse } from "@/lib/rate-limit";
-import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
-import { measureMediaUsageSeconds } from "@/lib/ffmpeg";
-import { createHash } from "crypto";
+import { requireAudioAllowance, UsageLimitError } from "@/lib/usage-quota";
 
 export const maxDuration = 60;
 
@@ -24,10 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing audio chunk." }, { status: 400 });
   }
   try {
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const usage = await measureMediaUsageSeconds(bytes, file.name.split(".").pop() || "webm");
-    const hash = createHash("sha256").update(bytes).digest("hex");
-    await chargeAudioUsage(user.id, `live:${user.id}:${hash}`, usage.spokenSeconds);
+    await requireAudioAllowance(user.id, "live");
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not check audio allowance." },

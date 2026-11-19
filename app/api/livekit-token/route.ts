@@ -3,6 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { getOptionalUser } from "@/lib/session";
 import { cleanRoomName, createInviteToken, verifyInviteToken } from "@/lib/livekit-invite";
 import { MAX_MEETING_DURATION_SECONDS } from "@/lib/meeting-duration";
+import { chargeAudioUsage, requireAudioAllowance, UsageLimitError } from "@/lib/usage-quota";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,16 @@ export async function POST(request: Request) {
       );
     }
 
+    // Each signed-in participant spends their own meeting-time allowance.
+    // Guest invitees may join without an account; the room owner pays the
+    // LiveKit infrastructure cost for those participants.
+    let usageSessionId: string | null = null;
+    if (user) {
+      await requireAudioAllowance(user.id, "live");
+      usageSessionId = crypto.randomUUID();
+      await chargeAudioUsage(user.id, `live-session:${usageSessionId}`, 0, "live");
+    }
+
     const identity = `${name.replace(/\s+/g, "-").toLowerCase()}-${crypto.randomUUID()}`;
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
@@ -67,12 +78,13 @@ export async function POST(request: Request) {
       room,
       identity,
       name,
-      inviteToken: createInviteToken(room)
+      inviteToken: createInviteToken(room),
+      usageSessionId
     });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not create LiveKit token." },
-      { status: 500 }
+      { status: error instanceof UsageLimitError ? 402 : 500 }
     );
   }
 }

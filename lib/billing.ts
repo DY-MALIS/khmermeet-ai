@@ -1,9 +1,8 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
+import { paidPlan } from "@/lib/billing-plans";
 
-export const FREE_SECONDS = 20 * 60;
-export const PRO_SECONDS = 10 * 60 * 60;
-export const PRO_MONTHLY_CENTS = 1500;
+export { FREE_SECONDS } from "@/lib/billing-plans";
 
 export function stripeClient() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -42,6 +41,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
       subscription.status !== "active") return;
 
   const period = subscriptionPeriod(subscription);
+  const stripePlan = paidPlan(subscription.metadata.plan);
   await prisma.$transaction([
     prisma.billingAccount.upsert({
       where: { userId: account.id },
@@ -50,6 +50,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
         stripeStatus: subscription.status,
+        stripePlan,
         stripePeriodStart: period.start,
         stripePeriodEnd: period.end
       },
@@ -57,6 +58,7 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
         stripeStatus: subscription.status,
+        stripePlan,
         stripePeriodStart: period.start,
         stripePeriodEnd: period.end
       }

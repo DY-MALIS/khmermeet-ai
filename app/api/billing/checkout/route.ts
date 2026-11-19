@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { PRO_MONTHLY_CENTS, stripeClient } from "@/lib/billing";
+import { stripeClient } from "@/lib/billing";
+import { BILLING_PLANS, isPaidPlan } from "@/lib/billing-plans";
 import { getUsageQuota } from "@/lib/usage-quota";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const user = await requireUser();
+    const body = await request.json().catch(() => ({}));
+    const planId = body.plan;
+    if (!isPaidPlan(planId)) return NextResponse.json({ error: "Choose a valid plan." }, { status: 400 });
+    const plan = BILLING_PLANS[planId];
     const quota = await getUsageQuota(user.id);
     if (quota.plan === "pro" || quota.plan === "unlimited") {
       return NextResponse.json({ error: "This account already has access." }, { status: 409 });
@@ -39,13 +44,13 @@ export async function POST() {
       line_items: [{
         price_data: {
           currency: "usd",
-          unit_amount: PRO_MONTHLY_CENTS,
+          unit_amount: plan.monthlyCents,
           recurring: { interval: "month" },
-          product_data: { name: "KhmerMeet Pro", description: "10 hours of audio each billing month" }
+          product_data: { name: `KhmerMeet ${plan.name}`, description: `${plan.uploadSeconds / 3600} upload speech hours and ${plan.liveSeconds / 3600} LiveKit meeting hours per month` }
         },
         quantity: 1
       }],
-      subscription_data: { metadata: { userId: user.id } },
+      subscription_data: { metadata: { userId: user.id, plan: planId } },
       success_url: `${baseUrl}/api/billing/checkout/complete?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/settings?checkout=cancelled`
     });

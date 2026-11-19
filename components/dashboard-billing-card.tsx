@@ -3,137 +3,98 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, Clock3, CreditCard, QrCode, X } from "lucide-react";
+import { BILLING_PLANS, type PaidPlan } from "@/lib/billing-plans";
 import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
 
 type Quota = {
   plan: "free" | "pro" | "unlimited";
+  planId: PaidPlan | "free" | "unlimited";
+  billingMethod: "card" | "qr" | null;
   usedSeconds: number;
   limitSeconds: number | null;
   remainingSeconds: number | null;
+  liveUsedSeconds: number;
+  liveLimitSeconds: number | null;
+  liveRemainingSeconds: number | null;
   periodEnd: string;
   manualPaymentStatus: string | null;
   manualPaymentCreatedAt: string | null;
   qrAvailable: boolean;
 };
 
+function Meter({ label, used, limit, language }: { label: string; used: number; limit: number | null; language: "km" | "en" }) {
+  const remaining = limit === null ? null : Math.max(0, limit - used);
+  const width = limit ? Math.min(100, used / limit * 100) : 0;
+  return <div>
+    <div className="flex justify-between gap-2 text-sm font-semibold"><span>{label}</span><span>{remaining === null ? "∞" : `${Math.floor(remaining / 60)} ${language === "km" ? "នាទីនៅសល់" : "min left"}`}</span></div>
+    <p className="text-xs text-slate-500">{Math.ceil(used / 60)} / {limit === null ? "∞" : Math.ceil(limit / 60)} {language === "km" ? "នាទីបានប្រើ" : "minutes used"}</p>
+    {limit !== null && <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)} className="mt-1 h-2.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full ${remaining === 0 ? "bg-red-600" : remaining! <= 3600 ? "bg-amber-500" : "bg-[#087862]"}`} style={{ width: `${width}%` }} /></div>}
+  </div>;
+}
+
 export function DashboardBillingCard({ quota, language }: { quota: Quota; language: "km" | "en" }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<PaidPlan>(quota.planId === "plus" || quota.planId === "premium" ? quota.planId : "starter");
   const [showQr, setShowQr] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
   const t = (km: string, en: string) => language === "km" ? km : en;
-  const usedMinutes = Math.ceil(quota.usedSeconds / 60);
-  const remainingMinutes = quota.remainingSeconds === null ? null : Math.floor(quota.remainingSeconds / 60);
-  const pending = quota.manualPaymentStatus === "pending" || submitted;
-  const planLabel = quota.plan === "unlimited"
-    ? t("ប្រើប្រាស់មិនកំណត់", "Unlimited access")
-    : quota.plan === "pro"
-      ? t("Pro · $15/ខែ · 10 ម៉ោង", "Pro · $15/month · 10 hours")
-      : t("ឥតគិតថ្លៃ · 20 នាទី/ខែ", "Free · 20 minutes/month");
-  const remaining = quota.remainingSeconds;
-  const warning = remaining !== null && remaining <= (quota.plan === "free" ? 5 * 60 : 60 * 60);
-  const exhausted = remaining !== null && remaining <= 0;
-  const percentUsed = quota.limitSeconds ? Math.min(100, Math.round(quota.usedSeconds / quota.limitSeconds * 100)) : 0;
+  const amount = BILLING_PLANS[selected].monthlyCents / 100;
+  const currentName = quota.planId === "free" ? "Free" : quota.planId === "unlimited" ? "Unlimited" : BILLING_PLANS[quota.planId].name;
+  const pending = submitted || quota.manualPaymentStatus === "pending";
 
-  async function openStripe() {
-    setBusy(true);
-    setError("");
+  async function cardPayment() {
+    setBusy(true); setError("");
     try {
-      const kind = quota.plan === "pro" ? "portal" : "checkout";
-      const response = await fetch(`/api/billing/${kind}`, { method: "POST" });
-      const result = await response.json() as { url?: string; error?: string };
-      if (!response.ok || !result.url) throw new Error(result.error || t("មិនអាចបើកការបង់ប្រាក់បាន។", "Could not open billing."));
-      window.location.assign(result.url);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("មិនអាចបើកការបង់ប្រាក់បាន។", "Could not open billing."));
-      setBusy(false);
-    }
+      const endpoint = quota.plan === "free" ? "checkout" : "portal";
+      const response = await fetch(`/api/billing/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: selected }) });
+      const data = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error || "Could not open billing.");
+      window.location.assign(data.url);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not open billing."); setBusy(false); }
   }
 
-  async function submitManualPayment() {
-    setBusy(true);
-    setError("");
-    const response = await fetch("/api/billing/manual/submit", { method: "POST" });
-    const result = await response.json() as { error?: string };
-    setBusy(false);
-    if (!response.ok) {
-      setError(result.error || t("មិនអាចផ្ញើការបង់ប្រាក់បាន។", "Could not submit payment."));
-      return;
-    }
-    setSubmitted(true);
-    setShowQr(false);
-    router.refresh();
+  async function qrPayment() {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/billing/manual/submit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: selected }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Could not request review.");
+      setSubmitted(true); setShowQr(false); router.refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not request review."); }
+    finally { setBusy(false); }
   }
 
-  return (
-    <>
-      <section className="overflow-hidden rounded-[1.4rem] border border-[#cfe4da] bg-white shadow-lg shadow-[#073f39]/8">
-        <div className="grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div className="flex items-start gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#e1f3eb] text-[#087862]"><Clock3 className="h-5 w-5" /></span>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("ដែនកំណត់ និងការបង់ប្រាក់", "Usage and billing")}</p>
-              <h2 className="mt-1 text-lg font-black text-[#073f39]">{planLabel}</h2>
-              {quota.plan === "free" && (
-                <p className="mt-2 inline-flex rounded-lg bg-[#fff4dc] px-3 py-2 text-sm font-black text-[#8a5a05] ring-1 ring-[#f0d58e]">
-                  {t("គម្រោង Pro៖ $15/ខែ · ប្រើបាន 10 ម៉ោង", "Pro plan: $15/month · 10 hours")}
-                </p>
-              )}
-              <p className="mt-1 text-sm text-slate-600">
-                {t(`បានប្រើ ${usedMinutes} នាទី`, `${usedMinutes} minutes used`)}
-                {remainingMinutes !== null ? t(` · នៅសល់ ${remainingMinutes} នាទី`, ` · ${remainingMinutes} minutes remaining`) : ""}
-              </p>
-              {quota.limitSeconds !== null && (
-                <div className="mt-3" role="progressbar" aria-label={t("ម៉ោងនិយាយបានប្រើ", "Speech time used")} aria-valuenow={Math.min(quota.usedSeconds, quota.limitSeconds)} aria-valuemin={0} aria-valuemax={quota.limitSeconds}>
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200"><div className={`h-full rounded-full ${exhausted ? "bg-red-600" : warning ? "bg-amber-500" : "bg-[#087862]"}`} style={{ width: `${percentUsed}%` }} /></div>
-                  <p className={`mt-1 text-xs font-semibold ${exhausted ? "text-red-700" : warning ? "text-amber-700" : "text-slate-500"}`}>{exhausted ? t("ម៉ោងនិយាយបានអស់", "Speech time exhausted") : warning ? t("ម៉ោងនិយាយជិតអស់", "Speech time is running low") : t("គិតតែពេលមានការនិយាយ", "Only spoken time counts")}</p>
-                </div>
-              )}
-              {quota.plan !== "unlimited" && <p className="mt-1 text-xs text-slate-500">{t("កំណត់ឡើងវិញ៖ ", "Resets: ")}{new Date(quota.periodEnd).toLocaleDateString(language === "km" ? "km-KH" : "en-US")}</p>}
-              {pending && <p className="mt-2 text-sm font-semibold text-amber-700">{t("ការបង់តាម QR កំពុងរង់ចាំការត្រួតពិនិត្យ។", "Your QR payment is awaiting review.")}</p>}
-              {quota.manualPaymentStatus === "rejected" && !pending && <p className="mt-2 text-sm text-red-600">{t("សំណើបង់ប្រាក់មុនមិនត្រូវបានអនុម័ត។ បើអ្នកបានបង់ប្រាក់ សូមទាក់ទងមកយើងតាម Telegram។", "The previous payment request was not approved. If you paid, please contact us on Telegram.")}</p>}
-            </div>
-          </div>
-          {quota.plan !== "unlimited" && (
-            <div className="flex flex-wrap gap-2">
-              {quota.plan === "free" && (
-                <button type="button" onClick={() => { setError(""); setShowQr(true); }} disabled={busy || pending || !quota.qrAvailable} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#087862] bg-white px-4 py-3 text-sm font-bold text-[#087862] transition hover:bg-[#eef9f4] disabled:cursor-not-allowed disabled:opacity-50">
-                  <QrCode className="h-4 w-4" />{pending ? t("កំពុងរង់ចាំ", "Awaiting review") : t("បង់ $15 តាម QR", "Pay $15 by QR")}
-                </button>
-              )}
-              <button type="button" onClick={() => void openStripe()} disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#087862] px-4 py-3 text-sm font-bold text-white shadow-md shadow-[#087862]/20 transition hover:bg-[#065d50] disabled:opacity-50">
-                <CreditCard className="h-4 w-4" />
-                {quota.plan === "pro" ? t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing") : t("បង់តាមកាត $15/ខែ", "Pay by card · $15/month")}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </div>
-        {!quota.qrAvailable && quota.plan === "free" && <p className="border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800">{t("តម្លៃ $15/ខែ សម្រាប់ 10 ម៉ោង។ QR មិនទាន់បានដាក់ដោយអ្នកគ្រប់គ្រងទេ។", "$15/month for 10 hours. The payment QR has not been uploaded by an administrator yet.")}</p>}
-        {error && <p role="alert" className="border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700">{error}</p>}
-      </section>
-
-      {showQr && (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="qr-payment-title">
-          <div className="relative my-6 w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-            <button type="button" onClick={() => setShowQr(false)} className="absolute right-3 top-3 rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label={t("បិទ", "Close")}><X className="h-5 w-5" /></button>
-            <h2 id="qr-payment-title" className="pr-10 text-xl font-black text-[#073f39]">{t("បង់ $15 តាម QR", "Pay $15 by QR")}</h2>
-            <p className="mt-1 text-sm text-slate-600">{t("ស្កេន QR ហើយបង់ប្រាក់។ បន្ទាប់ពីបង់រួច ចុចប៊ូតុងខាងក្រោមឲ្យយើងពិនិត្យ។ ក្រោយផ្ទៀងផ្ទាត់ប្រាក់ចូល អ្នកទទួលបាន 10 ម៉ោងសម្រាប់ 1 ខែ។", "Scan the QR and pay. Once paid, tap the button below to request a review. After we verify the payment, you get 10 hours for one month.")}</p>
-            <div className="mx-auto mt-4 w-full max-w-sm overflow-hidden rounded-xl border bg-white">
-              <Image src="/payment-qr-malis-dy.png" alt={t("QR បង់ប្រាក់ទៅ MALIS DY", "Payment QR for MALIS DY")} width={1258} height={1279} className="h-auto w-full" unoptimized />
-            </div>
-            <div className="mt-4 space-y-3">
-              <button type="button" onClick={() => void submitManualPayment()} disabled={busy} className="w-full rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? t("កំពុងផ្ញើ...", "Submitting...") : t("បានបង់រួច — ជូនដំណឹងឲ្យពិនិត្យ", "I've paid — request review")}</button>
-              {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-            </div>
-            <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex min-h-11 items-center justify-center rounded-xl border border-[#087862] px-4 py-3 text-center text-sm font-bold text-[#087862] hover:bg-[#eef9f4]">
-              {t("សួរអំពីការបង់ប្រាក់តាម Telegram · @malis7171", "Ask about payment on Telegram · @malis7171")}
-            </a>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return <section className="rounded-[1.4rem] border border-[#cfe4da] bg-white p-5 shadow-lg shadow-[#073f39]/8">
+    <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("ម៉ោងប្រើប្រាស់ និងតម្លៃ", "Usage and pricing")}</p>
+    <h2 className="mt-1 text-xl font-black text-[#073f39]">{t("គម្រោងបច្ចុប្បន្ន", "Current plan")}: {currentName}</h2>
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <Meter label={t("Upload · ម៉ោងនិយាយ", "Upload · spoken time")} used={quota.usedSeconds} limit={quota.limitSeconds} language={language} />
+      <Meter label={t("LiveKit · ម៉ោងប្រជុំ", "LiveKit · meeting time")} used={quota.liveUsedSeconds} limit={quota.liveLimitSeconds} language={language} />
+    </div>
+    <p className="mt-2 text-xs text-slate-500">{t("Upload រាប់តែពេលនិយាយ។ LiveKit រាប់រយៈពេលប្រជុំ។ កំណត់ឡើងវិញ៖ ", "Upload counts spoken time; LiveKit counts meeting time. Resets: ")}{new Date(quota.periodEnd).toLocaleDateString(language === "km" ? "km-KH" : "en-US")}</p>
+    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+      {(["starter", "plus", "premium"] as const).map((id) => { const plan = BILLING_PLANS[id]; return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${selected === id ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
+        <span className="block font-bold">{plan.name}</span><span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
+        <span className="mt-2 block text-sm">Upload: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span><span className="block text-sm">LiveKit: {plan.liveSeconds / 3600} {t("ម៉ោងប្រជុំ", "meeting hours")}</span>
+      </button>; })}
+    </div>
+    {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
+    {pending && <p className="mt-3 text-sm font-semibold text-amber-700">{t("សំណើបង់តាម QR កំពុងរង់ចាំការផ្ទៀងផ្ទាត់។", "Your QR payment is awaiting review.")}</p>}
+    <div className="mt-4 flex flex-wrap gap-2">
+      {quota.plan === "free" ? <>
+        <button type="button" disabled={busy || pending || !quota.qrAvailable} onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862] disabled:opacity-50">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</button>
+        <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
+      </> : quota.plan === "pro" && quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+      <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-slate-300 px-4 py-3 font-bold">Telegram · @malis7171</a>
+    </div>
+    {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
+    {showQr && <div role="dialog" aria-modal="true" aria-labelledby="qr-title" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+      <h3 id="qr-title" className="text-xl font-black">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</h3>
+      <p className="mt-2 text-sm text-slate-600">{t("សូមផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនស្កេន។ ការបង់ QR ត្រូវឲ្យអ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ មុនបើកគម្រោង។", "Check the amount before scanning. QR payments need manual verification before access is enabled.")}</p>
+      <Image src="/payment-qr-malis-dy.png" alt="MALIS DY payment QR" width={1258} height={1279} className="mx-auto mt-4 h-auto w-full max-w-sm" unoptimized />
+      <div className="mt-4 flex gap-2"><button type="button" disabled={busy} onClick={() => void qrPayment()} className="flex-1 rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("បានបង់រួច · ស្នើឲ្យពិនិត្យ", "I've paid · request review")}</button><button type="button" onClick={() => setShowQr(false)} className="rounded-xl border px-4 py-3">{t("បិទ", "Close")}</button></div>
+    </div></div>}
+  </section>;
 }

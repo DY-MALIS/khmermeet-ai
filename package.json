@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/trim-onnxruntime.mjs && prisma generate && next build",
+    "build": "node scripts/trim-onnxruntime.mjs && prisma generate && node scripts/ensure-tiered-billing.mjs && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

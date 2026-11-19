@@ -39,9 +39,14 @@ export default async function SettingsPage() {
       </section>
       <BillingPanel quota={{
         plan: quota.plan,
+        planId: quota.planId,
+        billingMethod: quota.billingMethod,
         usedSeconds: quota.usedSeconds,
         limitSeconds: quota.limitSeconds,
         remainingSeconds: quota.remainingSeconds,
+        liveUsedSeconds: quota.liveUsedSeconds,
+        liveLimitSeconds: quota.liveLimitSeconds,
+        liveRemainingSeconds: quota.liveRemainingSeconds,
         periodEnd: quota.periodEnd.toISOString()
       }} isAdmin={user.isAdmin} />
       {user.isAdmin && <ManualPaymentAdmin />}

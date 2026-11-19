@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { ownerWhere, requireUser } from "@/lib/session";
 import { isPlaceholderParticipantName, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { listLiveKitParticipantNames } from "@/lib/livekit-egress";
-import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
 import { verifiedStoredAudioUsage } from "@/lib/verified-audio-duration";
 
 export const dynamic = "force-dynamic";
@@ -26,10 +25,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!meeting) return NextResponse.json({ error: "No meeting found." }, { status: 404 });
     const usage = await verifiedStoredAudioUsage(audioUrl);
     const verifiedDuration = usage.durationSeconds;
-    const alreadyChargedForTracks = await prisma.usageCharge.findUnique({ where: { sourceKey: `audio:meeting:${id}` } });
-    if (!alreadyChargedForTracks) {
-      await chargeAudioUsage(meeting.createdById, `audio:${audioUrl}`, usage.spokenSeconds);
-    }
     const nextSpeakerNames = [
       ...new Set([...(meeting.speakerNames ?? []), ...speakerNames].map((name) => name.trim()).filter(Boolean))
     ].slice(0, 100);
@@ -60,7 +55,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ attached: true });
   } catch (error) {
-    if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not attach audio to the meeting." },
       { status: 500 }

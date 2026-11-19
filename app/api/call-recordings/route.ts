@@ -7,8 +7,8 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { clampMeetingDurationSeconds } from "@/lib/meeting-duration";
-import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
 import { verifiedStoredAudioUsage } from "@/lib/verified-audio-duration";
+import { chargeAudioUsage, UsageLimitError } from "@/lib/usage-quota";
 
 export const maxDuration = 300;
 
@@ -43,7 +43,13 @@ export async function POST(request: Request) {
 
     const usage = audioUrl ? await verifiedStoredAudioUsage(audioUrl) : null;
     const verifiedDuration = usage?.durationSeconds ?? duration;
-    if (usage) await chargeAudioUsage(user.id, `audio:${audioUrl}`, usage.spokenSeconds);
+    const sessionId = typeof body.usageSessionId === "string" ? body.usageSessionId : "";
+    const liveSession = /^[0-9a-f-]{36}$/i.test(sessionId)
+      ? await prisma.usageCharge.findUnique({ where: { sourceKey: `live-session:${sessionId}` }, select: { userId: true, kind: true, seconds: true, createdAt: true } })
+      : null;
+    const isLiveKit = liveSession?.userId === user.id && liveSession.kind === "live" && liveSession.seconds > 0 &&
+      verifiedDuration <= liveSession.seconds + 60 && Date.now() - liveSession.createdAt.getTime() < 12 * 3600 * 1000;
+    if (usage && !isLiveKit) await chargeAudioUsage(user.id, `audio:${audioUrl}`, usage.spokenSeconds);
     const meeting = await prisma.meeting.create({
       data: {
         title,

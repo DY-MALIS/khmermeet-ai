@@ -17,7 +17,7 @@ export const maxDuration = 15;
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
-    const quota = await requireAudioAllowance(user.id);
+    const quota = await requireAudioAllowance(user.id, "live");
     const body = await request.json().catch(() => ({}));
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Video call meeting";
     const languageMode = normalizeTranscriptionLanguageMode(body.languageMode);
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       }
     });
 
-    return NextResponse.json({ meetingId: meeting.id, remainingSeconds: quota.remainingSeconds });
+    return NextResponse.json({ meetingId: meeting.id, remainingSeconds: quota.liveRemainingSeconds });
   } catch (error) {
     if (error instanceof UsageLimitError) return NextResponse.json({ error: error.message }, { status: 402 });
     return NextResponse.json(

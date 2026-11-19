@@ -26,10 +26,11 @@ model UsageCharge {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceKey String   @unique
   periodKey String
+  kind      String   @default("upload")
   seconds   Int
   createdAt DateTime @default(now())
 
-  @@index([userId, periodKey])
+  @@index([userId, periodKey, kind])
 }
 
 model BillingAccount {
@@ -38,10 +39,12 @@ model BillingAccount {
   stripeCustomerId      String?  @unique
   stripeSubscriptionId  String?  @unique
   stripeStatus          String   @default("inactive")
+  stripePlan            String   @default("starter")
   stripePeriodStart     DateTime?
   stripePeriodEnd       DateTime?
   unlimitedAccess       Boolean  @default(false)
   manualPaymentId       String?  @unique
+  manualPlan            String   @default("starter")
   manualPeriodStart     DateTime?
   manualPeriodEnd       DateTime?
 }
@@ -60,6 +63,7 @@ model ManualPayment {
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactionRef  String   @unique
+  plan            String   @default("starter")
   receipt         Bytes?
   receiptMimeType String?
   status          String   @default("pending")
