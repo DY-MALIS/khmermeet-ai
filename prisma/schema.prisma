@@ -12,12 +12,7 @@ model User {
   name         String
   email        String             @unique
   subscribed   SubscriptionStatus @default(FALSE)
-  stripeCustomerId       String?   @unique
-  stripeSubscriptionId   String?   @unique
-  stripeStatus           String    @default("inactive")
-  stripePeriodStart      DateTime?
-  stripePeriodEnd        DateTime?
-  unlimitedAccess        Boolean   @default(false)
+  billing      BillingAccount?
   createdAt    DateTime           @default(now())
   meetings     Meeting[]
   voiceSamples VoiceSample[]
@@ -34,6 +29,17 @@ model UsageCharge {
   createdAt DateTime @default(now())
 
   @@index([userId, periodKey])
+}
+
+model BillingAccount {
+  userId                String   @id
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId      String?  @unique
+  stripeSubscriptionId  String?  @unique
+  stripeStatus          String   @default("inactive")
+  stripePeriodStart     DateTime?
+  stripePeriodEnd       DateTime?
+  unlimitedAccess       Boolean  @default(false)
 }
 
 enum SubscriptionStatus {
@@ -222,3 +228,4 @@ model VoiceSample {
   @@unique([ownerId, sourceKey])
   @@index([ownerId])
 }
+
