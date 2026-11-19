@@ -72,6 +72,11 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("ដែនកំណត់ និងការបង់ប្រាក់", "Usage and billing")}</p>
               <h2 className="mt-1 text-lg font-black text-[#073f39]">{planLabel}</h2>
+              {quota.plan === "free" && (
+                <p className="mt-2 inline-flex rounded-lg bg-[#fff4dc] px-3 py-2 text-sm font-black text-[#8a5a05] ring-1 ring-[#f0d58e]">
+                  {t("គម្រោង Pro៖ $15/ខែ · ប្រើបាន 10 ម៉ោង", "Pro plan: $15/month · 10 hours")}
+                </p>
+              )}
               <p className="mt-1 text-sm text-slate-600">
                 {t(`បានប្រើ ${usedMinutes} នាទី`, `${usedMinutes} minutes used`)}
                 {remainingMinutes !== null ? t(` · នៅសល់ ${remainingMinutes} នាទី`, ` · ${remainingMinutes} minutes remaining`) : ""}
@@ -85,7 +90,7 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
             <div className="flex flex-wrap gap-2">
               {quota.plan === "free" && (
                 <button type="button" onClick={() => { setError(""); setShowQr(true); }} disabled={busy || pending || !quota.qrAvailable} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#087862] bg-white px-4 py-3 text-sm font-bold text-[#087862] transition hover:bg-[#eef9f4] disabled:cursor-not-allowed disabled:opacity-50">
-                  <QrCode className="h-4 w-4" />{pending ? t("កំពុងរង់ចាំ", "Awaiting review") : t("បង់តាម QR", "Pay by QR")}
+                  <QrCode className="h-4 w-4" />{pending ? t("កំពុងរង់ចាំ", "Awaiting review") : t("បង់ $15 តាម QR", "Pay $15 by QR")}
                 </button>
               )}
               <button type="button" onClick={() => void openStripe()} disabled={busy} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#087862] px-4 py-3 text-sm font-bold text-white shadow-md shadow-[#087862]/20 transition hover:bg-[#065d50] disabled:opacity-50">
@@ -96,7 +101,7 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
             </div>
           )}
         </div>
-        {!quota.qrAvailable && quota.plan === "free" && <p className="border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-800">{t("QR មិនទាន់បានដាក់ដោយអ្នកគ្រប់គ្រងទេ។", "The payment QR has not been uploaded by an administrator yet.")}</p>}
+        {!quota.qrAvailable && quota.plan === "free" && <p className="border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800">{t("តម្លៃ $15/ខែ សម្រាប់ 10 ម៉ោង។ QR មិនទាន់បានដាក់ដោយអ្នកគ្រប់គ្រងទេ។", "$15/month for 10 hours. The payment QR has not been uploaded by an administrator yet.")}</p>}
         {error && <p role="alert" className="border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700">{error}</p>}
       </section>
 
