@@ -3,11 +3,13 @@ import { FREE_SECONDS, PRO_SECONDS } from "@/lib/billing";
 
 type Account = {
   id: string;
-  unlimitedAccess: boolean;
-  stripeStatus: string;
-  stripeSubscriptionId: string | null;
-  stripePeriodStart: Date | null;
-  stripePeriodEnd: Date | null;
+  billing: {
+    unlimitedAccess: boolean;
+    stripeStatus: string;
+    stripeSubscriptionId: string | null;
+    stripePeriodStart: Date | null;
+    stripePeriodEnd: Date | null;
+  } | null;
 };
 
 export class UsageLimitError extends Error {
@@ -18,14 +20,15 @@ export class UsageLimitError extends Error {
 }
 
 export function planFor(account: Account, now: Date) {
-  const paid = account.stripeStatus === "active" &&
-    Boolean(account.stripeSubscriptionId && account.stripePeriodStart && account.stripePeriodEnd) &&
-    account.stripePeriodStart!.getTime() <= now.getTime() && account.stripePeriodEnd!.getTime() > now.getTime();
+  const billing = account.billing;
+  const paid = billing?.stripeStatus === "active" &&
+    Boolean(billing.stripeSubscriptionId && billing.stripePeriodStart && billing.stripePeriodEnd) &&
+    billing.stripePeriodStart!.getTime() <= now.getTime() && billing.stripePeriodEnd!.getTime() > now.getTime();
   return paid
     ? {
         name: "pro" as const,
-        periodKey: `pro:${account.stripeSubscriptionId}:${account.stripePeriodStart!.toISOString()}`,
-        periodEnd: account.stripePeriodEnd!,
+        periodKey: `pro:${billing!.stripeSubscriptionId}:${billing!.stripePeriodStart!.toISOString()}`,
+        periodEnd: billing!.stripePeriodEnd!,
         limitSeconds: PRO_SECONDS
       }
     : {
@@ -37,7 +40,7 @@ export function planFor(account: Account, now: Date) {
 }
 
 export async function getUsageQuota(userId: string) {
-  const account = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const account = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
   const plan = planFor(account, new Date());
   const usage = await prisma.usageCharge.aggregate({
     where: { userId, periodKey: plan.periodKey },
@@ -45,10 +48,10 @@ export async function getUsageQuota(userId: string) {
   });
   const usedSeconds = usage._sum.seconds ?? 0;
   return {
-    plan: account.unlimitedAccess ? "unlimited" as const : plan.name,
+    plan: account.billing?.unlimitedAccess ? "unlimited" as const : plan.name,
     usedSeconds,
-    limitSeconds: account.unlimitedAccess ? null : plan.limitSeconds,
-    remainingSeconds: account.unlimitedAccess ? null : Math.max(0, plan.limitSeconds - usedSeconds),
+    limitSeconds: account.billing?.unlimitedAccess ? null : plan.limitSeconds,
+    remainingSeconds: account.billing?.unlimitedAccess ? null : Math.max(0, plan.limitSeconds - usedSeconds),
     periodEnd: plan.periodEnd
   };
 }
@@ -60,7 +63,7 @@ export async function chargeAudioUsage(userId: string, sourceKey: string, second
   }
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-    const account = await tx.user.findUniqueOrThrow({ where: { id: userId } });
+    const account = await tx.user.findUniqueOrThrow({ where: { id: userId }, include: { billing: true } });
     const plan = planFor(account, new Date());
     const existing = await tx.usageCharge.findUnique({ where: { sourceKey } });
     if (existing && existing.userId !== userId) {
@@ -68,7 +71,7 @@ export async function chargeAudioUsage(userId: string, sourceKey: string, second
     }
     if (existing && (existing.seconds >= seconds || existing.periodKey !== plan.periodKey)) return;
     const additionalSeconds = seconds - (existing?.seconds ?? 0);
-    if (!account.unlimitedAccess) {
+    if (!account.billing?.unlimitedAccess) {
       const total = await tx.usageCharge.aggregate({
         where: { userId, periodKey: plan.periodKey },
         _sum: { seconds: true }
@@ -88,3 +91,4 @@ export async function requireAudioAllowance(userId: string) {
   if (quota.remainingSeconds !== null && quota.remainingSeconds <= 0) throw new UsageLimitError();
   return quota;
 }
+
