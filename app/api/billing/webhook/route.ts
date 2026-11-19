@@ -9,23 +9,33 @@ async function syncSubscription(subscription: Stripe.Subscription) {
   const userId = subscription.metadata.userId;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
   const account = userId
-    ? await prisma.user.findUnique({ where: { id: userId } })
-    : await prisma.user.findUnique({ where: { stripeCustomerId: customerId } });
-  if (!account || (account.stripeCustomerId && account.stripeCustomerId !== customerId)) return;
-  if (account.stripeSubscriptionId && account.stripeSubscriptionId !== subscription.id &&
+    ? await prisma.user.findUnique({ where: { id: userId }, include: { billing: true } })
+    : await prisma.user.findFirst({ where: { billing: { stripeCustomerId: customerId } }, include: { billing: true } });
+  if (!account || (account.billing?.stripeCustomerId && account.billing.stripeCustomerId !== customerId)) return;
+  if (account.billing?.stripeSubscriptionId && account.billing.stripeSubscriptionId !== subscription.id &&
     subscription.status !== "active") return;
   const period = subscriptionPeriod(subscription);
-  await prisma.user.update({
-    where: { id: account.id },
-    data: {
+  await prisma.$transaction([
+    prisma.billingAccount.upsert({
+      where: { userId: account.id },
+      create: {
+        userId: account.id,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscription.id,
+        stripeStatus: subscription.status,
+        stripePeriodStart: period.start,
+        stripePeriodEnd: period.end
+      },
+      update: {
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       stripeStatus: subscription.status,
       stripePeriodStart: period.start,
-      stripePeriodEnd: period.end,
-      subscribed: subscription.status === "active" ? "TRUE" : "FALSE"
-    }
-  });
+      stripePeriodEnd: period.end
+      }
+    }),
+    prisma.user.update({ where: { id: account.id }, data: { subscribed: subscription.status === "active" ? "TRUE" : "FALSE" } })
+  ]);
 }
 
 export async function POST(request: Request) {
@@ -55,3 +65,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not sync subscription." }, { status: 500 });
   }
 }
+
