@@ -70,13 +70,20 @@ export default async function DashboardPage() {
           </p>
         </div>
       </header>
+      <section id="dashboard-billing" aria-label={t("គម្រោង និងការបង់ប្រាក់", "Plans and billing")} className="scroll-mt-6 space-y-4">
+        {user.isAdmin && <a href="/settings#manual-payments" className="inline-flex min-h-11 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800">{t("គ្រប់គ្រងការបង់ប្រាក់តាមអ៊ីមែល", "Manage payments by email")}</a>}
+        <DashboardBillingCard quota={{
+          ...quota,
+          periodEnd: quota.periodEnd.toISOString(),
+          manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
+        }} language={language} />
+      </section>
       <section aria-labelledby="dashboard-actions-title" className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("កន្លែងធ្វើការ", "Workspace")}</p>
             <h2 id="dashboard-actions-title" className="mt-1 text-xl font-black text-[#073f39] sm:text-2xl">{t("ចាប់ផ្ដើមការងារ", "Get started")}</h2>
           </div>
-          <a href="#dashboard-billing" className="text-sm font-bold text-[#087862] underline-offset-4 hover:underline">{t("មើលគម្រោង និងការបង់ប្រាក់", "View plans and billing")}</a>
         </div>
         <div className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
           <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-[1.5rem] border border-[#d3e7df] bg-[#fbfdf9] p-6 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#073f39]/12 sm:p-8">
@@ -161,14 +168,6 @@ export default async function DashboardPage() {
           </div>
         ))}
       </section> : null}
-      <section id="dashboard-billing" aria-label={t("គម្រោង និងការបង់ប្រាក់", "Plans and billing")} className="scroll-mt-6 space-y-4">
-        {user.isAdmin && <a href="/settings#manual-payments" className="inline-flex min-h-11 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800">{t("គ្រប់គ្រងការបង់ប្រាក់តាមអ៊ីមែល", "Manage payments by email")}</a>}
-        <DashboardBillingCard quota={{
-          ...quota,
-          periodEnd: quota.periodEnd.toISOString(),
-          manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
-        }} language={language} />
-      </section>
       {!dbUnavailable ? (
         <section className="overflow-hidden rounded-[1.5rem] border border-[#dbe9df] bg-white shadow-sm shadow-[#073f39]/5">
           <div className="border-b border-[#dbe9df] bg-[#f3faf5] px-5 py-4">
