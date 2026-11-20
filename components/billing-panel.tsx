@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BILLING_PLANS, type PaidPlan } from "@/lib/billing-plans";
 
 type Quota = {
@@ -16,7 +17,10 @@ type Quota = {
   periodEnd: string;
 };
 
-export function BillingPanel({ quota, isAdmin }: { quota: Quota; isAdmin: boolean }) {
+type UnlimitedUser = { id: string; name: string; email: string };
+
+export function BillingPanel({ quota, isAdmin, unlimitedUsers }: { quota: Quota; isAdmin: boolean; unlimitedUsers: UnlimitedUser[] }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
@@ -48,8 +52,9 @@ export function BillingPanel({ quota, isAdmin }: { quota: Quota; isAdmin: boolea
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not update access.");
-      setAdminMessage("បានធ្វើបច្ចុប្បន្នភាពសិទ្ធិគណនី។");
+      setAdminMessage(`បាន${unlimited ? "បើក" : "បិទ"}សិទ្ធិប្រើប្រាស់មិនកំណត់សម្រាប់ ${email.trim()}។`);
       setEmail("");
+      router.refresh();
     } catch (cause) {
       setAdminMessage(cause instanceof Error ? cause.message : "Could not update access.");
     } finally {
@@ -93,6 +98,21 @@ export function BillingPanel({ quota, isAdmin }: { quota: Quota; isAdmin: boolea
           </select>
           <button type="button" disabled={busy || !email.trim()} onClick={() => void updateUnlimited()} className="ml-2 rounded-lg bg-leaf px-4 py-2 text-white disabled:opacity-50">រក្សាទុក</button>
           {adminMessage && <p role="status" className="text-sm">{adminMessage}</p>}
+          <div className="border-t pt-4">
+            <h4 className="font-semibold">គណនីដែលមានសិទ្ធិប្រើប្រាស់មិនកំណត់ ({unlimitedUsers.length})</h4>
+            {unlimitedUsers.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">មិនទាន់មានគណនីដែលបានបើកសិទ្ធិនេះទេ។</p>
+            ) : (
+              <div className="mt-3 max-h-64 divide-y overflow-y-auto rounded-lg border">
+                {unlimitedUsers.map((account) => (
+                  <div key={account.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                    <span className="min-w-0"><span className="block font-semibold text-ink">{account.name}</span><span className="block break-all text-slate-600">{account.email}</span></span>
+                    <button type="button" onClick={() => { setEmail(account.email); setUnlimited(false); }} className="rounded-lg border px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50">ជ្រើសដើម្បីបិទសិទ្ធិ</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>

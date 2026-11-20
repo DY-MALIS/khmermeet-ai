@@ -20,7 +20,7 @@ export default async function SettingsPage() {
   const [quota, registeredUsers] = await Promise.all([
     getUsageQuota(user.id),
     user.isAdmin
-      ? prisma.user.findMany({ select: { id: true, name: true, email: true, createdAt: true }, orderBy: { createdAt: "desc" } })
+      ? prisma.user.findMany({ select: { id: true, name: true, email: true, billing: { select: { unlimitedAccess: true } } }, orderBy: { createdAt: "desc" } })
       : Promise.resolve([])
   ]);
   return (
@@ -54,7 +54,7 @@ export default async function SettingsPage() {
         liveLimitSeconds: quota.liveLimitSeconds,
         liveRemainingSeconds: quota.liveRemainingSeconds,
         periodEnd: quota.periodEnd.toISOString()
-      }} isAdmin={user.isAdmin} />
+      }} isAdmin={user.isAdmin} unlimitedUsers={user.isAdmin ? registeredUsers.filter((account) => account.billing?.unlimitedAccess).map((account) => ({ id: account.id, name: account.name, email: account.email })) : []} />
       {user.isAdmin && <div id="manual-payments"><ManualPaymentAdmin registeredUsers={registeredUsers.map((account) => ({ id: account.id, name: account.name, email: account.email }))} /></div>}
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
