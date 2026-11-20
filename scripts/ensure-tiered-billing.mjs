@@ -6,7 +6,19 @@ if (!process.env.DATABASE_URL) {
   process.exit(0);
 }
 
-const prisma = new PrismaClient();
+// Production uses Supabase's transaction pooler. Like lib/prisma.ts, disable
+// prepared statements for that connection; otherwise the build can fail with
+// "prepared statement s0 already exists" while applying idempotent DDL.
+let databaseUrl = process.env.DATABASE_URL;
+if (databaseUrl.includes("pooler.supabase.com")) {
+  const parsed = new URL(databaseUrl);
+  parsed.searchParams.set("pgbouncer", "true");
+  parsed.searchParams.set("connection_limit", "1");
+  parsed.searchParams.set("connect_timeout", "10");
+  databaseUrl = parsed.toString();
+}
+
+const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 try {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('ALTER TABLE "BillingAccount" ADD COLUMN IF NOT EXISTS "stripePlan" TEXT NOT NULL DEFAULT \'starter\'');
