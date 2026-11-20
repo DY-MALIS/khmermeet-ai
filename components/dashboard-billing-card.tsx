@@ -87,10 +87,6 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
         <span className="block text-2xl font-black">$0<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
         <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {FREE_SECONDS / 60} {t("នាទីនិយាយ", "spoken minutes")}</span>
         <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {FREE_SECONDS / 60} {t("នាទីប្រជុំ", "meeting minutes")}</span>
-        <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
-        <span className="mt-2 grid gap-2">
-          {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
-        </span>
       </div>
       {(["starter", "plus", "premium"] as const).map((id) => {
         const plan = BILLING_PLANS[id];
@@ -100,12 +96,14 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
           <span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
           <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span>
           <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {plan.liveSeconds / 3600} {t("ម៉ោងប្រជុំ", "meeting hours")}</span>
-          <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
-          <span className="mt-2 grid gap-2">
-            {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
-          </span>
         </button>;
       })}
+    </div>
+    <div className="mt-4 rounded-xl border border-[#d5e7e0] bg-[#f5faf7] p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</p>
+      <ul className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-4">
+        {features.map((feature) => <li key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</li>)}
+      </ul>
     </div>
     <p className="mt-3 text-xs text-slate-500">{t("គ្រប់គម្រោងមានមុខងារ AI ដូចគ្នា។ តម្លៃខុសគ្នាតាមចំនួនម៉ោង Upload និង LiveKit។", "All plans include the same AI features. Prices differ by upload and LiveKit hours.")}</p>
     {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
