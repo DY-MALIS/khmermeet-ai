@@ -11,15 +11,20 @@ type Payment = {
   user: { name: string; email: string };
 };
 type ApprovedPayment = Pick<Payment, "id" | "plan" | "user"> & { reviewedAt: string | null };
+type RegisteredUser = { id: string; name: string; email: string };
 
-export function ManualPaymentAdmin() {
+export function ManualPaymentAdmin({ registeredUsers }: { registeredUsers: RegisteredUser[] }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [approved, setApproved] = useState<ApprovedPayment[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
+  const [userSearch, setUserSearch] = useState("");
   const [grantPlan, setGrantPlan] = useState<PaidPlan>("starter");
   const [reviewPlans, setReviewPlans] = useState<Record<string, PaidPlan>>({});
+  const matchingUsers = registeredUsers.filter((account) =>
+    `${account.name} ${account.email}`.toLocaleLowerCase().includes(userSearch.trim().toLocaleLowerCase())
+  );
 
   const loadPayments = useCallback(async () => {
     const response = await fetch("/api/billing/manual/review", { cache: "no-store" });
@@ -94,6 +99,36 @@ export function ManualPaymentAdmin() {
           <button type="submit" disabled={busy || !email.trim()} className="min-h-11 rounded-lg bg-emerald-700 px-4 font-bold text-white disabled:opacity-50">បើកសិទ្ធិ ១ ខែ</button>
         </div>
       </form>
+
+      <div className="border-t pt-5">
+        <h3 className="font-bold">អ្នកប្រើប្រាស់ដែលបានចូលអេប ({registeredUsers.length})</h3>
+        <p className="mt-1 text-sm text-slate-600">បញ្ជីឈ្មោះ និងអ៊ីមែលពីគណនីដែលបានរក្សាទុក។ ចុចឈ្មោះដើម្បីបញ្ចូលអ៊ីមែលក្នុងទម្រង់បើកសិទ្ធិខាងលើ។ ការបង់ប្រាក់ត្រូវពិនិត្យដោយឡែក។</p>
+        <input
+          type="search"
+          value={userSearch}
+          onChange={(event) => setUserSearch(event.target.value)}
+          placeholder="ស្វែងរកឈ្មោះ ឬអ៊ីមែល"
+          aria-label="ស្វែងរកអ្នកប្រើប្រាស់តាមឈ្មោះ ឬអ៊ីមែល"
+          className="mt-3 min-h-11 w-full rounded-lg border bg-white px-3"
+        />
+        <div className="mt-3 max-h-80 divide-y overflow-y-auto rounded-lg border">
+          {matchingUsers.length === 0 ? (
+            <p className="p-4 text-sm text-slate-500">{registeredUsers.length === 0 ? "មិនទាន់មានគណនីអ្នកប្រើប្រាស់ដែលបានរក្សាទុកទេ។" : "រកមិនឃើញអ្នកប្រើប្រាស់នេះទេ។"}</p>
+          ) : matchingUsers.map((account) => (
+            <button
+              key={account.id}
+              type="button"
+              onClick={() => setEmail(account.email)}
+              aria-label={`ជ្រើស ${account.name} ${account.email}`}
+              aria-pressed={email.toLocaleLowerCase() === account.email.toLocaleLowerCase()}
+              className={`flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left text-sm hover:bg-emerald-50 ${email.toLocaleLowerCase() === account.email.toLocaleLowerCase() ? "bg-emerald-50" : ""}`}
+            >
+              <span className="min-w-0"><span className="block font-semibold text-ink">{account.name}</span><span className="block break-all text-slate-600">{account.email}</span></span>
+              <span className="text-xs font-semibold text-emerald-700">ជ្រើសរើស</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="border-t pt-5">
         <div className="flex items-center justify-between gap-3">
