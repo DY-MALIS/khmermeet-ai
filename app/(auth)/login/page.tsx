@@ -3,6 +3,8 @@ import { LoginForm } from "@/components/auth-form";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getServerUiText } from "@/lib/server-ui-text";
 import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
+import { getOptionalUser } from "@/lib/session";
+import { redirect } from "next/navigation";
 
 // Kept in the HTML so a delayed static stylesheet cannot leave the sign-in
 // screen as unstyled browser defaults while a new deployment propagates.
@@ -111,6 +113,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; from?: string }>;
 }) {
   const params = await searchParams;
+  if (await getOptionalUser().catch(() => null)) redirect("/dashboard");
   const { language } = await getServerUiText();
   const km = language === "km";
   const features = [
@@ -203,9 +206,10 @@ export default async function LoginPage({
               <ShieldCheck className="h-5 w-5 shrink-0" />
               <span>{km ? "ចូលប្រើប្រាស់ដោយសុវត្ថិភាព និងការពារទិន្នន័យ" : "Secure sign-in and protected meeting data"}</span>
             </div>
-            <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex items-center justify-center gap-2 text-center text-sm font-semibold text-[#087862] underline underline-offset-2 hover:text-[#065d50]">
+            <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="mt-4 flex flex-wrap items-center justify-center gap-1 text-center text-sm font-semibold text-[#087862] underline underline-offset-2 hover:text-[#065d50]">
               <MessageCircle className="h-4 w-4" />
-              {km ? "សួរអំពីអេប ការបង់ប្រាក់ ឬបញ្ហាប្រើប្រាស់៖ Telegram @malis7171" : "App, payment, or account help: Telegram @malis7171"}
+              <span>{km ? "សួរអំពីអេប ការបង់ប្រាក់ ឬការប្រើប្រាស់ សូមទាក់ទងតាមរយៈ" : "For questions about the app, payments, or using it, contact us via"}</span>
+              <span className="whitespace-nowrap">Telegram @malis7171</span>
             </a>
             <div className="login-card-art" aria-hidden="true" />
           </section>

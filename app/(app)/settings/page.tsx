@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { getUsageQuota } from "@/lib/usage-quota";
 import { BillingPanel } from "@/components/billing-panel";
 import { ManualPaymentAdmin } from "@/components/manual-payment-admin";
+import { prisma } from "@/lib/prisma";
 
 const integrations = [
   "Google Calendar",
@@ -15,8 +16,13 @@ const integrations = [
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const { text } = await getServerUiText();
-  const quota = await getUsageQuota(user.id);
+  const { language, text } = await getServerUiText();
+  const [quota, registeredUsers] = await Promise.all([
+    getUsageQuota(user.id),
+    user.isAdmin
+      ? prisma.user.findMany({ select: { id: true, name: true, email: true, createdAt: true }, orderBy: { createdAt: "desc" } })
+      : Promise.resolve([])
+  ]);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="kh-page-hero">
@@ -50,6 +56,21 @@ export default async function SettingsPage() {
         periodEnd: quota.periodEnd.toISOString()
       }} isAdmin={user.isAdmin} />
       {user.isAdmin && <div id="manual-payments"><ManualPaymentAdmin /></div>}
+      {user.isAdmin && (
+        <section className="kh-card p-5">
+          <h2 className="text-lg font-bold">{text.adminUsersTitle}</h2>
+          <p className="mt-1 text-sm text-slate-600">{text.adminUsersDescription}</p>
+          <p className="mt-3 text-sm font-semibold text-leaf">{registeredUsers.length} {text.adminUsersCount}</p>
+          <div className="mt-3 max-h-96 divide-y overflow-y-auto rounded-lg border">
+            {registeredUsers.map((account) => (
+              <div key={account.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                <div className="min-w-0"><p className="break-all font-semibold text-ink">{account.email}</p><p className="text-slate-500">{account.name}</p></div>
+                <time className="text-xs text-slate-500" dateTime={account.createdAt.toISOString()}>{account.createdAt.toLocaleDateString(language === "km" ? "km-KH" : "en-GB")}</time>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
