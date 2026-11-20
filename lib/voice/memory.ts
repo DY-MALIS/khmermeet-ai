@@ -184,20 +184,11 @@ export async function backfillVoicesFromEarlierCalls(ownerId: string, excludeMee
     take: 20
   });
   const attempted = new Set<string>();
-  let learned = 0;
-  let failed = 0;
   for (const segment of segments) {
     const name = segment.speakerName?.trim();
     if (!name || isPlaceholderParticipantName(name) || attempted.has(personKey(name))) continue;
     attempted.add(personKey(name));
-    try {
-      const result = await learnCallParticipantVoice(segment.id);
-      if (result?.learned) learned += 1;
-      else failed += 1;
-    } catch {
-      failed += 1;
-    }
+    await learnCallParticipantVoice(segment.id).catch(() => null);
     if (attempted.size >= 4) break;
   }
-  return { attempted: attempted.size, learned, failed };
 }
