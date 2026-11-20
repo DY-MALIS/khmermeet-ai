@@ -76,7 +76,7 @@ export default async function DashboardPage() {
           ...quota,
           periodEnd: quota.periodEnd.toISOString(),
           manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
-        }} language={language} />
+        }} language={language} isAdmin={user.isAdmin} />
       </section>
       <section aria-labelledby="dashboard-actions-title" className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
