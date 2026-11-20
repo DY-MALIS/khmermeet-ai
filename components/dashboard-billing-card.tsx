@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { BILLING_PLANS, type PaidPlan } from "@/lib/billing-plans";
 import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
 
@@ -75,11 +76,27 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
     </div>
     <p className="mt-2 text-xs text-slate-500">{t("Upload រាប់តែពេលនិយាយ។ LiveKit រាប់រយៈពេលប្រជុំ។ កំណត់ឡើងវិញ៖ ", "Upload counts spoken time; LiveKit counts meeting time. Resets: ")}{new Date(quota.periodEnd).toLocaleDateString(language === "km" ? "km-KH" : "en-US")}</p>
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
-      {(["starter", "plus", "premium"] as const).map((id) => { const plan = BILLING_PLANS[id]; return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${selected === id ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
-        <span className="block font-bold">{plan.name}</span><span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
-        <span className="mt-2 block text-sm">Upload: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span><span className="block text-sm">LiveKit: {plan.liveSeconds / 3600} {t("ម៉ោងប្រជុំ", "meeting hours")}</span>
-      </button>; })}
+      {(["starter", "plus", "premium"] as const).map((id) => {
+        const plan = BILLING_PLANS[id];
+        const features = [
+          t("សួរ AI អំពីអត្ថបទប្រជុំ", "Ask AI about your meeting transcript"),
+          t("សង្ខេបប្រជុំ និងបង្កើតបញ្ជីកិច្ចការ", "Meeting summaries and action items"),
+          t("បកប្រែភាសាខ្មែរ និងអង់គ្លេស", "Khmer and English translation"),
+          t("នាំចេញជា PowerPoint, Word និង Excel", "Export to PowerPoint, Word and Excel")
+        ];
+        return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${selected === id ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
+          <span className="block font-bold">{plan.name}</span>
+          <span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
+          <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span>
+          <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {plan.liveSeconds / 3600} {t("ម៉ោងប្រជុំ", "meeting hours")}</span>
+          <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
+          <span className="mt-2 grid gap-2">
+            {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
+          </span>
+        </button>;
+      })}
     </div>
+    <p className="mt-3 text-xs text-slate-500">{t("គ្រប់គម្រោងមានមុខងារ AI ដូចគ្នា។ តម្លៃខុសគ្នាតាមចំនួនម៉ោង Upload និង LiveKit។", "All plans include the same AI features. Prices differ by upload and LiveKit hours.")}</p>
     {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
     {pending && <p className="mt-3 text-sm font-semibold text-amber-700">{t("សំណើបង់តាម QR កំពុងរង់ចាំការផ្ទៀងផ្ទាត់។", "Your QR payment is awaiting review.")}</p>}
     <div className="mt-4 flex flex-wrap gap-2">
