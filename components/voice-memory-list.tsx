@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, UserRound } from "lucide-react";
+import { Pencil, RefreshCw, Trash2, UserRound } from "lucide-react";
 import { useUiText } from "@/components/localized-text";
 
 type Person = { name: string; meetings: number; seconds: number };
@@ -14,6 +14,37 @@ export function VoiceMemoryList({ people }: { people: Person[] }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [scanMessage, setScanMessage] = useState("");
+
+  async function scanEarlierCalls() {
+    setBusy(true);
+    setError("");
+    setScanMessage("");
+    try {
+      const response = await fetch("/api/voices/backfill", { method: "POST" });
+      const result = await response.json() as { attempted?: number; learned?: number; error?: string };
+      if (!response.ok) throw new Error(result.error || text.voicesScanError);
+      setScanMessage(result.learned
+        ? text.voicesScanSuccess.replace("{count}", String(result.learned))
+        : result.attempted ? text.voicesScanNoMatch : text.voicesScanNone);
+      if (result.learned) router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : text.voicesScanError);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const scanControls = (
+    <div className="flex flex-wrap items-center gap-3">
+      <button type="button" disabled={busy} onClick={() => void scanEarlierCalls()} className="kh-button kh-button-secondary inline-flex items-center gap-2 disabled:opacity-50">
+        <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+        {busy ? text.voicesScanning : text.voicesScan}
+      </button>
+      {scanMessage && <p role="status" className="text-sm text-slate-600">{scanMessage}</p>}
+      {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
+    </div>
+  );
 
   async function send(name: string, init: RequestInit) {
     setBusy(true);
@@ -31,12 +62,12 @@ export function VoiceMemoryList({ people }: { people: Person[] }) {
   }
 
   if (!people.length) {
-    return <section className="kh-card p-6 text-slate-500">{text.voicesEmpty}</section>;
+    return <section className="kh-card space-y-4 p-6 text-slate-600"><p>{text.voicesEmpty}</p>{scanControls}</section>;
   }
 
   return (
     <section className="kh-card divide-y divide-slate-100">
-      {error && <p className="p-4 text-sm font-semibold text-red-600">{error}</p>}
+      <div className="p-4">{scanControls}</div>
       {people.map((person) => (
         <div key={person.name} className="flex flex-wrap items-center gap-3 p-4">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-50 text-leaf">

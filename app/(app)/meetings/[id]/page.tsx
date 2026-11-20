@@ -153,6 +153,8 @@ export default async function MeetingDetailPage({
         </div>
       )}
 
+      <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
+
       <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
         <MeetingTranscriptPanel
           meetingId={meeting.id}
@@ -232,7 +234,6 @@ export default async function MeetingDetailPage({
         </section>
       ) : null}
 
-      <MeetingAskChat meetingId={meeting.id} hasTranscript={transcriptIsUsable} hasAudio={Boolean(meeting.audioUrl)} />
     </div>
   );
 }

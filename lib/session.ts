@@ -1,8 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const adminEmails = new Set([
-  "dymalis88@gmail.com",
-  "hengsereyratanak88@gmail.com"
+  "dymalis88@gmail.com"
 ]);
 
 export function isAdminEmail(email: string | null | undefined) {
