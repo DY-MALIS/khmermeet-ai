@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { BILLING_PLANS, type PaidPlan } from "@/lib/billing-plans";
+import { BILLING_PLANS, FREE_SECONDS, type PaidPlan } from "@/lib/billing-plans";
 import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
 
 type Quota = {
@@ -44,6 +44,12 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
   const amount = BILLING_PLANS[selected].monthlyCents / 100;
   const currentName = quota.planId === "free" ? "Free" : quota.planId === "unlimited" ? "Unlimited" : BILLING_PLANS[quota.planId].name;
   const pending = submitted || quota.manualPaymentStatus === "pending";
+  const features = [
+    t("សួរ AI អំពីអត្ថបទប្រជុំ", "Ask AI about your meeting transcript"),
+    t("សង្ខេបប្រជុំ និងបង្កើតបញ្ជីកិច្ចការ", "Meeting summaries and action items"),
+    t("បកប្រែភាសាខ្មែរ និងអង់គ្លេស", "Khmer and English translation"),
+    t("នាំចេញជា PowerPoint, Word និង Excel", "Export to PowerPoint, Word and Excel")
+  ];
 
   async function cardPayment() {
     setBusy(true); setError("");
@@ -75,16 +81,21 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
       <Meter label={t("LiveKit · ម៉ោងប្រជុំ", "LiveKit · meeting time")} used={quota.liveUsedSeconds} limit={quota.liveLimitSeconds} language={language} />
     </div>
     <p className="mt-2 text-xs text-slate-500">{t("Upload រាប់តែពេលនិយាយ។ LiveKit រាប់រយៈពេលប្រជុំ។ កំណត់ឡើងវិញ៖ ", "Upload counts spoken time; LiveKit counts meeting time. Resets: ")}{new Date(quota.periodEnd).toLocaleDateString(language === "km" ? "km-KH" : "en-US")}</p>
-    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={`rounded-xl border p-4 text-left ${quota.planId === "free" ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200"}`}>
+        <span className="block font-bold">Free</span>
+        <span className="block text-2xl font-black">$0<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
+        <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {FREE_SECONDS / 60} {t("នាទីនិយាយ", "spoken minutes")}</span>
+        <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {FREE_SECONDS / 60} {t("នាទីប្រជុំ", "meeting minutes")}</span>
+        <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
+        <span className="mt-2 grid gap-2">
+          {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
+        </span>
+      </div>
       {(["starter", "plus", "premium"] as const).map((id) => {
         const plan = BILLING_PLANS[id];
-        const features = [
-          t("សួរ AI អំពីអត្ថបទប្រជុំ", "Ask AI about your meeting transcript"),
-          t("សង្ខេបប្រជុំ និងបង្កើតបញ្ជីកិច្ចការ", "Meeting summaries and action items"),
-          t("បកប្រែភាសាខ្មែរ និងអង់គ្លេស", "Khmer and English translation"),
-          t("នាំចេញជា PowerPoint, Word និង Excel", "Export to PowerPoint, Word and Excel")
-        ];
-        return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${selected === id ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
+        const highlighted = quota.planId === id || (quota.plan === "free" && selected === id);
+        return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={quota.plan === "free" && selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${highlighted ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
           <span className="block font-bold">{plan.name}</span>
           <span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
           <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span>
