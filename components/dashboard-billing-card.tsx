@@ -37,7 +37,6 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
   const router = useRouter();
   const [selected, setSelected] = useState<PaidPlan>(quota.planId === "plus" || quota.planId === "premium" ? quota.planId : "starter");
   const [showQr, setShowQr] = useState(false);
-  const [showCardInfo, setShowCardInfo] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -54,10 +53,9 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
     t("នាំចេញជា PowerPoint, Word និង Excel", "Export to PowerPoint, Word and Excel")
   ];
 
-  async function cardPayment() {
+  async function cardPayment(endpoint: "checkout" | "portal") {
     setBusy(true); setError("");
     try {
-      const endpoint = quota.plan === "free" ? "checkout" : "portal";
       const response = await fetch(`/api/billing/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: selected }) });
       const data = await response.json() as { url?: string; error?: string };
       if (!response.ok || !data.url) throw new Error(data.error || "Could not open billing.");
@@ -110,17 +108,17 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
     </div>
     <p className="mt-3 text-xs text-slate-500">{t("គ្រប់គម្រោងមានមុខងារ AI ដូចគ្នា។ តម្លៃខុសគ្នាតាមចំនួនម៉ោង Upload និង LiveKit។", "All plans include the same AI features. Prices differ by upload and LiveKit hours.")}</p>
     {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
-    {adminPreview && <p className="mt-3 text-sm text-slate-600">{t("ជ្រើសគម្រោងដើម្បីមើលជម្រើសបង់ប្រាក់។ គណនី Unlimited របស់អ្នកមិនចាំបាច់បង់ប្រាក់ ហើយនឹងនៅដដែល។", "Choose a plan to view payment options. Your Unlimited access needs no payment and stays active.")}</p>}
+    {adminPreview && <p className="mt-3 text-sm text-slate-600">{t("ជ្រើសគម្រោងដើម្បីមើលជម្រើសបង់ប្រាក់។ បើបញ្ចប់ការបង់តាមកាត នឹងមានការគិតប្រាក់ប្រចាំខែ ប៉ុន្តែសិទ្ធិ Unlimited របស់អ្នកនៅដដែល។", "Choose a plan to view payment options. Completing card checkout starts a monthly charge; your Unlimited access stays active.")}</p>}
     {pending && <p className="mt-3 text-sm font-semibold text-amber-700">{t("សំណើបង់តាម QR កំពុងរង់ចាំការផ្ទៀងផ្ទាត់។", "Your QR payment is awaiting review.")}</p>}
     <div className="mt-4 flex flex-wrap gap-2">
       {quota.plan === "free" ? <>
         <button type="button" disabled={busy || pending || !quota.qrAvailable} onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862] disabled:opacity-50">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</button>
-        <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
-      </> : quota.plan === "pro" && quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+        <button type="button" disabled={busy} onClick={() => void cardPayment("checkout")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
+      </> : quota.plan === "pro" && quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment("portal")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
       {adminPreview && <>
         <button type="button" onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862]">{t(`មើល QR $${amount}`, `View QR $${amount}`)}</button>
-        <button type="button" onClick={() => setShowCardInfo(true)} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white">{t(`មើលការបង់តាមកាត $${amount}`, `View card payment $${amount}`)}</button>
-        {quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+        <button type="button" disabled={busy} onClick={() => void cardPayment("checkout")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
+        {quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment("portal")} className="rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
       </>}
       <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-slate-300 px-4 py-3 font-bold">Telegram · @malis7171</a>
     </div>
@@ -130,11 +128,6 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
       <p className="mt-2 text-sm text-slate-600">{adminPreview ? t("QR នេះសម្រាប់មើលប៉ុណ្ណោះ។ គណនីនេះមានសិទ្ធិ Unlimited រួចហើយ មិនចាំបាច់បង់ ឬស្នើអនុម័តទេ។", "This QR is for reference only. This account already has Unlimited access; no payment or approval request is needed.") : t("សូមផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនស្កេន។ ការបង់ QR ត្រូវឲ្យអ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ មុនបើកគម្រោង។", "Check the amount before scanning. QR payments need manual verification before access is enabled.")}</p>
       <Image src="/payment-qr-malis-dy.png" alt="MALIS DY payment QR" width={1258} height={1279} className="mx-auto mt-4 h-auto w-full max-w-sm" unoptimized />
       <div className="mt-4 flex gap-2">{quota.plan === "free" && <button type="button" disabled={busy} onClick={() => void qrPayment()} className="flex-1 rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("បានបង់រួច · ស្នើឲ្យពិនិត្យ", "I've paid · request review")}</button>}<button type="button" onClick={() => setShowQr(false)} className="rounded-xl border px-4 py-3">{t("បិទ", "Close")}</button></div>
-    </div></div>}
-    {showCardInfo && <div role="dialog" aria-modal="true" aria-labelledby="card-info-title" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
-      <h3 id="card-info-title" className="text-xl font-black">{t(`បង់តាមកាត · ${BILLING_PLANS[selected].name} $${amount}/ខែ`, `Card payment · ${BILLING_PLANS[selected].name} $${amount}/month`)}</h3>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{t("គណនី Unlimited នេះមានសិទ្ធិប្រើប្រាស់រួចហើយ។ ការបង់តាមកាតសម្រាប់គណនី Free ធ្វើឡើងតាម Stripe Checkout។", "This Unlimited account already has access. Free accounts complete card payments through Stripe Checkout.")}</p>
-      <button type="button" onClick={() => setShowCardInfo(false)} className="mt-5 rounded-xl border px-4 py-3 font-bold">{t("បិទ", "Close")}</button>
     </div></div>}
   </section>;
 }
