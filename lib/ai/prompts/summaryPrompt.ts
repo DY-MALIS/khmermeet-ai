@@ -1,25 +1,31 @@
 import { buildLanguageInstruction, type DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 
-export const summaryHeadings: Record<DocumentLanguageMode, { overview: string; keyPoints: string; decisions: string; problems: string; nextSteps: string }> = {
+export const summaryHeadings: Record<DocumentLanguageMode, { overview: string; keyPoints: string; decisions: string; actionItems: string; problems: string; questions: string; nextSteps: string }> = {
   km: {
     overview: "សង្ខេបប្រជុំ",
     keyPoints: "ចំណុចសំខាន់ៗ",
     decisions: "ការសម្រេចចិត្ត",
+    actionItems: "កិច្ចការដែលត្រូវធ្វើ",
     problems: "បញ្ហាដែលបានលើកឡើង",
+    questions: "សំណួរមិនទាន់ដោះស្រាយ",
     nextSteps: "ជំហានបន្ទាប់"
   },
   en: {
     overview: "Meeting overview",
     keyPoints: "Key points",
     decisions: "Decisions",
+    actionItems: "Action items",
     problems: "Problems raised",
+    questions: "Unresolved questions",
     nextSteps: "Next steps"
   },
   "km-en": {
     overview: "សង្ខេបប្រជុំ",
     keyPoints: "ចំណុចសំខាន់ៗ",
     decisions: "ការសម្រេចចិត្ត",
+    actionItems: "កិច្ចការដែលត្រូវធ្វើ",
     problems: "បញ្ហាដែលបានលើកឡើង",
+    questions: "សំណួរមិនទាន់ដោះស្រាយ",
     nextSteps: "ជំហានបន្ទាប់"
   }
 };
@@ -45,6 +51,7 @@ Quality bar - this is what separates a good summary from a bad one:
 Accuracy rules (never break these):
 - Use only facts that are actually in the transcript below - do not add outside knowledge, assumptions, or anything from a previous summary.
 - Never invent topics, names, dates, decisions, tasks, or problems that were not said.
+- Distinguish suggestions and proposals from decisions the speakers actually confirmed. Do not assign owners or deadlines unless the transcript states them. Preserve uncertainty from unclear speech.
 - If the transcript is unclear, garbled, timestamp-only, or does not contain enough real speech to summarize, say so plainly instead of inventing content.
 - If a whole section genuinely has nothing to report, write "${noInfo}" under that heading instead of guessing or padding it out.
 
@@ -66,8 +73,14 @@ ${headings.keyPoints}
 ${headings.decisions}
 - what was decided, who owns it (if said), and the reasoning behind it (if said)
 
+${headings.actionItems}
+- explicit commitments or requests to do work, with owner and deadline only if stated
+
 ${headings.problems}
 - problems, risks, or blockers raised, with enough context to understand the impact
+
+${headings.questions}
+- questions still unanswered by the end of the meeting
 
 ${headings.nextSteps}
 - concrete next actions, with owner and deadline whenever the transcript gives one

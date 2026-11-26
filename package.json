@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/trim-onnxruntime.mjs && prisma generate && node scripts/ensure-tiered-billing.mjs && next build",
+    "build": "node scripts/trim-onnxruntime.mjs && prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "node -r ./tools/test-userinfo.cjs --import tsx --test --test-concurrency=1 lib/*.test.ts lib/ai/*.test.ts lib/client/*.test.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma db push",
+    "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

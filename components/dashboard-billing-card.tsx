@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import { BILLING_PLANS, FREE_SECONDS, type PaidPlan } from "@/lib/billing-plans";
 import { SUPPORT_TELEGRAM_URL } from "@/lib/support-contact";
@@ -40,6 +40,7 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [paymentNotice, setPaymentNotice] = useState("");
   const t = (km: string, en: string) => language === "km" ? km : en;
   const amount = BILLING_PLANS[selected].monthlyCents / 100;
   const currentName = quota.planId === "free" ? "Free" : quota.planId === "unlimited" ? "Unlimited" : BILLING_PLANS[quota.planId].name;
@@ -52,6 +53,28 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
     t("បកប្រែភាសាខ្មែរ និងអង់គ្លេស", "Khmer and English translation"),
     t("នាំចេញជា PowerPoint, Word និង Excel", "Export to PowerPoint, Word and Excel")
   ];
+
+  useEffect(() => {
+    if (!pending) return;
+    const checkPayment = async () => {
+      try {
+        const response = await fetch("/api/billing/quota", { cache: "no-store" });
+        if (!response.ok) return;
+        const latest = await response.json() as Pick<Quota, "manualPaymentStatus" | "plan">;
+        if (latest.manualPaymentStatus === "approved" && latest.plan !== "free") {
+          setSubmitted(false);
+          setPaymentNotice(language === "km" ? "ការបង់ប្រាក់បានអនុម័ត។ គម្រោងរបស់អ្នកអាចប្រើបានហើយ។" : "Payment approved. Your plan is ready to use.");
+          router.refresh();
+        } else if (latest.manualPaymentStatus === "rejected") {
+          setSubmitted(false);
+          setPaymentNotice(language === "km" ? "សំណើបង់ប្រាក់ត្រូវបានបដិសេធ។ សូមទាក់ទងផ្នែកជំនួយ។" : "Payment request rejected. Please contact support.");
+          router.refresh();
+        }
+      } catch { /* A later check retries after a network error. */ }
+    };
+    const interval = window.setInterval(() => { void checkPayment(); }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [pending, router, language]);
 
   async function cardPayment(endpoint: "checkout" | "portal") {
     setBusy(true); setError("");
@@ -112,6 +135,7 @@ export function DashboardBillingCard({ quota, language, isAdmin = false }: { quo
     {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
     {adminPreview && <p className="mt-3 text-sm text-slate-600">{t("ជ្រើសគម្រោងដើម្បីមើលជម្រើសបង់ប្រាក់។ បើបញ្ចប់ការបង់តាមកាត នឹងមានការគិតប្រាក់ប្រចាំខែ ប៉ុន្តែសិទ្ធិ Unlimited របស់អ្នកនៅដដែល។", "Choose a plan to view payment options. Completing card checkout starts a monthly charge; your Unlimited access stays active.")}</p>}
     {pending && <p className="mt-3 text-sm font-semibold text-amber-700">{t("សំណើបង់តាម QR កំពុងរង់ចាំការផ្ទៀងផ្ទាត់។", "Your QR payment is awaiting review.")}</p>}
+    {paymentNotice && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">{paymentNotice}</p>}
     <div className="mt-4 flex flex-wrap gap-2">
       {quota.plan === "free" ? <>
         <button type="button" disabled={busy || pending || !quota.qrAvailable} onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862] disabled:opacity-50">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</button>

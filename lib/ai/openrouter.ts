@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { buildSummaryPrompt } from "@/lib/ai/prompts/summaryPrompt";
+import { buildSummaryPrompt, summaryHeadings } from "@/lib/ai/prompts/summaryPrompt";
 import { buildSlideBulletsPrompt } from "@/lib/ai/prompts/slidePrompt";
 import { buildTaskExtractionPrompt } from "@/lib/ai/prompts/taskExtractionPrompt";
 import { buildSmartNotePrompt } from "@/lib/ai/prompts/smartNotePrompt";
 import { buildMeetingQaPrompt, type AnswerVoice, type MeetingQaTurn } from "@/lib/ai/prompts/meetingQaPrompt";
 import type { DocumentLanguageMode } from "@/lib/ai/prompts/languageInstruction";
 import { hasTranscriptionPromptLeakage, hasUsableTranscript } from "@/lib/transcript-quality";
+import { keepItemsWithTranscriptSource } from "@/lib/ai/grounded-extraction";
 
 type TextPart = { text: string };
 
@@ -779,32 +780,24 @@ export async function detectSelfIntroducedSpeakerNames(
   }
 }
 
-function fallbackSummary(transcript: string) {
-  return `Meeting overview\n${transcript.slice(0, 500)}\n\nNext steps\n- Review the transcript and create action items.`;
-}
-
-function fallbackTasks(transcript: string) {
-  const sentence = transcript.split(/[.!?\n]/).map((item) => item.trim()).find(Boolean);
-  if (!sentence) return [];
-  return [{
-    title: "Review meeting action",
-    description: sentence,
-    assigneeName: null,
-    deadline: null,
-    priority: "medium" as const,
-    status: "not_started" as const,
-    sourceText: sentence
-  }];
-}
-
 function parseJsonObject(raw: string) {
   return JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{\"tasks\":[]}");
 }
 
 export async function generateMeetingSummary(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
-  if (!hasOpenRouterKey()) return fallbackSummary(transcript);
-  return generateOpenRouterContent([{ text: buildSummaryPrompt(transcript, language) }], { temperature: 0.2 });
+  if (!hasOpenRouterKey()) throw new Error("AI summary is unavailable because OPEN_ROUTER_API_KEY is missing. The transcript remains saved.");
+  let truncated = false;
+  const summary = await generateOpenRouterContent([{ text: buildSummaryPrompt(transcript, language) }], {
+    temperature: 0.2,
+    onTruncated: () => { truncated = true; }
+  });
+  if (truncated) throw new Error("AI summary stopped before finishing. The transcript remains saved; please try again.");
+  const headings = summaryHeadings[language];
+  if (!summary || Object.values(headings).some((heading) => !summary.includes(heading))) {
+    throw new Error("AI summary was incomplete. The transcript remains saved; please try again.");
+  }
+  return summary;
 }
 
 export async function generateSlideBullets(summary: string, language: DocumentLanguageMode = "km") {
@@ -819,12 +812,12 @@ export async function generateSlideBullets(summary: string, language: DocumentLa
 
 export async function extractMeetingTasks(transcript: string, language: DocumentLanguageMode = "km") {
   if (!transcript.trim()) throw new Error("Transcript is empty.");
-  if (!hasOpenRouterKey()) return fallbackTasks(transcript);
+  if (!hasOpenRouterKey()) throw new Error("AI task extraction is unavailable because OPEN_ROUTER_API_KEY is missing.");
   const raw = await generateOpenRouterContent([{ text: buildTaskExtractionPrompt(transcript, language) }], {
     json: true,
     temperature: 0.1
   });
-  return taskSchema.parse(parseJsonObject(raw)).tasks;
+  return keepItemsWithTranscriptSource(taskSchema.parse(parseJsonObject(raw)).tasks, transcript);
 }
 
 export async function extractMeetingSmartNote(transcript: string, language: DocumentLanguageMode = "km") {
@@ -834,7 +827,8 @@ export async function extractMeetingSmartNote(transcript: string, language: Docu
     json: true,
     temperature: 0.1
   });
-  return smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
+  const note = smartNoteSchema.parse(JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim() || "{}"));
+  return { ...note, decisions: keepItemsWithTranscriptSource(note.decisions, transcript) };
 }
 
 export async function answerMeetingQuestion(

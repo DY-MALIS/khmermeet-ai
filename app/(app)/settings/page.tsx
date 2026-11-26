@@ -1,4 +1,3 @@
-import { PlugZap } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { getServerUiText } from "@/lib/server-ui-text";
 import { requireUser } from "@/lib/session";
@@ -6,22 +5,19 @@ import { getUsageQuota } from "@/lib/usage-quota";
 import { BillingPanel } from "@/components/billing-panel";
 import { ManualPaymentAdmin } from "@/components/manual-payment-admin";
 import { prisma } from "@/lib/prisma";
-
-const integrations = [
-  "Google Calendar",
-  "Telegram",
-  "Slack",
-  "Zoom"
-];
+import { TelegramRemindersPanel } from "@/components/telegram-reminders-panel";
+import { IntegrationsPanel } from "@/components/integrations-panel";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const { text } = await getServerUiText();
-  const [quota, registeredUsers] = await Promise.all([
+  const [quota, registeredUsers, telegram, providerConnections] = await Promise.all([
     getUsageQuota(user.id),
     user.isAdmin
       ? prisma.user.findMany({ select: { id: true, name: true, email: true, billing: { select: { unlimitedAccess: true } } }, orderBy: { createdAt: "desc" } })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    prisma.telegramConnection.findUnique({ where: { userId: user.id } }).catch(() => null),
+    prisma.integrationConnection.findMany({ where: { userId: user.id }, select: { provider: true } }).catch(() => [])
   ]);
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -58,15 +54,11 @@ export default async function SettingsPage() {
       {user.isAdmin && <div id="manual-payments"><ManualPaymentAdmin registeredUsers={registeredUsers.map((account) => ({ id: account.id, name: account.name, email: account.email }))} /></div>}
       <section className="kh-card p-5">
         <h2 className="mb-4 text-lg font-bold">{text.integrations}</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {integrations.map((item) => (
-            <div key={item} className="flex items-center justify-between rounded-lg border border-slate-100 p-4">
-              <span className="flex items-center gap-3 font-semibold"><PlugZap className="h-4 w-4 text-saffron" />{item}</span>
-              <span className="kh-badge bg-slate-100 text-slate-500">{text.soon}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-4 text-xs text-slate-500">{text.integrationsTodo}</p>
+        <TelegramRemindersPanel connected={Boolean(telegram?.enabled)} lastError={telegram?.lastError ?? null} />
+        <IntegrationsPanel
+          connected={providerConnections.map((connection) => connection.provider).filter((provider): provider is "google" | "slack" | "zoom" => ["google", "slack", "zoom"].includes(provider))}
+          configured={(["google", "slack", "zoom"] as const).filter((provider) => Boolean(process.env.APP_URL && process.env.INTEGRATION_ENCRYPTION_KEY && process.env[`${provider.toUpperCase()}_CLIENT_ID`] && process.env[`${provider.toUpperCase()}_CLIENT_SECRET`]))}
+        />
       </section>
     </div>
   );

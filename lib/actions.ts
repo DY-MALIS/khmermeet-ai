@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { extractMeetingTasks, generateMeetingSummary } from "@/lib/ai/openrouter";
+import { keepNewExtractedTasks } from "@/lib/ai/grounded-extraction";
 import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { deleteStoredAudio, normalizeTranscriptionLanguageMode } from "@/lib/storage";
 
@@ -87,26 +88,21 @@ export async function extractTasks(formData: FormData) {
   if (!meeting) throw new Error("No meeting found.");
   if (!meeting.transcript?.trim()) throw new Error("Transcript is empty.");
   if (!hasUsableTranscript(meeting.transcript)) throw new Error("Transcript has no clear speech text. Please re-transcribe or paste the correct meeting text before extracting tasks.");
-  const tasks = await extractMeetingTasks(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
-  await prisma.$transaction([
-    prisma.task.deleteMany({ where: { meetingId: id } }),
-    ...(tasks.length
-      ? [
-          prisma.task.createMany({
-            data: tasks.map((task) => ({
-              meetingId: id,
-              title: task.title,
-              description: task.description ?? null,
-              assigneeName: task.assigneeName ?? null,
-              deadline: task.deadline ? new Date(task.deadline) : null,
-              priority: task.priority,
-              status: task.status,
-              sourceText: task.sourceText ?? null
-            }))
-          })
-        ]
-      : [])
-  ]);
+  const extracted = await extractMeetingTasks(meeting.transcript, normalizeTranscriptionLanguageMode(meeting.language));
+  const existing = await prisma.task.findMany({ where: { meetingId: id }, select: { title: true, sourceText: true } });
+  const tasks = keepNewExtractedTasks(extracted, existing);
+  if (tasks.length) await prisma.task.createMany({
+    data: tasks.map((task) => ({
+      meetingId: id,
+      title: task.title,
+      description: task.description ?? null,
+      assigneeName: task.assigneeName ?? null,
+      deadline: task.deadline ? new Date(task.deadline) : null,
+      priority: task.priority,
+      status: task.status,
+      sourceText: task.sourceText ?? null
+    }))
+  });
   revalidateMeetingViews(id);
 }
 

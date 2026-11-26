@@ -83,11 +83,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // later meeting can name them without them saying who they are. After
     // the response, so it never delays the transcript.
     after(async () => {
-      const learned = await learnCallParticipantVoice(segment.id).catch((error) => {
+      await learnCallParticipantVoice(segment.id).catch((error) => {
         console.warn("Voice memory: could not learn from segment", segment.id, error instanceof Error ? error.message : error);
         return null;
       });
-      if (learned) console.log("Voice memory:", JSON.stringify(learned));
     });
 
     return NextResponse.json({ transcript, index });

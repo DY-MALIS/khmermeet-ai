@@ -67,3 +67,21 @@ test("expired or unpaid subscriptions use the free UTC calendar month", () => {
     assert.equal(current.periodKey, `free:${date.toISOString().slice(0, 7)}`);
   }
 });
+
+test("free allowance resets at the UTC month boundary", () => {
+  const unpaid = { ...account, billing: { ...account.billing, stripeStatus: "inactive" } };
+  const before = planFor(unpaid, new Date("2026-11-30T23:59:59.999Z"));
+  const after = planFor(unpaid, new Date("2026-12-01T00:00:00.000Z"));
+  assert.equal(before.periodKey, "free:2026-11");
+  assert.equal(after.periodKey, "free:2026-12");
+  assert.equal(after.limitSeconds, 20 * 60);
+});
+
+test("a plan change in the same Stripe period retains the usage period key", () => {
+  const now = new Date("2026-11-20T00:00:00.000Z");
+  const starter = planFor(account, now);
+  const plus = planFor({ ...account, billing: { ...account.billing, stripePlan: "plus" } }, now);
+  assert.equal(starter.periodKey, plus.periodKey);
+  assert.equal(plus.limitSeconds, 15 * 3600);
+  assert.equal(plus.liveLimitSeconds, 6 * 3600);
+});

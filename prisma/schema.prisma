@@ -33,6 +33,77 @@ model UsageCharge {
   @@index([userId, periodKey, kind])
 }
 
+model LiveUsageSession {
+  id            String    @id @db.Uuid
+  userId        String
+  room          String
+  identity      String
+  startedAt     DateTime?
+  baseSeconds   Int       @default(0)
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([endedAt, createdAt])
+}
+
+model TelegramConnection {
+  userId      String   @id
+  chatId      String   @unique
+  enabled     Boolean  @default(true)
+  connectedAt DateTime @default(now())
+  lastError   String?
+}
+
+model TelegramLink {
+  userId    String   @id
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model TelegramReminder {
+  id        String   @id @default(cuid())
+  userId    String
+  taskId    String
+  dueOn     DateTime
+  status    String   @default("attempted")
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, dueOn])
+  @@index([userId, createdAt])
+}
+
+model IntegrationConnection {
+  userId          String
+  provider        String
+  accessToken     String
+  refreshToken    String?
+  expiresAt       DateTime?
+  externalAccount String?
+  updatedAt       DateTime @updatedAt
+
+  @@id([userId, provider])
+}
+
+model IntegrationOAuthState {
+  tokenHash String   @id
+  userId    String
+  provider  String
+  expiresAt DateTime
+}
+
+model IntegrationArtifact {
+  id         String   @id @default(cuid())
+  userId     String
+  provider   String
+  sourceId   String
+  externalId String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, provider, sourceId])
+}
+
 model BillingAccount {
   userId                String   @id
   user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -73,6 +144,19 @@ model ManualPayment {
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
+}
+
+model BillingAuditEvent {
+  id           String   @id @default(cuid())
+  actorUserId  String
+  targetUserId String
+  action       String
+  paymentId    String?
+  plan         String?
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 enum SubscriptionStatus {

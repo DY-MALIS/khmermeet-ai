@@ -7,6 +7,7 @@ import { hasUsableTranscript } from "@/lib/transcript-quality";
 import { normalizeTranscriptionLanguageMode } from "@/lib/storage";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import { meetingLiveRoom } from "@/lib/livekit-invite";
+import { keepNewExtractedTasks } from "@/lib/ai/grounded-extraction";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,7 +44,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     try {
-      const tasks = await extractMeetingTasks(meeting.transcript, language);
+      const extracted = await extractMeetingTasks(meeting.transcript, language);
+      const existing = await prisma.task.findMany({ where: { meetingId: id }, select: { title: true, sourceText: true } });
+      const tasks = keepNewExtractedTasks(extracted, existing);
       if (tasks.length) {
         await prisma.task.createMany({
           data: tasks.map((task) => ({
@@ -66,6 +69,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     try {
       const smartNote = await extractMeetingSmartNote(meeting.transcript, language);
       const liveRoom = meetingLiveRoom(meeting.smartNote);
+      const existingDecisions = await prisma.decision.findMany({ where: { meetingId: id }, select: { title: true, sourceText: true } });
+      const newDecisions = keepNewExtractedTasks(smartNote.decisions, existingDecisions);
       await prisma.$transaction([
         prisma.meeting.update({
           where: { id },
@@ -76,11 +81,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             questions: smartNote.questions
           } }
         }),
-        prisma.decision.deleteMany({ where: { meetingId: id } }),
-        ...(smartNote.decisions.length
+        ...(newDecisions.length
           ? [
               prisma.decision.createMany({
-                data: smartNote.decisions.map((decision) => ({
+                data: newDecisions.map((decision) => ({
                   meetingId: id,
                   title: decision.title,
                   ownerName: decision.ownerName ?? null,

@@ -117,7 +117,11 @@ export async function chargeAudioUsage(userId: string, sourceKey: string, second
       throw new Error("Audio usage belongs to another account.");
     }
     if (existing && existing.kind !== kind) throw new Error("Usage type cannot change.");
-    if (existing && existing.periodKey !== plan.periodKey) return kind === "live";
+    // A globally unique source key from an earlier billing period must not
+    // make a new processing request free, nor let a stale live heartbeat run.
+    if (existing && existing.periodKey !== plan.periodKey) {
+      throw new Error("Usage session belongs to a different billing period.");
+    }
     if (existing && existing.seconds >= seconds) return false;
     const additionalSeconds = seconds - (existing?.seconds ?? 0);
     let allowedSeconds = seconds;
@@ -132,6 +136,9 @@ export async function chargeAudioUsage(userId: string, sourceKey: string, second
       if (additionalSeconds > available) {
         if (kind === "upload") throw new UsageLimitError();
         allowedSeconds = (existing?.seconds ?? 0) + available;
+        atLimit = true;
+      } else if (kind === "live" && additionalSeconds === available) {
+        // Charge the final second, then make the server remove the participant.
         atLimit = true;
       }
     }

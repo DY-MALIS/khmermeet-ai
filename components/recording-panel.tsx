@@ -111,6 +111,7 @@ export function RecordingPanel() {
   const accumulatedMsRef = useRef(0);
   const monthlyRecordingLimitMsRef = useRef(MAX_MEETING_DURATION_MS);
   const chunks = useRef<Blob[]>([]);
+  const recordedBlobRef = useRef<Blob | null>(null);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const micMonitorFrameRef = useRef<number | null>(null);
   const maxMicLevelRef = useRef(0);
@@ -142,6 +143,7 @@ export function RecordingPanel() {
   const [audioUrl, setAudioUrl] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [savingMeeting, setSavingMeeting] = useState(false);
   const [savedMeetingId, setSavedMeetingId] = useState("");
   const [transcriptionProgress, setTranscriptionProgress] = useState("");
@@ -173,6 +175,16 @@ export function RecordingPanel() {
     // cleanupRecording only touches refs and should run once on unmount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (state !== "recording" && state !== "paused" && !uploading && !savingMeeting && (!previewUrl || Boolean(savedMeetingId))) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [state, uploading, savingMeeting, previewUrl, savedMeetingId]);
 
   // Pairing a Bluetooth microphone (or switching it off) while this page is
   // open should update the list straight away, instead of only on reload or
@@ -433,6 +445,41 @@ export function RecordingPanel() {
     if (previewUrlRef.current) {
       URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
+    }
+    recordedBlobRef.current = null;
+  }
+
+  async function uploadAndSaveRecording(blob: Blob, blobType: string) {
+    setUploading(true);
+    setUploadProgress("");
+    setError("");
+    try {
+      let uploadedAudioUrl: string;
+      try {
+        uploadedAudioUrl = await uploadRecordingDirect(blob, undefined, undefined, undefined, undefined,
+          (current, total) => setUploadProgress(`${current} / ${total}`));
+      } catch (directError) {
+        // The server route has a small request-body limit. Retrying a long
+        // recording through it only obscures the useful direct-upload error.
+        if (blob.size > 4_000_000) throw directError;
+        const formData = new FormData();
+        formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
+        formData.append("languageMode", transcriptionLanguage);
+        formData.append("skipTranscription", "true");
+        const response = await fetch("/api/uploads", { method: "POST", body: formData });
+        const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response);
+        if (!response.ok || !data.audioUrl) {
+          throw new Error(data.error ?? (response.status === 413 ? text.audioTooLarge : text.saveAudioFailed));
+        }
+        uploadedAudioUrl = data.audioUrl;
+      }
+      setAudioUrl(uploadedAudioUrl);
+      setDbUnavailable(false);
+      await saveMeetingAuto(uploadedAudioUrl);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : text.uploadAudioFailed);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -720,6 +767,7 @@ export function RecordingPanel() {
       const mimeType = getMimeType();
       const media = new MediaRecorder(recordingStream, getRecorderOptions(mimeType));
       chunks.current = [];
+      recordedBlobRef.current = null;
       media.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.current.push(event.data);
       };
@@ -727,6 +775,7 @@ export function RecordingPanel() {
         await new Promise((resolve) => window.setTimeout(resolve, 350));
         const blobType = media.mimeType || "audio/webm";
         const blob = new Blob(chunks.current, { type: blobType });
+        recordedBlobRef.current = blob;
         const localPreview = URL.createObjectURL(blob);
         previewUrlRef.current = localPreview;
         setPreviewUrl(localPreview);
@@ -743,42 +792,9 @@ export function RecordingPanel() {
         } else if (!("decodeError" in analysis) && analysis.peak < silentInputThreshold) {
           setQuietWarning(text.quietFileWarning);
         }
-        setUploading(true);
         try {
-          let uploadedAudioUrl: string;
-          try {
-            // Direct-to-Supabase upload bypasses Vercel's hard 4.5MB
-            // request-body limit, so long (multi-hour) recordings can
-            // still be saved. Falls through to the server-relayed path
-            // below when this isn't available (e.g. Supabase Storage not
-            // configured) - that path is only reliable for shorter clips.
-            uploadedAudioUrl = await uploadRecordingDirect(blob);
-          } catch {
-            const formData = new FormData();
-            formData.append("audio", blob, blobType.includes("mp4") ? "meeting.m4a" : "meeting.webm");
-            formData.append("languageMode", transcriptionLanguage);
-            formData.append("skipTranscription", "true");
-            const response = await fetch("/api/uploads", { method: "POST", body: formData });
-            const data = await readJsonResponse<{ audioUrl?: string; error?: string }>(response);
-            if (!response.ok || !data.audioUrl) {
-              throw new Error(
-                data.error ??
-                  (response.status === 413
-                    ? text.audioTooLarge
-                    : text.saveAudioFailed)
-              );
-            }
-            uploadedAudioUrl = data.audioUrl;
-          }
-          setAudioUrl(uploadedAudioUrl);
-          setDbUnavailable(false);
-          await saveMeetingAuto(uploadedAudioUrl);
-        } catch (error) {
-          setError(
-            error instanceof Error ? error.message : text.uploadAudioFailed
-          );
+          await uploadAndSaveRecording(blob, blobType);
         } finally {
-          setUploading(false);
           rawStream.getTracks().forEach((track) => track.stop());
           processedStreamRef.current?.getTracks().forEach((track) => track.stop());
           processedStreamRef.current = null;
@@ -1270,7 +1286,7 @@ export function RecordingPanel() {
             </div>
           ) : null}
           {uploading ? (
-            <p className="text-sm text-slate-500">{text.uploadingAudio}</p>
+            <p className="text-sm text-slate-500">{text.uploadingAudio}{uploadProgress ? ` · ${uploadProgress}` : ""}</p>
           ) : savingMeeting ? (
             <p className="text-sm text-slate-500">{text.savingMeetingAuto}</p>
           ) : savedMeetingId ? (
@@ -1280,6 +1296,11 @@ export function RecordingPanel() {
             </p>
           ) : null}
           {transcriptionProgress ? <p className="text-sm text-slate-500">{transcriptionProgress}</p> : null}
+          {error && !audioUrl && recordedBlobRef.current && !uploading ? (
+            <button className="kh-button-secondary" onClick={() => void uploadAndSaveRecording(recordedBlobRef.current!, recordedBlobRef.current!.type)} type="button">
+              {text.retrySave}
+            </button>
+          ) : null}
           <button className="kh-button-secondary" onClick={start} type="button">
             <RotateCcw className="h-4 w-4" />
             {text.recordAgain}

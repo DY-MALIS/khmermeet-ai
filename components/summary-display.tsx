@@ -4,7 +4,9 @@ const khmerSummaryHeadings = [
   "\u179f\u1784\u17d2\u1781\u17c1\u1794\u1794\u17d2\u179a\u1787\u17bb\u17c6",
   "\u1785\u17c6\u178e\u17bb\u1785\u179f\u17c6\u1781\u17b6\u1793\u17cb\u17d7",
   "\u1780\u17b6\u179a\u179f\u1798\u17d2\u179a\u17c1\u1785\u1785\u17b7\u178f\u17d2\u178f",
+  "កិច្ចការដែលត្រូវធ្វើ",
   "\u1794\u1789\u17d2\u17a0\u17b6\u178a\u17c2\u179b\u1794\u17b6\u1793\u179b\u17be\u1780\u17a1\u17be\u1784",
+  "សំណួរមិនទាន់ដោះស្រាយ",
   "\u1787\u17c6\u17a0\u17b6\u1793\u1794\u1793\u17d2\u1791\u17b6\u1794\u17cb"
 ];
 
@@ -14,8 +16,10 @@ const englishSummaryHeadings = [
   "Key discussion points",
   "Decisions made",
   "Decisions",
+  "Action items",
   "Problems mentioned",
   "Problems raised",
+  "Unresolved questions",
   "Next steps"
 ];
 

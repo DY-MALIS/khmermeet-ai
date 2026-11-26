@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import { paidPlan } from "@/lib/billing-plans";
+import { paidPlan, planForStripePrice } from "@/lib/billing-plans";
 
 export { FREE_SECONDS } from "@/lib/billing-plans";
 
@@ -41,7 +41,15 @@ export async function syncStripeSubscription(subscription: Stripe.Subscription, 
       subscription.status !== "active") return;
 
   const period = subscriptionPeriod(subscription);
-  const stripePlan = paidPlan(subscription.metadata.plan);
+  // The portal can change a subscription price without updating metadata.
+  // Derive active entitlements from Stripe's actual recurring line item.
+  const pricedPlan = subscription.items.data.length === 1
+    ? planForStripePrice(subscription.items.data[0])
+    : null;
+  if (subscription.status === "active" && !pricedPlan) {
+    throw new Error("Active subscription has an unrecognized plan price.");
+  }
+  const stripePlan = pricedPlan ?? paidPlan(subscription.metadata.plan);
   await prisma.$transaction([
     prisma.billingAccount.upsert({
       where: { userId: account.id },
