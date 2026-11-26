@@ -13,7 +13,8 @@ export async function POST(request: Request) {
     if (!isPaidPlan(planId)) return NextResponse.json({ error: "Choose a valid plan." }, { status: 400 });
     const plan = BILLING_PLANS[planId];
     const quota = await getUsageQuota(user.id);
-    if (quota.plan === "pro" || quota.plan === "unlimited") {
+    // Admins can inspect and complete checkout while their Unlimited grant remains intact.
+    if (quota.plan === "pro" || (quota.plan === "unlimited" && !user.isAdmin)) {
       return NextResponse.json({ error: "This account already has access." }, { status: 409 });
     }
     const stripe = stripeClient();

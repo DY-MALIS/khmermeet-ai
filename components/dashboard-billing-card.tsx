@@ -33,7 +33,7 @@ function Meter({ label, used, limit, language }: { label: string; used: number; 
   </div>;
 }
 
-export function DashboardBillingCard({ quota, language }: { quota: Quota; language: "km" | "en" }) {
+export function DashboardBillingCard({ quota, language, isAdmin = false }: { quota: Quota; language: "km" | "en"; isAdmin?: boolean }) {
   const router = useRouter();
   const [selected, setSelected] = useState<PaidPlan>(quota.planId === "plus" || quota.planId === "premium" ? quota.planId : "starter");
   const [showQr, setShowQr] = useState(false);
@@ -45,6 +45,8 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
   const amount = BILLING_PLANS[selected].monthlyCents / 100;
   const currentName = quota.planId === "free" ? "Free" : quota.planId === "unlimited" ? "Unlimited" : BILLING_PLANS[quota.planId].name;
   const pending = submitted || quota.manualPaymentStatus === "pending";
+  const adminPreview = isAdmin && quota.plan === "unlimited";
+  const canSelectPlan = quota.plan === "free" || adminPreview;
   const features = [
     t("សួរ AI អំពីអត្ថបទប្រជុំ", "Ask AI about your meeting transcript"),
     t("សង្ខេបប្រជុំ និងបង្កើតបញ្ជីកិច្ចការ", "Meeting summaries and action items"),
@@ -68,16 +70,15 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
           setPaymentNotice(language === "km" ? "សំណើបង់ប្រាក់ត្រូវបានបដិសេធ។ សូមទាក់ទងផ្នែកជំនួយ។" : "Payment request rejected. Please contact support.");
           router.refresh();
         }
-      } catch { /* A later check will retry after a network error. */ }
+      } catch { /* A later check retries after a network error. */ }
     };
     const interval = window.setInterval(() => { void checkPayment(); }, 15_000);
     return () => window.clearInterval(interval);
   }, [pending, router, language]);
 
-  async function cardPayment() {
+  async function cardPayment(endpoint: "checkout" | "portal") {
     setBusy(true); setError("");
     try {
-      const endpoint = quota.plan === "free" ? "checkout" : "portal";
       const response = await fetch(`/api/billing/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: selected }) });
       const data = await response.json() as { url?: string; error?: string };
       if (!response.ok || !data.url) throw new Error(data.error || "Could not open billing.");
@@ -110,41 +111,49 @@ export function DashboardBillingCard({ quota, language }: { quota: Quota; langua
         <span className="block text-2xl font-black">$0<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
         <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {FREE_SECONDS / 60} {t("នាទីនិយាយ", "spoken minutes")}</span>
         <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {FREE_SECONDS / 60} {t("នាទីប្រជុំ", "meeting minutes")}</span>
+        <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
+        <span className="mt-2 grid gap-2">
+          {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
+        </span>
       </div>
       {(["starter", "plus", "premium"] as const).map((id) => {
         const plan = BILLING_PLANS[id];
-        const highlighted = quota.planId === id || (quota.plan === "free" && selected === id);
-        return <button key={id} type="button" disabled={quota.plan !== "free"} onClick={() => setSelected(id)} aria-pressed={quota.plan === "free" && selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${highlighted ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
+        const highlighted = quota.planId === id || (canSelectPlan && selected === id);
+        return <button key={id} type="button" disabled={!canSelectPlan} onClick={() => setSelected(id)} aria-pressed={canSelectPlan && selected === id} className={`rounded-xl border p-4 text-left disabled:cursor-default ${highlighted ? "border-[#087862] bg-[#eef9f4] ring-2 ring-[#087862]/20" : "border-slate-200 hover:border-[#087862]"}`}>
           <span className="block font-bold">{plan.name}</span>
           <span className="block text-2xl font-black">${plan.monthlyCents / 100}<span className="text-sm font-normal text-slate-500">{t("/ខែ", "/month")}</span></span>
           <span className="mt-3 block text-sm font-semibold">{t("Upload សំឡេង/វីដេអូ", "Audio/video upload")}: {plan.uploadSeconds / 3600} {t("ម៉ោងនិយាយ", "spoken hours")}</span>
           <span className="block text-sm font-semibold">{t("ប្រជុំផ្ទាល់ LiveKit", "LiveKit meetings")}: {plan.liveSeconds / 3600} {t("ម៉ោងប្រជុំ", "meeting hours")}</span>
+          <span className="mt-4 block border-t border-[#d5e7e0] pt-3 text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</span>
+          <span className="mt-2 grid gap-2">
+            {features.map((feature) => <span key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</span>)}
+          </span>
         </button>;
       })}
     </div>
-    <div className="mt-4 rounded-xl border border-[#d5e7e0] bg-[#f5faf7] p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("មុខងារដែលទទួលបាន", "Included features")}</p>
-      <ul className="mt-3 grid gap-x-5 gap-y-2 sm:grid-cols-2 xl:grid-cols-4">
-        {features.map((feature) => <li key={feature} className="flex items-start gap-2 text-sm leading-5"><Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#087862]" />{feature}</li>)}
-      </ul>
-    </div>
     <p className="mt-3 text-xs text-slate-500">{t("គ្រប់គម្រោងមានមុខងារ AI ដូចគ្នា។ តម្លៃខុសគ្នាតាមចំនួនម៉ោង Upload និង LiveKit។", "All plans include the same AI features. Prices differ by upload and LiveKit hours.")}</p>
     {quota.plan === "pro" && <p className="mt-2 text-sm text-slate-600">{t("ចង់ប្ដូរគម្រោង? សូមទាក់ទងយើងតាម Telegram។", "Want to change plans? Contact us on Telegram.")}</p>}
+    {adminPreview && <p className="mt-3 text-sm text-slate-600">{t("ជ្រើសគម្រោងដើម្បីមើលជម្រើសបង់ប្រាក់។ បើបញ្ចប់ការបង់តាមកាត នឹងមានការគិតប្រាក់ប្រចាំខែ ប៉ុន្តែសិទ្ធិ Unlimited របស់អ្នកនៅដដែល។", "Choose a plan to view payment options. Completing card checkout starts a monthly charge; your Unlimited access stays active.")}</p>}
     {pending && <p className="mt-3 text-sm font-semibold text-amber-700">{t("សំណើបង់តាម QR កំពុងរង់ចាំការផ្ទៀងផ្ទាត់។", "Your QR payment is awaiting review.")}</p>}
     {paymentNotice && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">{paymentNotice}</p>}
     <div className="mt-4 flex flex-wrap gap-2">
       {quota.plan === "free" ? <>
         <button type="button" disabled={busy || pending || !quota.qrAvailable} onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862] disabled:opacity-50">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</button>
-        <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
-      </> : quota.plan === "pro" && quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment()} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+        <button type="button" disabled={busy} onClick={() => void cardPayment("checkout")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
+      </> : quota.plan === "pro" && quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment("portal")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+      {adminPreview && <>
+        <button type="button" onClick={() => setShowQr(true)} className="rounded-xl border border-[#087862] px-4 py-3 font-bold text-[#087862]">{t(`មើល QR $${amount}`, `View QR $${amount}`)}</button>
+        <button type="button" disabled={busy} onClick={() => void cardPayment("checkout")} className="rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t(`បង់ $${amount} តាមកាត`, `Pay $${amount} by card`)}</button>
+        {quota.billingMethod === "card" && <button type="button" disabled={busy} onClick={() => void cardPayment("portal")} className="rounded-xl border border-slate-300 px-4 py-3 font-bold disabled:opacity-50">{t("គ្រប់គ្រងការបង់ប្រាក់", "Manage billing")}</button>}
+      </>}
       <a href={SUPPORT_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl border border-slate-300 px-4 py-3 font-bold">Telegram · @malis7171</a>
     </div>
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     {showQr && <div role="dialog" aria-modal="true" aria-labelledby="qr-title" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4"><div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
-      <h3 id="qr-title" className="text-xl font-black">{t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</h3>
-      <p className="mt-2 text-sm text-slate-600">{t("សូមផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនស្កេន។ ការបង់ QR ត្រូវឲ្យអ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ មុនបើកគម្រោង។", "Check the amount before scanning. QR payments need manual verification before access is enabled.")}</p>
+      <h3 id="qr-title" className="text-xl font-black">{adminPreview ? t(`មើល QR $${amount}`, `View QR $${amount}`) : t(`បង់ $${amount} តាម QR`, `Pay $${amount} by QR`)}</h3>
+      <p className="mt-2 text-sm text-slate-600">{adminPreview ? t("QR នេះសម្រាប់មើលប៉ុណ្ណោះ។ គណនីនេះមានសិទ្ធិ Unlimited រួចហើយ មិនចាំបាច់បង់ ឬស្នើអនុម័តទេ។", "This QR is for reference only. This account already has Unlimited access; no payment or approval request is needed.") : t("សូមផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនស្កេន។ ការបង់ QR ត្រូវឲ្យអ្នកគ្រប់គ្រងផ្ទៀងផ្ទាត់ មុនបើកគម្រោង។", "Check the amount before scanning. QR payments need manual verification before access is enabled.")}</p>
       <Image src="/payment-qr-malis-dy.png" alt="MALIS DY payment QR" width={1258} height={1279} className="mx-auto mt-4 h-auto w-full max-w-sm" unoptimized />
-      <div className="mt-4 flex gap-2"><button type="button" disabled={busy} onClick={() => void qrPayment()} className="flex-1 rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("បានបង់រួច · ស្នើឲ្យពិនិត្យ", "I've paid · request review")}</button><button type="button" onClick={() => setShowQr(false)} className="rounded-xl border px-4 py-3">{t("បិទ", "Close")}</button></div>
+      <div className="mt-4 flex gap-2">{quota.plan === "free" && <button type="button" disabled={busy} onClick={() => void qrPayment()} className="flex-1 rounded-xl bg-[#087862] px-4 py-3 font-bold text-white disabled:opacity-50">{t("បានបង់រួច · ស្នើឲ្យពិនិត្យ", "I've paid · request review")}</button>}<button type="button" onClick={() => setShowQr(false)} className="rounded-xl border px-4 py-3">{t("បិទ", "Close")}</button></div>
     </div></div>}
   </section>;
 }
