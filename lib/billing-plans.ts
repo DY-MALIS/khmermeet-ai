@@ -14,3 +14,12 @@ export function isPaidPlan(value: unknown): value is PaidPlan {
 export function paidPlan(value: unknown): PaidPlan {
   return isPaidPlan(value) ? value : "starter";
 }
+
+export function planForStripePrice(item: {
+  quantity?: number | null;
+  price: { unit_amount: number | null; currency: string; recurring: { interval: string } | null };
+}): PaidPlan | null {
+  if (item.quantity !== 1 || item.price.currency.toLowerCase() !== "usd" || item.price.recurring?.interval !== "month") return null;
+  return (Object.entries(BILLING_PLANS) as [PaidPlan, (typeof BILLING_PLANS)[PaidPlan]][])
+    .find(([, plan]) => plan.monthlyCents === item.price.unit_amount)?.[0] ?? null;
+}

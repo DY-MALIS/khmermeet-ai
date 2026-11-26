@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
+import { prisma } from "@/lib/prisma";
 import { getOptionalUser } from "@/lib/session";
 import { cleanRoomName, createInviteToken, verifyInviteToken } from "@/lib/livekit-invite";
 import { MAX_MEETING_DURATION_SECONDS } from "@/lib/meeting-duration";
@@ -40,20 +41,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // Each signed-in participant spends their own meeting-time allowance.
-    // Guest invitees may join without an account; the room owner pays the
-    // LiveKit infrastructure cost for those participants.
-    let usageSessionId: string | null = null;
-    if (user) {
-      await requireAudioAllowance(user.id, "live");
-      usageSessionId = crypto.randomUUID();
-      await chargeAudioUsage(user.id, `live-session:${usageSessionId}`, 0, "live");
-    }
-
+    // Signed-in participants spend their own allowance. An invited guest
+    // spends the room owner's allowance so the server can also remove guests
+    // when that allowance is exhausted.
     const identity = `${name.replace(/\s+/g, "-").toLowerCase()}-${crypto.randomUUID()}`;
+    let usageSessionId: string | null = null;
+    const roomOwner = user ? null : await prisma.liveUsageSession.findFirst({
+      where: { room, createdAt: { gte: new Date(Date.now() - MAX_MEETING_DURATION_SECONDS * 1000) } },
+      orderBy: { createdAt: "asc" }, select: { userId: true }
+    });
+    const billingUserId = user?.id ?? roomOwner?.userId;
+    if (!billingUserId) {
+      return NextResponse.json({ error: "The room owner must join before guests can enter." }, { status: 403 });
+    }
+    await requireAudioAllowance(billingUserId, "live");
+    usageSessionId = crypto.randomUUID();
+    await chargeAudioUsage(billingUserId, `live-session:${usageSessionId}`, 0, "live");
+    await prisma.liveUsageSession.create({ data: { id: usageSessionId, userId: billingUserId, room, identity } });
+
     const token = new AccessToken(apiKey, apiSecret, {
       identity,
       name,
+      metadata: usageSessionId ? JSON.stringify({ usageSessionId }) : undefined,
       // Must outlast the longest call this app supports (12h meeting cap):
       // LiveKit's automatic reconnect reuses this exact token, so a shorter
       // TTL meant one network drop past the 2h mark ended a long call for

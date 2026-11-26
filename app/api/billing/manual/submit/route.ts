@@ -8,12 +8,16 @@ export async function POST(request: Request) {
   const user = await requireUser();
   const body = await request.json().catch(() => ({}));
   if (!isPaidPlan(body.plan)) return NextResponse.json({ error: "Choose a valid plan." }, { status: 400 });
-  const pending = await prisma.manualPayment.findFirst({ where: { userId: user.id, status: "pending" }, select: { id: true } });
-  if (pending) return NextResponse.json({ error: "Your payment is already waiting for review." }, { status: 409 });
-
-  const payment = await prisma.manualPayment.create({
-    data: { userId: user.id, plan: body.plan, transactionRef: `request-${randomUUID()}` },
-    select: { id: true }
+  const payment = await prisma.$transaction(async (tx) => {
+    // Serialize requests for this account, including admin grants/reviews.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+    const pending = await tx.manualPayment.findFirst({ where: { userId: user.id, status: "pending" }, select: { id: true } });
+    if (pending) return null;
+    return tx.manualPayment.create({
+      data: { userId: user.id, plan: body.plan, transactionRef: `request-${randomUUID()}` },
+      select: { id: true }
+    });
   });
+  if (!payment) return NextResponse.json({ error: "Your payment is already waiting for review." }, { status: 409 });
   return NextResponse.json({ ok: true, requestId: payment.id }, { status: 201 });
 }

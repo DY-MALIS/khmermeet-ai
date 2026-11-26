@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-html-link-for-pages */
-import { ArrowRight, CheckCircle2, Clock, FileAudio, Mic, ListTodo, Plus, Radio, Video, Wand2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, FileAudio, Mic, ListTodo, Radio, Video, Wand2 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { meetingOwnerWhere, ownerWhere, requireUser } from "@/lib/session";
 import { EmptyState } from "@/components/ui";
@@ -59,8 +59,8 @@ export default async function DashboardPage() {
   const overdueTasks = tasks.filter((task) => task.deadline && task.deadline < now && task.status !== "completed");
 
   return (
-    <div className="space-y-6">
-      <div className="relative flex flex-col gap-5 overflow-hidden rounded-[1.75rem] bg-gradient-to-r from-[#073f39] via-[#075b4e] to-[#0b8b6c] p-6 text-white shadow-xl shadow-[#073f39]/15 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+    <div className="space-y-8">
+      <header className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-r from-[#073f39] via-[#075b4e] to-[#0b8b6c] p-6 text-white shadow-xl shadow-[#073f39]/15 sm:p-8">
         <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-28 h-64 w-64 rounded-full border-[42px] border-white/5" />
         <div className="relative">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#f5cb3f]">{text.welcome}</p>
@@ -69,85 +69,78 @@ export default async function DashboardPage() {
             {t("ថតប្រជុំ ផ្ទុកសំឡេង និងបំលែងការនិយាយជាខ្មែរ ឬអង់គ្លេសទៅជាកំណត់ត្រាមានរបៀប។", "Record meetings, upload audio, and turn Khmer or English speech into organized notes.")}
           </p>
         </div>
-        <div className="relative flex flex-wrap gap-2">
-          <a href="/meetings/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-[#075b4e] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:bg-emerald-50">
-            <Plus className="h-4 w-4" />
-            {t("ចាប់ផ្ដើមឥឡូវ", "Start now")}
-          </a>
-          <a href="/meetings/call" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20">
-            <Video className="h-4 w-4" />
-            {t("បើកការហៅ", "Open call")}
-          </a>
-        </div>
-      </div>
-      {user.isAdmin && <a href="/settings#manual-payments" className="inline-flex min-h-11 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800">{t("គ្រប់គ្រងការបង់ប្រាក់តាមអ៊ីមែល", "Manage payments by email")}</a>}
-      <DashboardBillingCard quota={{
-        ...quota,
-        periodEnd: quota.periodEnd.toISOString(),
-        manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
-      }} language={language} />
-      <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
-        <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-[1.5rem] border border-[#d3e7df] bg-[#fbfdf9] p-6 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#073f39]/12 sm:p-8">
-          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#087862] via-[#0cb288] to-[#f5cb3f]" />
-          <div className="absolute right-6 top-6 hidden rounded-full border border-[#cde6da] bg-[#e8f6ef] px-3 py-2 text-xs font-bold text-[#087862] xl:block">
-            {t("រួចរាល់សម្រាប់ថតផ្ទាល់", "Live capture ready")}
+      </header>
+      <section aria-labelledby="dashboard-actions-title" className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{t("កន្លែងធ្វើការ", "Workspace")}</p>
+            <h2 id="dashboard-actions-title" className="mt-1 text-xl font-black text-[#073f39] sm:text-2xl">{t("ចាប់ផ្ដើមការងារ", "Get started")}</h2>
           </div>
-          <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#087862] text-white shadow-lg shadow-[#087862]/20">
-                <Mic className="h-6 w-6" />
-              </span>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{text.primaryFeature}</p>
-                  <h2 className="text-2xl font-black text-ink sm:text-4xl">{text.startMeetingRecording}</h2>
+          <a href="#dashboard-billing" className="text-sm font-bold text-[#087862] underline-offset-4 hover:underline">{t("មើលគម្រោង និងការបង់ប្រាក់", "View plans and billing")}</a>
+        </div>
+        <div className="grid items-start gap-4 xl:grid-cols-[1.35fr_.65fr]">
+          <a href="/meetings/new" className="group relative self-start overflow-hidden rounded-[1.5rem] border border-[#d3e7df] bg-[#fbfdf9] p-6 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#073f39]/12 sm:p-8">
+            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#087862] via-[#0cb288] to-[#f5cb3f]" />
+            <div className="absolute right-6 top-6 hidden rounded-full border border-[#cde6da] bg-[#e8f6ef] px-3 py-2 text-xs font-bold text-[#087862] xl:block">
+              {t("រួចរាល់សម្រាប់ថតផ្ទាល់", "Live capture ready")}
+            </div>
+            <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#087862] text-white shadow-lg shadow-[#087862]/20">
+                  <Mic className="h-6 w-6" />
+                </span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-[#087862]">{text.primaryFeature}</p>
+                    <h3 className="text-2xl font-black text-ink sm:text-3xl">{text.startMeetingRecording}</h3>
+                  </div>
+                </div>
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
+                  {text.dashboardRecordDescription}
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold">
+                  <span className="rounded-full bg-[#e1f3eb] px-3 py-2 text-[#087862] ring-1 ring-[#cde6da]">{t("សំឡេង", "Audio")}</span>
+                  <span className="rounded-full bg-[#e8f3ef] px-3 py-2 text-[#0a6e63] ring-1 ring-[#d3e7df]">{t("អត្ថបទប្រជុំ", "Transcript")}</span>
+                  <span className="rounded-full bg-[#fff4dc] px-3 py-2 text-[#9a680c] ring-1 ring-[#f5e6b9]">{t("សេចក្ដីសង្ខេប", "Summary")}</span>
                 </div>
               </div>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
-                {text.dashboardRecordDescription}
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold">
-                <span className="rounded-full bg-[#e1f3eb] px-3 py-2 text-[#087862] ring-1 ring-[#cde6da]">{t("សំឡេង", "Audio")}</span>
-                <span className="rounded-full bg-[#e8f3ef] px-3 py-2 text-[#0a6e63] ring-1 ring-[#d3e7df]">{t("អត្ថបទប្រជុំ", "Transcript")}</span>
-                <span className="rounded-full bg-[#fff4dc] px-3 py-2 text-[#9a680c] ring-1 ring-[#f5e6b9]">{t("សេចក្ដីសង្ខេប", "Summary")}</span>
+              <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#087862] px-5 py-3 text-sm font-bold text-white shadow-md shadow-[#087862]/20 transition group-hover:bg-[#065d50]">
+                {t("ចាប់ផ្ដើមថត", "Start recording")}
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </div>
-            </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded-xl bg-[#087862] px-5 py-3 text-sm font-bold text-white shadow-md shadow-[#087862]/20 transition group-hover:bg-[#065d50]">
-              {t("ចាប់ផ្ដើមថត", "Start recording")}
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </div>
-          </div>
-        </a>
-        <div className="grid gap-4">
-          <a href="/meetings/call" className="group rounded-[1.5rem] border border-[#d3e7df] bg-white p-5 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl">
-            <div className="flex items-center gap-3">
-              <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e1f3eb] text-[#087862]">
-                <Video className="h-6 w-6" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-slate-500">{text.videoMeeting}</p>
-                <h2 className="text-xl font-bold text-ink">{text.openVideoMeeting}</h2>
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#cde6da] bg-[#f2faf5] px-4 py-2 text-sm font-bold text-[#075b4e] transition group-hover:bg-[#e1f3eb]">
-              {t("បើកការហៅ", "Open call")}
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
             </div>
           </a>
-          <div className="rounded-[1.5rem] border border-[#f2dfad] bg-[#fffaf0] p-5 shadow-lg shadow-[#a46f1a]/8">
-            <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-leaf/10 text-leaf shadow-sm">
-                <Radio className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-xs font-bold uppercase text-leaf">{t("ថ្ងៃនេះ", "Today")}</p>
-                <p className="font-bold text-ink">{pendingTasks.length} {t("កិច្ចការមិនទាន់បញ្ចប់", "pending tasks")}</p>
+          <div className="grid gap-4">
+            <a href="/meetings/call" className="group rounded-[1.5rem] border border-[#d3e7df] bg-white p-5 shadow-lg shadow-[#073f39]/8 transition hover:-translate-y-0.5 hover:shadow-xl">
+              <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#e1f3eb] text-[#087862]">
+                  <Video className="h-6 w-6" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-slate-500">{text.videoMeeting}</p>
+                  <h3 className="text-xl font-bold text-ink">{text.openVideoMeeting}</h3>
+                </div>
               </div>
+              <p className="mt-4 text-sm leading-6 text-slate-500">{text.dashboardVideoDescription}</p>
+              <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-[#cde6da] bg-[#f2faf5] px-4 py-2 text-sm font-bold text-[#075b4e] transition group-hover:bg-[#e1f3eb]">
+                {t("បើកការហៅ", "Open call")}
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </div>
+            </a>
+            <div className="rounded-[1.5rem] border border-[#f2dfad] bg-[#fffaf0] p-5 shadow-lg shadow-[#a46f1a]/8">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-2xl bg-leaf/10 text-leaf shadow-sm">
+                  <Radio className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-xs font-bold uppercase text-leaf">{t("ការងារដែលត្រូវធ្វើ", "To do")}</p>
+                  <p className="font-bold text-ink">{pendingTasks.length} {t("កិច្ចការមិនទាន់បញ្ចប់", "pending tasks")}</p>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                {overdueTasks.length ? t(`មានកិច្ចការហួសកំណត់ ${overdueTasks.length} ដែលត្រូវពិនិត្យ។`, `${overdueTasks.length} overdue items need review.`) : t("មិនមានកិច្ចការហួសកំណត់ទេ។", "No overdue tasks right now.")}
+              </p>
             </div>
-            <p className="mt-4 text-sm leading-6 text-slate-600">
-              {overdueTasks.length ? t(`មានកិច្ចការហួសកំណត់ ${overdueTasks.length} ដែលត្រូវពិនិត្យ។`, `${overdueTasks.length} overdue items need review.`) : t("មិនមានកិច្ចការហួសកំណត់ទេ។", "No overdue tasks right now.")}
-            </p>
           </div>
         </div>
       </section>
@@ -156,7 +149,7 @@ export default async function DashboardPage() {
           {text.dashboardDbUnavailable}
         </div>
       ) : null}
-      {!dbUnavailable ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {!dbUnavailable ? <section aria-label={t("ស្ថិតិសង្ខេប", "Overview statistics")} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <div className="relative overflow-hidden rounded-[1.4rem] border border-[#dbe9df] bg-white p-5 shadow-sm shadow-[#073f39]/5 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#073f39]/10" key={stat.label}>
             <div className={`absolute inset-x-0 top-0 h-1 ${stat.accent}`} />
@@ -167,7 +160,15 @@ export default async function DashboardPage() {
             <p className="mt-5 text-4xl font-bold tracking-tight text-[#073f39]">{stat.value}</p>
           </div>
         ))}
-      </div> : null}
+      </section> : null}
+      <section id="dashboard-billing" aria-label={t("គម្រោង និងការបង់ប្រាក់", "Plans and billing")} className="scroll-mt-6 space-y-4">
+        {user.isAdmin && <a href="/settings#manual-payments" className="inline-flex min-h-11 items-center rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 font-bold text-emerald-800">{t("គ្រប់គ្រងការបង់ប្រាក់តាមអ៊ីមែល", "Manage payments by email")}</a>}
+        <DashboardBillingCard quota={{
+          ...quota,
+          periodEnd: quota.periodEnd.toISOString(),
+          manualPaymentCreatedAt: quota.manualPaymentCreatedAt?.toISOString() ?? null
+        }} language={language} />
+      </section>
       {!dbUnavailable ? (
         <section className="overflow-hidden rounded-[1.5rem] border border-[#dbe9df] bg-white shadow-sm shadow-[#073f39]/5">
           <div className="border-b border-[#dbe9df] bg-[#f3faf5] px-5 py-4">

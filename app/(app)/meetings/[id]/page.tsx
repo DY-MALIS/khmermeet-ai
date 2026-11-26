@@ -17,6 +17,9 @@ import { RecordedAudioPlayer } from "@/components/recorded-audio-player";
 import { getServerUiText } from "@/lib/server-ui-text";
 import type { UiTextKey } from "@/lib/ui-translations";
 import { localizedPriority } from "@/lib/localized-values";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/session";
+import { MeetingIntegrationActions } from "@/components/meeting-integration-actions";
 
 function meetingLoadErrorMessage(error: unknown, language: "km" | "en") {
   const t = (km: string, en: string) => language === "km" ? km : en;
@@ -82,6 +85,8 @@ export default async function MeetingDetailPage({
   }
 
   if (!meeting) notFound();
+  const currentUser = await requireUser();
+  const providerConnections = await prisma.integrationConnection.findMany({ where: { userId: currentUser.id }, select: { provider: true } }).catch(() => []);
 
   const speakerNames = Array.from(
     new Set(
@@ -186,6 +191,7 @@ export default async function MeetingDetailPage({
           language={normalizeTranscriptionLanguageMode(meeting.language)}
         />
       </section>
+      <MeetingIntegrationActions meetingId={meeting.id} providers={providerConnections.map((connection) => connection.provider)} />
 
       {meeting.tasks.length ? (
         <section className="kh-card overflow-hidden">

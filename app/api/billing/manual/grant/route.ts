@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { BILLING_PLANS, isPaidPlan } from "@/lib/billing-plans";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
+import { manualPeriodEnd } from "@/lib/billing-period";
 
 export async function POST(request: Request) {
   let adminId: string;
@@ -35,8 +36,7 @@ export async function POST(request: Request) {
       if (billing?.manualPeriodEnd && billing.manualPeriodEnd > now) {
         return { error: "This account already has an active QR plan. Wait until it expires before granting another month.", status: 409 };
       }
-      const end = new Date(now);
-      end.setUTCMonth(end.getUTCMonth() + 1);
+      const end = manualPeriodEnd(now);
       const pending = await tx.manualPayment.findFirst({ where: { userId: target.id, status: "pending" }, orderBy: { createdAt: "desc" } });
       const payment = pending
         ? await tx.manualPayment.update({ where: { id: pending.id }, data: { plan: planId, status: "approved", reviewedAt: now, reviewedById: adminId } })
@@ -46,6 +46,13 @@ export async function POST(request: Request) {
         create: { userId: target.id, manualPaymentId: payment.id, manualPlan: planId, manualPeriodStart: now, manualPeriodEnd: end },
         update: { manualPaymentId: payment.id, manualPlan: planId, manualPeriodStart: now, manualPeriodEnd: end }
       });
+      await tx.billingAuditEvent.create({ data: {
+        actorUserId: adminId,
+        targetUserId: target.id,
+        action: "manual_plan_granted",
+        paymentId: payment.id,
+        plan: planId
+      } });
       return { ok: true, email: target.email, name: target.name, plan: planId, amountCents: BILLING_PLANS[planId].monthlyCents, periodEnd: end };
     });
     return "error" in result ? NextResponse.json({ error: result.error }, { status: result.status }) : NextResponse.json(result);

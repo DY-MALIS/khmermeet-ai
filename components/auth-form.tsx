@@ -30,7 +30,10 @@ export function GoogleSignInButton({ callbackUrl, initialLanguage = "km" }: { ca
           const { error: oauthError } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
-              redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(callbackUrl)}`
+              redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(callbackUrl)}`,
+              // Signing out of KhmerMeet does not end the browser's Google
+              // session. Ask Google to show the account chooser on each login.
+              queryParams: { prompt: "select_account" }
             }
           });
           if (oauthError) {

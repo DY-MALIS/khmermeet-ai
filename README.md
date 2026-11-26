@@ -4,23 +4,24 @@ KhmerMeet AI is a production-minded MVP for Cambodian teams to record meetings, 
 
 ## Features
 
-- Email/password auth with protected dashboard
-- Browser audio recording with local file storage
-- Browser WebRTC video meetings for local MVP testing
+- Supabase Google sign-in with protected dashboard
+- Browser audio recording with Supabase Storage for persistent files
+- LiveKit video meetings
 - OpenRouter transcription for Khmer and English meeting audio
 - OpenRouter meeting summaries in Khmer by default
 - OpenRouter JSON action task extraction
 - Meeting history, meeting detail, task management, settings
 - Responsive SaaS dashboard UI with Khmer-friendly typography
-- Text export for transcript and summary
+- TXT, Word, Excel, and PowerPoint export
+- Stripe and manual QR billing with separate upload and LiveKit quotas
 
 ## Tech Stack
 
 - Next.js App Router, TypeScript, Tailwind CSS
 - Prisma ORM with `DATABASE_URL`
-- NextAuth credentials auth
+- Supabase Auth
 - OpenRouter API
-- Local file storage for MVP
+- Supabase Storage and LiveKit Cloud
 
 ## Setup
 
@@ -45,15 +46,16 @@ OPEN_ROUTER_TEXT_MODEL=openai/gpt-4o-mini
 OPEN_ROUTER_TRANSCRIBE_MODEL=google/chirp-3
 OPEN_ROUTER_TRANSCRIBE_FALLBACK_MODEL=google/gemini-3.8-flash
 OPEN_ROUTER_TRANSCRIBE_TIMEOUT_MS=55000
-NEXTAUTH_SECRET="replace-with-a-long-random-secret"
-NEXTAUTH_URL="https://khmermeet-ai.vercel.app"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="..."
 ```
 
-4. Create the database and seed demo data:
+4. On a fresh development database, apply the migrations:
 
 ```bash
-npm run prisma:migrate
-npm run prisma:seed
+npx prisma migrate deploy
 ```
 
 5. Start local dev:
@@ -62,10 +64,7 @@ npm run prisma:seed
 npm run dev
 ```
 
-Demo login after seeding:
-
-- Email: `demo@khmermeet.ai`
-- Password: `password123`
+Configure Google sign-in in Supabase Auth to create your account.
 
 ## Production Deployment
 
@@ -73,7 +72,7 @@ Before giving KhmerMeet AI to real users, follow the deployment checklist in [`D
 
 ## Notes
 
-The MVP stores audio files under `uploads/` locally and serves them through `/api/uploads/[name]`. On Vercel, local uploads are temporary, so production should move this adapter in `lib/storage.ts` to S3 or Supabase Storage.
+Production recordings use a private Supabase Storage bucket. Local storage is a development fallback; configure the Storage variables in `.env.example` before testing long recordings.
 
 Server Rec records each participant's microphone locally in their own browser (a room-wide signal over the LiveKit data channel starts it automatically for everyone once one person clicks the button) and posts segments straight to the transcription API - no S3-compatible storage is required and no extra environment variables need to be set. This replaced an earlier LiveKit Egress + S3 upload design after hitting a confirmed, unresolved AWS SDK V2 signature-validation bug in Supabase Storage's S3-compatible API (see https://github.com/supabase/storage/issues/646); `lib/livekit-egress.ts` and the `/api/livekit-egress/*` routes are kept in the codebase unused in case that upstream bug gets fixed and server-side recording becomes worth revisiting.
 
@@ -86,9 +85,7 @@ OpenRouter powers transcription, summary generation, and task extraction. OpenRo
 - Real-time speech-to-text
 - Speaker detection
 - Google Calendar integration
-- Telegram reminders
+- Telegram bot configuration and sandbox delivery verification
 - Slack and Zoom integrations
 - PDF export
 - Team workspace
-- Payment plan
-- Cloud storage
